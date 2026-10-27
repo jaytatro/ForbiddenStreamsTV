@@ -45,6 +45,10 @@ import com.forbiddenstreams.tv.sports.GameChannels
 import com.forbiddenstreams.tv.sports.GameMatcher
 import com.forbiddenstreams.tv.sports.League
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.forbiddenstreams.tv.player.PlayItem
+import com.forbiddenstreams.tv.player.Playback
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -54,13 +58,13 @@ fun SportsScreen(league: League) {
     val context = LocalContext.current
     val todayKey = remember { Espn.dayKey(System.currentTimeMillis()) }
 
-    var week by remember(league) { mutableStateOf<Map<String, List<Game>>?>(null) }
+    var week by remember(league) { mutableStateOf(SportsCache.weeks[league]) }
     var error by remember(league) { mutableStateOf<String?>(null) }
     var nextGame by remember(league) { mutableStateOf<Long?>(null) }
     var day by remember(league) { mutableStateOf(todayKey) }
     var teamChannels by remember(league) { mutableStateOf<List<LiveChannel>?>(null) }
     var groupMissing by remember(league) { mutableStateOf(false) }
-    var matches by remember(league) { mutableStateOf<Map<String, GameChannels>>(emptyMap()) }
+    var matches by remember(league) { mutableStateOf(SportsCache.matches[league].orEmpty()) }
     var picker by remember { mutableStateOf<Game?>(null) }
     val epgCache = remember(league) { HashMap<String, List<Program>>() }
 
@@ -78,6 +82,7 @@ fun SportsScreen(league: League) {
             try {
                 val w = Espn.week(league)
                 week = w
+                SportsCache.weeks[league] = w
                 error = null
                 if (w.isEmpty() && nextGame == null) nextGame = Espn.nextGameAfter(league)
             } catch (e: Exception) {
@@ -88,17 +93,22 @@ fun SportsScreen(league: League) {
     }
 
     val games = week?.get(day).orEmpty()
-    val gameIds = games.joinToString(",") { it.id }
-    LaunchedEffect(gameIds, teamChannels) {
+    // Match every game of the week at once, off the main thread, without waiting on the
+    // network, so the channel list pops up instantly when a game is picked.
+    val allIds = week?.values?.flatten()?.joinToString(",") { it.id }
+    LaunchedEffect(allIds, teamChannels) {
         val ch = teamChannels ?: return@LaunchedEffect
-        val out = HashMap(matches)
-        for (g in games) {
-            if (out.containsKey(g.id)) continue
-            out[g.id] = GameMatcher.match(g, league, ch) { c ->
-                epgCache[c.id] ?: Session.epg(c).also { epgCache[c.id] = it }
+        val all = week?.values?.flatten().orEmpty()
+        val out = withContext(Dispatchers.Default) {
+            val m = HashMap(matches)
+            for (g in all) {
+                if (m.containsKey(g.id)) continue
+                m[g.id] = GameMatcher.match(g, league, ch) { c -> epgCache[c.id] ?: Session.cachedEpg(c).orEmpty() }
             }
+            m
         }
         matches = out
+        SportsCache.matches[league] = out
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -158,28 +168,68 @@ fun SportsScreen(league: League) {
         }
     }
 
-    // OK on a game: always show where it can be watched.
+    // OK on a game: show where to watch it (or replay it, if it's over).
     picker?.let { g ->
-        val m = matches[g.id]
-        val team = teamChannels.orEmpty()
-        val options = ArrayList<Pair<String, () -> Unit>>()
-        m?.away?.let { c -> options.add("📺 ${g.away.displayName} feed · ${c.name}" to { picker = null; openChannel(context, team, c) }) }
-        m?.home?.let { c -> options.add("📺 ${g.home.displayName} feed · ${c.name}" to { picker = null; openChannel(context, team, c) }) }
-        val used = m?.options.orEmpty().map { it.id }.toSet()
-        GameMatcher.networkChannels(g, Session.liveAll.orEmpty(), used).forEach { (net, c) ->
-            options.add("📡 On $net · ${c.name}" to { picker = null; openChannel(context, listOf(c), c) })
-        }
+        val options = remember(g.id, matches[g.id], teamChannels, Session.liveAll) { gameOptions(context, g, matches[g.id], teamChannels.orEmpty()) }
+        val tv = g.networks.takeIf { it.isNotEmpty() }?.let { " · TV: ${it.joinToString(", ")}" } ?: ""
         val sub = when {
-            options.isNotEmpty() -> "Pick a channel to watch" + (g.networks.takeIf { it.isNotEmpty() }?.let { " · TV: ${it.joinToString(", ")}" } ?: "")
-            m == null -> "Still looking for channels for this game. Try again in a moment."
-            else -> (m.note ?: "No channel found") + (g.networks.takeIf { it.isNotEmpty() }?.let { " · TV: ${it.joinToString(", ")}" } ?: "")
+            options.isNotEmpty() && g.isFinal -> "Final ${g.away.score ?: ""}–${g.home.score ?: ""}. Pick a channel to replay the game$tv"
+            options.isNotEmpty() -> "Pick a channel to watch$tv"
+            g.isFinal -> "This game is over and none of its channels have catch-up (⟲), so it can't be replayed$tv"
+            matches[g.id] == null -> "Still matching channels. Try again in a second."
+            else -> (matches[g.id]?.note ?: "No channel found") + tv
         }
         ChoiceDialog(
             "${g.away.displayName} vs. ${g.home.displayName}", sub,
-            options.ifEmpty { listOf<Pair<String, () -> Unit>>("OK" to { picker = null }) },
+            options.map { (label, action) -> label to { picker = null; action() } }
+                .ifEmpty { listOf<Pair<String, () -> Unit>>("OK" to { picker = null }) },
             onDismiss = { picker = null },
         )
     }
+}
+
+/** Remembers the last scores and channel matches per league so tabs open instantly. */
+private object SportsCache {
+    val weeks = HashMap<League, Map<String, List<Game>>>()
+    val matches = HashMap<League, Map<String, GameChannels>>()
+}
+
+private fun gameLengthMs(g: Game): Long = when {
+    g.home.logo?.contains("/nfl/") == true -> 210 * 60_000L
+    g.home.logo?.contains("/mlb/") == true -> 200 * 60_000L
+    g.home.logo?.contains("/nhl/") == true -> 170 * 60_000L
+    else -> 160 * 60_000L
+}
+
+/** Channel choices for a game: team feeds and the TV network. Finished games replay from catch-up. */
+private fun gameOptions(
+    context: android.content.Context,
+    g: Game,
+    m: GameChannels?,
+    team: List<LiveChannel>,
+): List<Pair<String, () -> Unit>> {
+    val out = ArrayList<Pair<String, () -> Unit>>()
+    val feeds = ArrayList<Triple<String, LiveChannel, List<LiveChannel>>>()
+    m?.away?.let { feeds += Triple("📺 ${g.away.displayName} feed", it, team) }
+    m?.home?.let { feeds += Triple("📺 ${g.home.displayName} feed", it, team) }
+    val used = m?.options.orEmpty().map { it.id }.toSet()
+    GameMatcher.networkChannels(g, Session.liveAll.orEmpty(), used).forEach { (net, c) -> feeds += Triple("📡 $net", c, listOf(c)) }
+
+    if (g.isFinal) {
+        val src = Session.source ?: return out
+        for ((label, c, _) in feeds) {
+            // The show on the channel's guide that covers kick-off, or a window around the game.
+            val prog = Session.cachedEpg(c)?.firstOrNull { g.start >= it.start - 15 * 60_000 && g.start < it.end }
+                ?: Program("${g.away.displayName} vs. ${g.home.displayName}", "", g.start - 10 * 60_000, g.start + gameLengthMs(g), true)
+            val url = src.catchupUrl(c, prog) ?: continue
+            out += "⏮ Replay · $label · ${c.name}" to {
+                Playback.one(context, PlayItem("${g.away.displayName} vs. ${g.home.displayName}", url, live = false, subtitle = "Replay from ${c.name}"))
+            }
+        }
+    } else {
+        for ((label, c, list) in feeds) out += "$label · ${c.name}" to { openChannel(context, list, c) }
+    }
+    return out
 }
 
 private fun openChannel(context: android.content.Context, all: List<LiveChannel>, ch: LiveChannel) {

@@ -1,6 +1,7 @@
 package com.forbiddenstreams.tv.ui
 
 import androidx.compose.foundation.Image
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -68,6 +69,20 @@ fun HomeScreen(onLogout: () -> Unit) {
     // Movies and TV Shows don't show the live preview: switch it off there.
     LaunchedEffect(tab) { if ((tab == 2 || tab == 3) && PlayerHolder.isMiniActive) PlayerHolder.stop() }
 
+    // BACK on the main screens: first press shows a hint, second press within 2.5 s closes the app.
+    val activity = LocalContext.current as? android.app.Activity
+    var exitHint by remember { mutableStateOf(false) }
+    BackHandler {
+        if (exitHint) {
+            PlayerHolder.stop()
+            activity?.finish()
+        } else {
+            exitHint = true
+        }
+    }
+    LaunchedEffect(exitHint) { if (exitHint) { delay(2500); exitHint = false } }
+
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         // Top menu: main sections on the first row, sports right under them.
         Row(
@@ -77,8 +92,10 @@ fun HomeScreen(onLogout: () -> Unit) {
                 .padding(horizontal = 24.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Image(painterResource(R.drawable.logo), null, Modifier.size(76.dp))
-            Spacer(Modifier.width(14.dp))
+            Column(Modifier.padding(end = 22.dp)) {
+                Text("FORBIDDEN STREAMS", color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+                Text("TV", color = FS.Green, fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = 6.sp)
+            }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 listOf(0..3, 4..7).forEach { range ->
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -110,6 +127,16 @@ fun HomeScreen(onLogout: () -> Unit) {
                 t.league != null -> SportsScreen(t.league)
             }
         }
+    }
+    if (exitHint) {
+        Text(
+            "Click back one more time to close",
+            color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp)
+                .background(FS.Green, RoundedCornerShape(50))
+                .padding(horizontal = 28.dp, vertical = 12.dp),
+        )
+    }
     }
     ReminderWatcher()
 }

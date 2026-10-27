@@ -28,7 +28,11 @@ object GameMatcher {
         return categories.firstOrNull { groupKey(it.name) == want }
     }
 
-    private fun norm(s: String) = " " + s.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim() + " "
+    private val nonWord = Regex("[^a-z0-9]+")
+    private val normCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** Lower-case words with spaces around them; cached because it runs on every channel name. */
+    private fun norm(s: String): String = normCache.getOrPut(s) { " " + s.lowercase().replace(nonWord, " ").trim() + " " }
 
     private fun hasWord(haystack: String, word: String): Boolean {
         val w = norm(word).trim()

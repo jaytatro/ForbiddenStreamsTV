@@ -6,6 +6,20 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import com.forbiddenstreams.tv.data.Prefs
+import com.forbiddenstreams.tv.data.Session
+import com.forbiddenstreams.tv.ui.Fmt
+import com.forbiddenstreams.tv.ui.GuideView
+import com.forbiddenstreams.tv.ui.Group
+import com.forbiddenstreams.tv.ui.playChannels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,35 +50,41 @@ import kotlinx.coroutines.launch
 class PlayerActivity : ComponentActivity() {
     private lateinit var view: PlayerView
 
-    /** Channel/quality banner is visible. */
+    /** Bottom info bar (channel, what's on, quality) is visible. */
     private var infoVisible by mutableStateOf(true)
     private var infoJob: Job? = null
+
+    /** See-through TV guide over the video (hold OK on live TV). */
+    private var guideVisible by mutableStateOf(false)
+    private var okLongFired = false
+    private var okDown = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (PlayerHolder.current == null) { PlayerHolder.fullScreen = false; finish(); return }
         PlayerHolder.fullScreen = true
+        val live = PlayerHolder.current?.live == true
 
         view = PlayerView(this).apply {
             player = PlayerHolder.player(this@PlayerActivity)
-            useController = true
+            // Live TV has no seek bar; our own bottom bar shows the info instead.
+            useController = !live
             controllerShowTimeoutMs = 4000
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
             keepScreenOn = true
             setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v ->
-                if (v == android.view.View.VISIBLE) showInfo()
+                infoVisible = v == android.view.View.VISIBLE
             })
         }
-        if (PlayerHolder.current?.live == true) view.hideController()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (view.isControllerFullyVisible && PlayerHolder.current?.live != true) {
+                if (PlayerHolder.current?.live != true && view.isControllerFullyVisible) {
                     view.hideController()
                     return
                 }
-                // Live TV keeps playing in the small top-left window; movies/episodes stop.
+                // Live TV keeps playing in the preview window; movies/episodes stop.
                 if (PlayerHolder.current?.live != true) PlayerHolder.stop()
                 close()
             }
@@ -73,22 +93,37 @@ class PlayerActivity : ComponentActivity() {
         setContent {
             ForbiddenTheme {
                 val item = PlayerHolder.current
+                val ch = item?.channelId?.let { Session.channelById(it) }
+                val now by produceState(System.currentTimeMillis()) { while (true) { value = System.currentTimeMillis(); delay(15_000) } }
+                val epg by produceState(ch?.let { Session.cachedEpg(it) }, ch?.id) { if (ch != null) value = Session.epg(ch) }
+                val prog = epg?.firstOrNull { it.isLive(now) }
                 Box(Modifier.fillMaxSize().background(Color.Black)) {
                     AndroidView(factory = { view }, modifier = Modifier.fillMaxSize())
-                    if (infoVisible && item != null) {
-                        Column(
-                            Modifier.align(Alignment.TopStart).padding(32.dp)
-                                .background(Color(0xCC050805), RoundedCornerShape(12.dp))
-                                .padding(horizontal = 24.dp, vertical = 14.dp),
+                    if (infoVisible && item != null && !guideVisible) {
+                        // Bottom bar: where the time and settings buttons are.
+                        Row(
+                            Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                                .padding(start = 32.dp, end = 32.dp, bottom = if (item.live) 28.dp else 96.dp)
+                                .background(Color(0xD9050805), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 22.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            val n = if (item.live && PlayerHolder.items.size > 1) "${PlayerHolder.index + 1}  " else ""
-                            Text(n + item.title, color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                            item.subtitle?.let { Text(it, color = FS.Text, fontSize = 16.sp) }
+                            Column(Modifier.weight(1f)) {
+                                val n = if (item.live && PlayerHolder.items.size > 1) "${PlayerHolder.index + 1}  " else ""
+                                Text(n + item.title, color = FS.Green, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                val what = prog?.let { "${it.title}   ${Fmt.range(it.start, it.end)}" } ?: item.subtitle
+                                what?.let { Text(it, color = FS.Text, fontSize = 15.sp, maxLines = 1) }
+                                if (prog != null) {
+                                    val f = ((now - prog.start).toFloat() / (prog.end - prog.start)).coerceIn(0f, 1f)
+                                    Box(Modifier.padding(top = 6.dp).width(360.dp).height(4.dp).background(FS.Line, RoundedCornerShape(2.dp))) {
+                                        Box(Modifier.fillMaxWidth(f).height(4.dp).background(FS.Green, RoundedCornerShape(2.dp)))
+                                    }
+                                }
+                            }
+                            QualityBadge(PlayerHolder.quality?.substringBeforeLast(" · ") ?: "Loading…")
+                            Spacer(Modifier.width(18.dp))
+                            Text(Fmt.time(now), color = FS.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         }
-                        QualityBadge(
-                            PlayerHolder.quality ?: "Loading…",
-                            Modifier.align(Alignment.TopEnd).padding(32.dp),
-                        )
                     }
                     PlayerHolder.error?.let {
                         Text(
@@ -97,6 +132,35 @@ class PlayerActivity : ComponentActivity() {
                             modifier = Modifier.align(Alignment.Center)
                                 .background(Color(0xDD0C140D), RoundedCornerShape(12.dp)).padding(24.dp),
                         )
+                    }
+                    if (guideVisible) {
+                        BackHandler { guideVisible = false }
+                        val list = remember(PlayerHolder.items) { PlayerHolder.items.mapNotNull { it.channelId?.let { id -> Session.channelById(id) } } }
+                        Box(Modifier.fillMaxSize().background(Color(0x66000000)).padding(top = 24.dp)) {
+                            if (list.isEmpty()) {
+                                Text("No guide for this stream", color = Color.White, fontSize = 20.sp, modifier = Modifier.align(Alignment.Center))
+                            } else {
+                                GuideView(
+                                    group = Group.All,
+                                    channels = list,
+                                    startId = item?.channelId,
+                                    active = true,
+                                    onCategories = { },
+                                    onToggleFav = { c -> Prefs(this@PlayerActivity).toggleFavorite(c.id) },
+                                    overlay = true,
+                                    onPlayChannel = { l, i ->
+                                        guideVisible = false
+                                        playChannels(this@PlayerActivity, l, i, fullScreen = false)
+                                        showInfo()
+                                    },
+                                    onPlayItem = { pi ->
+                                        guideVisible = false
+                                        PlayerHolder.start(this@PlayerActivity, listOf(pi), 0, fullScreen = false)
+                                        showInfo()
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -113,25 +177,32 @@ class PlayerActivity : ComponentActivity() {
     private fun showInfo() {
         infoVisible = true
         infoJob?.cancel()
-        infoJob = lifecycleScope.launch { delay(5000); infoVisible = false }
+        infoJob = lifecycleScope.launch { delay(5000); if (!::view.isInitialized || !view.isControllerFullyVisible) infoVisible = false }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (!::view.isInitialized || guideVisible) return super.dispatchKeyEvent(event)
         val live = PlayerHolder.current?.live == true
-        if (event.action == KeyEvent.ACTION_DOWN && ::view.isInitialized) {
-            when (event.keyCode) {
-                KeyEvent.KEYCODE_INFO -> { showInfo(); return true }
-            }
-            if (live && !view.isControllerFullyVisible) {
-                when (event.keyCode) {
-                    KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_DOWN -> { PlayerHolder.zap(this, -1); showInfo(); return true }
-                    KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_UP -> { PlayerHolder.zap(this, 1); showInfo(); return true }
-                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                        showInfo()
-                        view.showController()
-                        return true
+        val down = event.action == KeyEvent.ACTION_DOWN
+        if (event.keyCode == KeyEvent.KEYCODE_INFO) { if (down) showInfo(); return true }
+        if (!live) return super.dispatchKeyEvent(event)
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_DOWN -> { if (down) { PlayerHolder.zap(this, -1); showInfo() }; return true }
+            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_UP -> { if (down) { PlayerHolder.zap(this, 1); showInfo() }; return true }
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                if (down) {
+                    if (event.repeatCount == 0) { okDown = true; okLongFired = false }
+                    else if (okDown && !okLongFired) {
+                        // Held OK: see-through guide over the video.
+                        okLongFired = true
+                        infoVisible = false
+                        guideVisible = true
                     }
+                } else {
+                    if (okDown && !okLongFired) showInfo()
+                    okDown = false
                 }
+                return true
             }
         }
         return super.dispatchKeyEvent(event)

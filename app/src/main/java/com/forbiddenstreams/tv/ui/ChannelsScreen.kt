@@ -139,7 +139,7 @@ fun ChannelsScreen() {
     var query by remember { mutableStateOf("") }
     var submitted by remember { mutableStateOf("") }
 
-    // When the app opens: go back to the last channel and play it in the preview window.
+    // When the app opens: play the last channel in the preview on the right of the category list.
     LaunchedEffect(Session.liveAll) {
         if (!Session.resumePending || Session.liveAll == null) return@LaunchedEffect
         Session.resumePending = false
@@ -149,7 +149,6 @@ fun ChannelsScreen() {
         val list = channelsOf(prefs, g).let { l -> if (l.any { it.id == last.id }) l else listOf(last) }
         groupKey = g.key
         startId = last.id
-        guideOpen = true
         if (PlayerHolder.current == null) playChannels(context, list, list.indexOfFirst { it.id == last.id }, fullScreen = false)
     }
 
@@ -174,7 +173,8 @@ fun ChannelsScreen() {
     fun open(g: Group) {
         groupKey = g.key
         if (g != Group.Search) prefs.lastGroup = g.key
-        startId = null
+        // Land on the channel that's playing if it's in this category.
+        startId = PlayerHolder.current?.channelId
         drawer = false
         guideOpen = true
     }
@@ -233,17 +233,20 @@ fun ChannelsScreen() {
     // Category list only. Channels appear after a category is picked.
     Row(Modifier.fillMaxSize().padding(start = 16.dp, top = 8.dp, end = 16.dp)) {
         GroupList(groups, group, Modifier.width(380.dp)) { open(it) }
-        Box(Modifier.weight(1f).fillMaxHeight()) {
-            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                Image(painterResource(R.drawable.logo), null, Modifier.size(300.dp).alpha(0.3f))
-                Spacer(Modifier.height(12.dp))
-                Text("Pick a category to open its TV guide", color = FS.TextDim, fontSize = 20.sp)
-                Text(
-                    "${cats.size} categories" + if (Session.refreshing) " · updating playlist…" else "",
-                    color = FS.TextDim, fontSize = 14.sp,
-                )
+        Box(Modifier.weight(1f).fillMaxHeight().padding(start = 24.dp)) {
+            if (PlayerHolder.isMiniActive) {
+                // Last/current channel, right side, middle of the screen. OK = full screen.
+                MiniPlayer(760.dp, Modifier.align(Alignment.CenterEnd))
+            } else {
+                Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Image(painterResource(R.drawable.logo), null, Modifier.size(300.dp).alpha(0.3f))
+                    Spacer(Modifier.height(12.dp))
+                    Text("Pick a category to open its TV guide", color = FS.TextDim, fontSize = 20.sp)
+                }
             }
-            MiniPlayer(340.dp, Modifier.align(Alignment.TopEnd))
+            if (Session.refreshing) {
+                Text("Updating playlist…", color = FS.TextDim, fontSize = 13.sp, modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp))
+            }
         }
     }
 }
@@ -324,13 +327,17 @@ private fun widthDp(ms: Long) = (ms / MIN.toFloat() * DP_PER_MIN).dp
  *  OK = watch / catch-up / options, hold OK = options (record, remind, favorite)
  */
 @Composable
-private fun GuideView(
+fun GuideView(
     group: Group,
     channels: List<LiveChannel>,
     startId: String?,
     active: Boolean,
     onCategories: () -> Unit,
     onToggleFav: (LiveChannel) -> Unit,
+    /** See-through version shown over the video: white outlines, words and the time line only. */
+    overlay: Boolean = false,
+    onPlayChannel: ((List<LiveChannel>, Int) -> Unit)? = null,
+    onPlayItem: ((PlayItem) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val src = Session.source ?: return
@@ -353,6 +360,12 @@ private fun GuideView(
     var lrLong by remember { mutableStateOf(false) }
     var lastStep by remember { mutableLongStateOf(0L) }
     var okLong by remember { mutableStateOf(false) }
+    var okDown by remember { mutableStateOf(false) }
+    var lrDown by remember { mutableStateOf(false) }
+
+    fun playCh(list: List<LiveChannel>, i: Int) =
+        onPlayChannel?.invoke(list, i) ?: playChannels(context, list, i)
+    fun playItem(item: PlayItem) = onPlayItem?.invoke(item) ?: Playback.one(context, item)
 
     val ws = remember(dayOffset) { dayStart(dayOffset) }
     val we = ws + DAY
@@ -421,10 +434,10 @@ private fun GuideView(
         val p = cellAt(row)?.program
         val t = System.currentTimeMillis()
         when {
-            p == null || p.isLive(t) -> playChannels(context, channels, row)
+            p == null || p.isLive(t) -> playCh(channels, row)
             p.end <= t -> {
                 val u = src.catchupUrl(ch, p)
-                if (u != null) Playback.one(context, PlayItem(p.title, u, live = false, subtitle = ch.name))
+                if (u != null) playItem(PlayItem(p.title, u, live = false, subtitle = ch.name))
                 else toast(context, "Catch-up isn't available for this show")
             }
             else -> openMenu()
@@ -469,23 +482,26 @@ private fun GuideView(
                         if (down) {
                             if (ne.repeatCount == 0) {
                                 lrLong = false
+                                lrDown = true
                             } else {
                                 // Held down: scroll through time, a few steps per second.
                                 lrLong = true
                                 val t = System.currentTimeMillis()
                                 if (t - lastStep > 160) { lastStep = t; step(dir) }
                             }
-                        } else if (!lrLong && dir < 0) {
-                            onCategories()
+                        } else {
+                            if (lrDown && !lrLong && dir < 0) onCategories()
+                            lrDown = false
                         }
                         true
                     }
                     AKeyEvent.KEYCODE_DPAD_CENTER, AKeyEvent.KEYCODE_ENTER, AKeyEvent.KEYCODE_NUMPAD_ENTER -> {
                         if (down) {
-                            if (ne.repeatCount == 0) okLong = false
-                            else if (!okLong) { okLong = true; openMenu() }
-                        } else if (!okLong) {
-                            click()
+                            if (ne.repeatCount == 0) { okLong = false; okDown = true }
+                            else if (okDown && !okLong) { okLong = true; openMenu() }
+                        } else {
+                            if (okDown && !okLong) click()
+                            okDown = false
                         }
                         true
                     }
@@ -494,9 +510,9 @@ private fun GuideView(
             }
             .focusable(),
     ) {
-        GuideInfoPanel(curCh, curProg)
+        if (!overlay) GuideInfoPanel(curCh, curProg)
         // Day strip (moves by itself when you hold ◀ ▶ past midnight)
-        Row(
+        if (!overlay) Row(
             Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -519,13 +535,14 @@ private fun GuideView(
             }
         }
         Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)) {
-            TimeHeader(group.title, ws, we, now, hState) { gridWidthPx = it }
+            TimeHeader(if (overlay) "" else group.title, ws, we, now, hState, overlay) { gridWidthPx = it }
             LazyColumn(state = listState, userScrollEnabled = false) {
                 itemsIndexed(channels, key = { _, ch -> ch.id }) { i, ch ->
                     GuideRow(
                         ch = ch, ws = ws, we = we, now = now, hState = hState,
                         cursor = if (i == row && active) cursor else null,
                         playing = PlayerHolder.current?.channelId == ch.id,
+                        overlay = overlay,
                         onEpg = { epgTick++ },
                     )
                 }
@@ -538,7 +555,7 @@ private fun GuideView(
         val opts = ArrayList<Pair<String, () -> Unit>>()
         opts += "▶  Watch ${ch.name} live" to {
             menu = null
-            playChannels(context, channels, channels.indexOf(ch).coerceAtLeast(0))
+            playCh(channels, channels.indexOf(ch).coerceAtLeast(0))
         }
         if (p != null && p.end > t) opts += "⏺  Record" to {
             Recordings.schedule(context, ch, p)
@@ -554,7 +571,7 @@ private fun GuideView(
             val u = src.catchupUrl(ch, p)
             if (u != null) opts += "⏮  Watch from start" to {
                 menu = null
-                Playback.one(context, PlayItem(p.title, u, live = false, subtitle = ch.name))
+                playItem(PlayItem(p.title, u, live = false, subtitle = ch.name))
             }
         }
         val fav = ch.id in Prefs(context).favorites
@@ -599,8 +616,8 @@ private fun GuideInfoPanel(ch: LiveChannel?, p: Program?) {
 }
 
 @Composable
-private fun TimeHeader(title: String, ws: Long, we: Long, now: Long, hState: ScrollState, onWidth: (Int) -> Unit) {
-    Row(Modifier.fillMaxWidth().height(32.dp).background(FS.Panel2), verticalAlignment = Alignment.CenterVertically) {
+private fun TimeHeader(title: String, ws: Long, we: Long, now: Long, hState: ScrollState, overlay: Boolean, onWidth: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth().height(32.dp).background(if (overlay) Color.Transparent else FS.Panel2), verticalAlignment = Alignment.CenterVertically) {
         Text(title, color = FS.Green, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1,
             overflow = TextOverflow.Ellipsis, modifier = Modifier.width(CH_COL.dp).padding(horizontal = 10.dp))
         Box(Modifier.weight(1f).fillMaxHeight().onSizeChanged { onWidth(it.width) }.horizontalScroll(hState, enabled = false)) {
@@ -628,16 +645,23 @@ private fun GuideRow(
     hState: ScrollState,
     cursor: Long?,
     playing: Boolean,
+    overlay: Boolean,
     onEpg: () -> Unit,
 ) {
     val epg by produceState(Session.cachedEpg(ch), ch.id) { value = Session.epg(ch); onEpg() }
     val cells = remember(epg, ws) { buildCells(epg, ws, we) }
     val shape = RoundedCornerShape(4.dp)
     val rowSel = cursor != null
+    val density = LocalDensity.current
+    val scrolledDp = with(density) { hState.value.toDp() }
+    val line = Color(0xCCFFFFFF)
     Row(Modifier.fillMaxWidth().height(ROW_H.dp)) {
         Row(
             Modifier.width(CH_COL.dp).fillMaxHeight().padding(1.dp)
-                .background(if (rowSel) FS.GreenDim else FS.Panel, shape)
+                .then(
+                    if (overlay) Modifier.border(if (rowSel) 2.dp else 1.dp, if (rowSel) FS.Green else line, shape)
+                    else Modifier.background(if (rowSel) FS.GreenDim else FS.Panel, shape)
+                )
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -658,11 +682,18 @@ private fun GuideRow(
                     val live = now >= cell.start && now < cell.end
                     val past = cell.end <= now
                     val sel = cursor != null && cursor >= cell.start && cursor < cell.end
+                    // Keep the title on screen when the show started before the left edge.
+                    val startDp = widthDp(cell.start - ws)
+                    val endDp = widthDp(cell.end - ws)
+                    val shift = if (startDp < scrolledDp && endDp > scrolledDp + 60.dp) scrolledDp - startDp else 0.dp
                     Row(
                         Modifier.width(widthDp(cell.end - cell.start)).fillMaxHeight().padding(1.dp)
-                            .background(if (sel) FS.GreenDeep else if (live) FS.Panel2 else FS.Panel, shape)
-                            .then(if (sel) Modifier.border(2.dp, FS.Green, shape) else Modifier)
-                            .padding(horizontal = 8.dp),
+                            .then(
+                                if (overlay) Modifier.border(if (sel) 3.dp else 1.dp, if (sel) FS.Green else line, shape)
+                                else Modifier.background(if (sel) FS.GreenDeep else if (live) FS.Panel2 else FS.Panel, shape)
+                                    .then(if (sel) Modifier.border(2.dp, FS.Green, shape) else Modifier)
+                            )
+                            .padding(start = 8.dp + shift, end = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         if (p != null && past && p.hasArchive) Text("⟲ ", color = FS.Green, fontSize = 13.sp)

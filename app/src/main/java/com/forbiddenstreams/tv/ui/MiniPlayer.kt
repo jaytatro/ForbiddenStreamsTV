@@ -25,7 +25,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.tv.material3.Text
 import com.forbiddenstreams.tv.player.PlayerHolder
-import com.forbiddenstreams.tv.player.QualityBadge
 
 /**
  * Live preview window (top-right of the screen).
@@ -47,9 +46,6 @@ fun MiniPlayer(width: Dp, modifier: Modifier = Modifier, focusable: Boolean = tr
                     onRelease = { PlayerHolder.existingPlayer()?.clearVideoTextureView(it) },
                     modifier = Modifier.fillMaxSize(),
                 )
-            }
-            PlayerHolder.quality?.let {
-                QualityBadge(it.substringBefore(" · "), Modifier.align(Alignment.TopEnd).padding(6.dp), small = true)
             }
             PlayerHolder.error?.let {
                 Text("Stream error", color = FS.Live, fontSize = 12.sp, modifier = Modifier.align(Alignment.Center))
