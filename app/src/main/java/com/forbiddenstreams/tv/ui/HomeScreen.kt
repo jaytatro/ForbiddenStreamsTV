@@ -1,0 +1,177 @@
+package com.forbiddenstreams.tv.ui
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.tv.material3.Text
+import com.forbiddenstreams.tv.R
+import com.forbiddenstreams.tv.player.PlayItem
+import com.forbiddenstreams.tv.player.Playback
+import com.forbiddenstreams.tv.reminders.Reminder
+import com.forbiddenstreams.tv.reminders.Reminders
+import com.forbiddenstreams.tv.sports.League
+import kotlinx.coroutines.delay
+
+private data class TopTab(val label: String, val league: League? = null)
+
+private val tabs = listOf(
+    TopTab("MENU"),
+    TopTab("CHANNELS"),
+    TopTab("🎬 MOVIES"),
+    TopTab("📼 TV SHOWS"),
+    TopTab("🏈 NFL", League.NFL),
+    TopTab("🏀 NBA", League.NBA),
+    TopTab("🏒 NHL", League.NHL),
+    TopTab("⚾ MLB", League.MLB),
+)
+
+@Composable
+fun HomeScreen(onLogout: () -> Unit) {
+    var tab by rememberSaveable { mutableIntStateOf(1) }
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { delay(20_000); now = System.currentTimeMillis() } }
+    val startFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { try { startFocus.requestFocus() } catch (e: Exception) { } }
+
+    Column(Modifier.fillMaxSize()) {
+        // Top menu bar
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(Brush.horizontalGradient(listOf(Color(0xFF0B260C), Color(0xFF050805), Color(0xFF0B260C))))
+                .padding(horizontal = 24.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Image(painterResource(R.drawable.logo), null, Modifier.size(52.dp))
+            Spacer(Modifier.width(14.dp))
+            LazyRow(
+                Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                itemsIndexed(tabs) { i, t ->
+                    Pill(
+                        t.label,
+                        selected = tab == i,
+                        onClick = { tab = i },
+                        modifier = if (i == 1) Modifier.focusRequester(startFocus) else Modifier,
+                    )
+                }
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(Fmt.time(now), color = FS.Green, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text(Fmt.longDay(now), color = FS.TextDim, fontSize = 13.sp)
+            }
+        }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            val t = tabs[tab]
+            when {
+                tab == 0 -> MenuScreen(onLogout = onLogout)
+                tab == 1 -> ChannelsScreen()
+                tab == 2 -> MoviesScreen()
+                tab == 3 -> SeriesScreen()
+                t.league != null -> SportsScreen(t.league)
+            }
+        }
+    }
+    ReminderWatcher()
+}
+
+/** Pops up "Starting now" when a reminder is due while the app is open. */
+@Composable
+private fun ReminderWatcher() {
+    val context = LocalContext.current
+    var showing by remember { mutableStateOf<Reminder?>(null) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            if (showing == null) {
+                showing = Reminders.due(context).firstOrNull()
+            }
+            delay(20_000)
+        }
+    }
+    val r = showing ?: return
+    ChoiceDialog(
+        title = "Starting now: ${r.title}",
+        subtitle = "On ${r.channelName}",
+        options = listOf(
+            "▶ Watch now" to {
+                Reminders.remove(context, r.id)
+                showing = null
+                Playback.one(context, PlayItem(r.channelName, r.channelUrl, live = true, subtitle = r.title))
+            },
+            "Dismiss" to {
+                Reminders.remove(context, r.id)
+                showing = null
+            },
+        ),
+        onDismiss = { Reminders.remove(context, r.id); showing = null },
+    )
+}
+
+@Composable
+fun ChoiceDialog(
+    title: String,
+    subtitle: String? = null,
+    options: List<Pair<String, () -> Unit>>,
+    onDismiss: () -> Unit,
+) {
+    val first = remember { FocusRequester() }
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .width(520.dp)
+                .background(FS.Panel, RoundedCornerShape(16.dp))
+                .border(2.dp, FS.GreenDeep, RoundedCornerShape(16.dp))
+                .padding(28.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(title, color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            if (subtitle != null) Text(subtitle, color = FS.TextDim, fontSize = 16.sp, maxLines = 4)
+            Spacer(Modifier.size(6.dp))
+            options.forEachIndexed { i, (label, action) ->
+                FocusCard(
+                    onClick = action,
+                    modifier = Modifier.fillMaxWidth().then(if (i == 0) Modifier.focusRequester(first) else Modifier),
+                ) {
+                    Text(label, fontSize = 19.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp))
+                }
+            }
+        }
+    }
+    LaunchedEffect(Unit) { delay(100); try { first.requestFocus() } catch (e: Exception) { } }
+}
