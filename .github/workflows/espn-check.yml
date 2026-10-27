@@ -1,0 +1,29 @@
+name: ESPN check
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/espn-check.yml']
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch scoreboards like the app does
+        run: |
+          mkdir out
+          FROM=$(date -d '-3 day' +%Y%m%d); TO=$(date -d '+3 day' +%Y%m%d); TODAY=$(date +%Y%m%d)
+          for L in football/nfl basketball/nba hockey/nhl baseball/mlb; do
+            N=$(echo $L | cut -d/ -f2)
+            for UA in "ForbiddenStreams/1.0 (Linux; Android TV)" "Mozilla/5.0"; do
+              code=$(curl -s -A "$UA" -o out/${N}_range.json -w "%{http_code}" "https://site.api.espn.com/apis/site/v2/sports/$L/scoreboard?dates=$FROM-$TO&limit=500")
+              echo "$N range UA='$UA' -> HTTP $code events=$(jq '.events|length' out/${N}_range.json 2>/dev/null)"
+            done
+            curl -s -A "Mozilla/5.0" -o out/${N}_today.json "https://site.api.espn.com/apis/site/v2/sports/$L/scoreboard?dates=$TODAY"
+            echo "$N today -> events=$(jq '.events|length' out/${N}_today.json)"
+            curl -s -A "Mozilla/5.0" -o out/${N}_default.json "https://site.api.espn.com/apis/site/v2/sports/$L/scoreboard"
+            echo "$N default -> events=$(jq '.events|length' out/${N}_default.json)"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: espn
+          path: out
