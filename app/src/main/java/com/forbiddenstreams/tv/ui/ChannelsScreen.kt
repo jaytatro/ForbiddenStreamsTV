@@ -594,7 +594,7 @@ private fun GuideInfoPanel(ch: LiveChannel?, p: Program?) {
             }
         }
         // Live preview, top-right.
-        MiniPlayer(240.dp, focusable = false)
+        MiniPlayer(210.dp, focusable = false)
     }
 }
 
