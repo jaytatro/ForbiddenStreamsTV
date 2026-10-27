@@ -120,8 +120,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     val sub = when (expanded) { 1 -> vodTabs; 2 -> sportTabs; else -> emptyList() }
-                    if (expanded == 2) Spacer(Modifier.width(150.dp)) // line up under SPORTS
-                    if (expanded == 1) Spacer(Modifier.width(110.dp)) // line up under VOD
+                    // Sub-tabs start at the left edge, under CHANNELS.
                     for (i in sub) {
                         Pill(tabs[i].label, selected = tab == i, onClick = { tab = i }, fontSize = 15.sp)
                     }
