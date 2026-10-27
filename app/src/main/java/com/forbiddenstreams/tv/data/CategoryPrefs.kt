@@ -31,10 +31,32 @@ object CategoryPrefs {
             .map { it.value }
     }
 
-    /** What the Channels tab shows: user's order, hidden ones removed. */
+    /** What the Channels tab shows: user's order, hidden and parental-locked ones removed. */
     fun visible(context: Context, cats: List<Category>): List<Category> {
-        val h = hidden(context)
+        val h = hidden(context) + locked(context)
         return ordered(context, cats).filter { it.id !in h }
+    }
+
+    /** Hidden or locked: left out of the main screens (and All / Search). */
+    fun excluded(context: Context): Set<String> = hidden(context) + locked(context)
+
+    // ---- Parental lock ----
+
+    fun locked(context: Context): Set<String> =
+        sp(context).getStringSet("cat_locked", emptySet())?.toSet() ?: emptySet()
+
+    fun toggleLocked(context: Context, id: String) {
+        val l = locked(context).toMutableSet()
+        if (!l.add(id)) l.remove(id)
+        sp(context).edit().putStringSet("cat_locked", l).apply()
+        version++
+    }
+
+    fun pin(context: Context): String? = sp(context).getString("parental_pin", null)?.takeIf { it.length == 4 }
+
+    fun setPin(context: Context, pin: String?) {
+        sp(context).edit().apply { if (pin == null) remove("parental_pin") else putString("parental_pin", pin) }.apply()
+        version++
     }
 
     fun move(context: Context, cats: List<Category>, id: String, step: Int) {

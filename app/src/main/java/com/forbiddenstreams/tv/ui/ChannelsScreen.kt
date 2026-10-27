@@ -95,7 +95,7 @@ fun groupsFor(cats: List<Category>): List<Group> =
 
 fun channelsOf(prefs: Prefs, g: Group): List<LiveChannel> {
     // Channels in hidden categories are left out of All and Search too.
-    val hidden = CategoryPrefs.hidden(prefs.context)
+    val hidden = CategoryPrefs.excluded(prefs.context)
     val all = Session.liveAll.orEmpty().let { l -> if (hidden.isEmpty()) l else l.filter { it.categoryId !in hidden } }
     return when (g) {
         Group.Search, Group.All -> all
@@ -257,18 +257,45 @@ fun ChannelsScreen() {
 }
 
 @Composable
-private fun GroupList(groups: List<Group>, selected: Group, modifier: Modifier, onPick: (Group) -> Unit) {
-    val first = remember { FocusRequester() }
+fun GroupList(
+    groups: List<Group>,
+    selected: Group,
+    modifier: Modifier,
+    onFocus: ((Group) -> Unit)? = null,
+    textColor: Color? = null,
+    onPick: (Group) -> Unit,
+) {
+    val sel = remember { FocusRequester() }
+    val top = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
     val state = rememberLazyListState(groups.indexOfFirst { it.key == selected.key }.coerceAtLeast(0))
     LazyColumn(modifier.fillMaxHeight(), state = state, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        itemsIndexed(groups, key = { _, g -> g.key }) { _, g ->
+        itemsIndexed(groups, key = { _, g -> g.key }) { i, g ->
+            val last = i == groups.size - 1
             SideItem(
                 g.title, selected = g.key == selected.key, onClick = { onPick(g) },
-                modifier = Modifier.fillMaxWidth().then(if (g.key == selected.key) Modifier.focusRequester(first) else Modifier),
+                onFocus = { onFocus?.invoke(g) },
+                textColor = textColor,
+                modifier = Modifier.fillMaxWidth()
+                    .then(if (g.key == selected.key) Modifier.focusRequester(sel) else Modifier)
+                    .then(if (i == 0) Modifier.focusRequester(top) else Modifier)
+                    .then(
+                        // End of the list: ▼ goes back to the top.
+                        if (last) Modifier.onPreviewKeyEvent { ev ->
+                            if (ev.type == KeyEventType.KeyDown && ev.nativeKeyEvent.keyCode == AKeyEvent.KEYCODE_DPAD_DOWN) {
+                                scope.launch {
+                                    state.scrollToItem(0)
+                                    delay(60)
+                                    try { top.requestFocus() } catch (e: Exception) { }
+                                }
+                                true
+                            } else false
+                        } else Modifier
+                    ),
             )
         }
     }
-    LaunchedEffect(Unit) { delay(150); try { first.requestFocus() } catch (e: Exception) { } }
+    LaunchedEffect(Unit) { delay(150); try { sel.requestFocus() } catch (e: Exception) { } }
 }
 
 /** Slides in from the left over the guide when ◀ is pressed. */
@@ -352,6 +379,7 @@ fun GuideView(
     val hState = rememberScrollState()
     val listState = rememberLazyListState()
     val focus = remember { FocusRequester() }
+    val topMenu = LocalTopMenuFocus.current
 
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var dayOffset by remember { mutableIntStateOf(0) }
@@ -483,8 +511,13 @@ fun GuideView(
                 val down = ev.type == KeyEventType.KeyDown
                 when (ne.keyCode) {
                     AKeyEvent.KEYCODE_DPAD_UP -> {
-                        if (row == 0) return@onPreviewKeyEvent false // lets focus go up to the search box
-                        if (down) { row--; keepRowVisible() }
+                        // Held ▲ = jump up to the top menu (CHANNELS / VOD / SPORTS).
+                        if (down && ne.repeatCount >= 2 && topMenu != null) {
+                            try { topMenu.requestFocus() } catch (e: Exception) { }
+                            return@onPreviewKeyEvent true
+                        }
+                        if (row == 0) return@onPreviewKeyEvent false // lets focus go up to the search box / menu
+                        if (down && ne.repeatCount == 0) { row--; keepRowVisible() }
                         true
                     }
                     AKeyEvent.KEYCODE_DPAD_DOWN -> {

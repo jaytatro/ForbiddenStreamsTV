@@ -39,6 +39,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/** Lets screens send the cursor up to the top menu (CHANNELS). Null inside the player. */
+val LocalTopMenuFocus = androidx.compose.runtime.staticCompositionLocalOf<androidx.compose.ui.focus.FocusRequester?> { null }
+
 /** Forbidden Streams palette: black and slime green. */
 object FS {
     val Bg = Color(0xFF040604)
@@ -164,6 +167,7 @@ fun SideItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onFocus: (() -> Unit)? = null,
+    textColor: Color? = null,
 ) {
     val shape = RoundedCornerShape(50)
     Surface(
@@ -172,7 +176,7 @@ fun SideItem(
         shape = ClickableSurfaceDefaults.shape(shape = shape),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = Color.Transparent,
-            contentColor = if (selected) FS.Green else FS.Text,
+            contentColor = if (selected) FS.Green else textColor ?: FS.Text,
             focusedContainerColor = FS.Green,
             focusedContentColor = Color.Black,
         ),

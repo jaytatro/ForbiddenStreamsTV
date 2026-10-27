@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
@@ -173,40 +174,104 @@ private fun ListCard(title: String, sub: String, onClick: () -> Unit, onLongClic
 }
 
 
-/** Settings › Categories: reorder (▲ ▼) and hide/show the live TV categories. */
+/** Settings › Categories: reorder (▲ ▼), hide/show and parental-lock the live TV categories. */
 @Composable
 private fun CategoryEditor() {
     val context = LocalContext.current
     val cats = Session.liveCats
-    Column(Modifier.fillMaxSize()) {
+    val pin = remember(CategoryPrefs.version) { CategoryPrefs.pin(context) }
+    // With a parental code set, this screen needs the code first.
+    var unlocked by remember { mutableStateOf(false) }
+    var askPin by remember { mutableStateOf<String?>(null) } // "open" | "set" | "lock:<id>"
+    var pendingLock by remember { mutableStateOf<String?>(null) }
+
+    if (pin != null && !unlocked) {
+        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Text("🔒 Categories are protected", color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(12.dp))
+            Pill("Enter parental code", selected = true, onClick = { askPin = "open" })
+        }
+    } else Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Categories", color = FS.Green, fontSize = 30.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Text("▲ ▼ move · Hide/Show", color = FS.TextDim, fontSize = 15.sp)
+            Text("▲ ▼ move · Hide · 🔒 Lock", color = FS.TextDim, fontSize = 15.sp)
             Spacer(Modifier.width(16.dp))
+            Pill(if (pin == null) "Set parental code" else "Change code", selected = false, onClick = { askPin = "set" })
+            Spacer(Modifier.width(6.dp))
             Pill("Reset", selected = false, onClick = { CategoryPrefs.reset(context); toast(context, "Categories back to the provider's order") })
         }
         if (cats == null) { LoadingBox("Loading categories"); return@Column }
         val list = remember(cats, CategoryPrefs.version) { CategoryPrefs.ordered(context, cats) }
         val hidden = remember(CategoryPrefs.version) { CategoryPrefs.hidden(context) }
+        val locked = remember(CategoryPrefs.version) { CategoryPrefs.locked(context) }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             itemsIndexed(list, key = { _, c -> c.id }) { i, c ->
                 val off = c.id in hidden
+                val lock = c.id in locked
                 Row(
                     Modifier.fillMaxWidth().background(FS.Panel, RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("${i + 1}", color = FS.TextDim, fontSize = 16.sp, modifier = Modifier.width(44.dp))
                     Text(
-                        c.name, color = if (off) FS.TextDim else FS.Text, fontSize = 19.sp,
-                        fontWeight = if (off) FontWeight.Normal else FontWeight.Bold,
+                        c.name, color = if (off || lock) FS.TextDim else FS.Text, fontSize = 19.sp,
+                        fontWeight = if (off || lock) FontWeight.Normal else FontWeight.Bold,
                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
                     )
-                    if (off) Text("hidden", color = FS.Live, fontSize = 14.sp, modifier = Modifier.padding(end = 12.dp))
+                    if (lock) Text("🔒 locked", color = FS.Live, fontSize = 14.sp, modifier = Modifier.padding(end = 12.dp))
+                    else if (off) Text("hidden", color = FS.Live, fontSize = 14.sp, modifier = Modifier.padding(end = 12.dp))
                     Pill("▲", selected = false, fontSize = 16.sp, onClick = { CategoryPrefs.move(context, cats, c.id, -1) })
                     Pill("▼", selected = false, fontSize = 16.sp, onClick = { CategoryPrefs.move(context, cats, c.id, 1) })
                     Spacer(Modifier.width(6.dp))
                     Pill(if (off) "Show" else "Hide", selected = off, fontSize = 15.sp, onClick = { CategoryPrefs.toggleHidden(context, c.id) })
+                    Spacer(Modifier.width(6.dp))
+                    Pill(if (lock) "🔓 Unlock" else "🔒 Lock", selected = lock, fontSize = 15.sp, onClick = {
+                        if (pin == null) { pendingLock = c.id; askPin = "set" } // needs a code first
+                        else CategoryPrefs.toggleLocked(context, c.id)
+                    })
                 }
+            }
+        }
+    }
+
+    when (val mode = askPin) {
+        "open" -> PinDialog("Enter parental code", onDone = { code ->
+            if (code == pin) { unlocked = true; askPin = null } else toast(context, "Wrong code")
+        }, onCancel = { askPin = null })
+        "set" -> PinDialog("Choose a 4-digit parental code", onDone = { code ->
+            if (code.length == 4 && code.all { it.isDigit() }) {
+                CategoryPrefs.setPin(context, code)
+                unlocked = true
+                pendingLock?.let { if (it !in CategoryPrefs.locked(context)) CategoryPrefs.toggleLocked(context, it) }
+                pendingLock = null
+                askPin = null
+                toast(context, "Parental code saved")
+            } else toast(context, "Use exactly 4 numbers")
+        }, onCancel = { askPin = null; pendingLock = null })
+        null -> Unit
+        else -> Unit
+    }
+}
+
+/** Asks for a 4-digit code. */
+@Composable
+fun PinDialog(title: String, onDone: (String) -> Unit, onCancel: () -> Unit) {
+    var code by remember { mutableStateOf("") }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onCancel) {
+        Column(
+            Modifier.width(460.dp).background(FS.Panel, RoundedCornerShape(16.dp))
+                .border(2.dp, FS.GreenDeep, RoundedCornerShape(16.dp)).padding(26.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(title, color = FS.Green, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            FsTextField(
+                "4-digit code", code, { v -> code = v.filter { it.isDigit() }.take(4) },
+                androidx.compose.ui.text.input.KeyboardType.NumberPassword,
+                password = true, done = { onDone(code) },
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Pill("OK", selected = true, onClick = { onDone(code) })
+                Pill("Cancel", selected = false, onClick = onCancel)
             }
         }
     }

@@ -140,12 +140,14 @@ fun HomeScreen(onLogout: () -> Unit) {
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             val t = tabs[tab]
+            androidx.compose.runtime.CompositionLocalProvider(LocalTopMenuFocus provides startFocus) {
             when {
                 tab == 0 -> MenuScreen(onLogout = onLogout)
                 tab == 1 -> ChannelsScreen()
                 tab == 2 -> MoviesScreen()
                 tab == 3 -> SeriesScreen()
                 t.league != null -> SportsScreen(t.league)
+            }
             }
         }
     }

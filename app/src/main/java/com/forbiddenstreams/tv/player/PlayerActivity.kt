@@ -61,9 +61,10 @@ class PlayerActivity : ComponentActivity() {
     private var guideVisible by mutableStateOf(false)
     private var okLongFired = false
 
-    /** ▼ shown under the bar after OK on live TV; ▼ then opens the action tabs. */
-    private var arrowVisible by mutableStateOf(false)
+    /** OK on live TV opens the action tabs (Last Channel, Record, Split Screen). */
     private var actionsVisible by mutableStateOf(false)
+    /** ◀ on live TV opens the see-through category / channel panel. */
+    private var panelVisible by mutableStateOf(false)
     /** Split screen (up to 4 channels). */
     private var multiVisible by mutableStateOf(false)
 
@@ -140,12 +141,6 @@ class PlayerActivity : ComponentActivity() {
                             Text(Fmt.time(now), color = FS.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         }
                     }
-                    if (arrowVisible && infoVisible && item?.live == true && !guideVisible) {
-                        Text(
-                            "▼", color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Bold,
-                            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp),
-                        )
-                    }
                     if (actionsVisible && item != null) {
                         BackHandler { actionsVisible = false }
                         val first = remember { androidx.compose.ui.focus.FocusRequester() }
@@ -179,6 +174,17 @@ class PlayerActivity : ComponentActivity() {
                                 },
                             )
                         }
+                    }
+                    if (panelVisible) {
+                        com.forbiddenstreams.tv.ui.LiveCategoryPanel(
+                            currentChannelId = item?.channelId,
+                            onPlay = { l, i ->
+                                panelVisible = false
+                                playChannels(this@PlayerActivity, l, i, fullScreen = false)
+                                showInfo()
+                            },
+                            onClose = { panelVisible = false },
+                        )
                     }
                     if (multiVisible) {
                         MultiViewScreen(onExit = { ch ->
@@ -277,12 +283,11 @@ class PlayerActivity : ComponentActivity() {
         infoJob = lifecycleScope.launch {
             delay(5000)
             if (!::view.isInitialized || !view.isControllerFullyVisible) infoVisible = false
-            arrowVisible = false
         }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (!::view.isInitialized || guideVisible || actionsVisible || multiVisible) return super.dispatchKeyEvent(event)
+        if (!::view.isInitialized || guideVisible || actionsVisible || multiVisible || panelVisible) return super.dispatchKeyEvent(event)
         val live = PlayerHolder.current?.live == true
         val down = event.action == KeyEvent.ACTION_DOWN
         if (event.keyCode == KeyEvent.KEYCODE_INFO) { if (down) showInfo(); return true }
@@ -298,14 +303,11 @@ class PlayerActivity : ComponentActivity() {
         }
         when (event.keyCode) {
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_DOWN -> { if (down) { PlayerHolder.zap(this, -1); showInfo() }; return true }
-            KeyEvent.KEYCODE_DPAD_DOWN -> {
-                if (down) {
-                    if (arrowVisible && infoVisible) { actionsVisible = true; arrowVisible = false; infoJob?.cancel() }
-                    else { PlayerHolder.zap(this, 1); showInfo() }
-                }
+            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_UP -> { if (down) { PlayerHolder.zap(this, 1); showInfo() }; return true }
+            KeyEvent.KEYCODE_DPAD_LEFT -> {
+                if (down && event.repeatCount == 0) { infoVisible = false; panelVisible = true }
                 return true
             }
-            KeyEvent.KEYCODE_CHANNEL_UP -> { if (down) { PlayerHolder.zap(this, 1); showInfo() }; return true }
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                 if (down) {
                     if (event.repeatCount == 0) { okDown = true; okLongFired = false }
@@ -316,7 +318,7 @@ class PlayerActivity : ComponentActivity() {
                         guideVisible = true
                     }
                 } else {
-                    if (okDown && !okLongFired) { showInfo(); arrowVisible = true }
+                    if (okDown && !okLongFired) { showInfo(); actionsVisible = true }
                     okDown = false
                 }
                 return true
