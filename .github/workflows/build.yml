@@ -36,5 +36,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release delete latest -y --cleanup-tag || true
-          gh release create latest ForbiddenStreamsTV.apk --title "Forbidden Streams TV (build ${{ github.run_number }})" --notes "Install on your Android TV box with the Downloader app."
+          TITLE="Forbidden Streams TV (build ${{ github.run_number }})"
+          if gh release view latest >/dev/null 2>&1; then
+            gh release upload latest ForbiddenStreamsTV.apk --clobber
+            gh release edit latest --title "$TITLE"
+          else
+            for i in 1 2 3 4 5; do
+              gh release create latest ForbiddenStreamsTV.apk --title "$TITLE" --notes "Install on your Android TV box with the Downloader app." && break
+              sleep 10
+            done
+          fi
