@@ -21,8 +21,8 @@ jobs:
       - name: Build APK
         run: |
           chmod +x gradlew
+          set -o pipefail
           ./gradlew assembleRelease --stacktrace 2>&1 | tee build.log
-          exit ${PIPESTATUS[0]}
           cp app/build/outputs/apk/release/app-release.apk ForbiddenStreamsTV.apk
       - name: Report compile errors
         if: failure()
