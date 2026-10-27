@@ -311,7 +311,7 @@ fun CategoryDrawer(groups: List<Group>, selected: Group, onPick: (Group) -> Unit
         ) {
             Text("Categories", color = FS.Green, fontSize = 22.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(start = 12.dp, bottom = 8.dp))
-            GroupList(groups.filter { it != Group.Search } + Group.Search, selected, Modifier.weight(1f), onPick)
+            GroupList(groups.filter { it != Group.Search } + Group.Search, selected, Modifier.weight(1f), onPick = onPick)
         }
         Box(Modifier.weight(1f).fillMaxHeight().background(Color(0xAA000000)))
     }
