@@ -376,6 +376,15 @@ fun GuideView(
     val we = ws + DAY
     LaunchedEffect(channels.size) { if (row >= channels.size) row = (channels.size - 1).coerceAtLeast(0) }
 
+
+    fun cellsOf(r: Int): List<Cell> = channels.getOrNull(r)?.let { buildCells(Session.cachedEpg(it), ws, we) } ?: emptyList()
+    fun cellAt(r: Int): Cell? = cellsOf(r).firstOrNull { cursor >= it.start && cursor < it.end }
+
+    fun px(ms: Long): Int = with(density) { widthDp(ms).toPx() }.toInt()
+
+    /** Scroll so [t] sits about 40% of the way across the grid (time line near the middle). */
+    fun centerOn(t: Long): Int = (px(t - ws) - (gridWidthPx * 0.4f).toInt()).coerceAtLeast(0)
+
     LaunchedEffect(Unit) {
         while (true) {
             delay(30_000)
@@ -387,14 +396,6 @@ fun GuideView(
             }
         }
     }
-
-    fun cellsOf(r: Int): List<Cell> = channels.getOrNull(r)?.let { buildCells(Session.cachedEpg(it), ws, we) } ?: emptyList()
-    fun cellAt(r: Int): Cell? = cellsOf(r).firstOrNull { cursor >= it.start && cursor < it.end }
-
-    fun px(ms: Long): Int = with(density) { widthDp(ms).toPx() }.toInt()
-
-    /** Scroll so [t] sits about 40% of the way across the grid (time line near the middle). */
-    fun centerOn(t: Long): Int = (px(t - ws) - (gridWidthPx * 0.4f).toInt()).coerceAtLeast(0)
 
     fun keepCursorVisible() {
         val viewport = gridWidthPx
