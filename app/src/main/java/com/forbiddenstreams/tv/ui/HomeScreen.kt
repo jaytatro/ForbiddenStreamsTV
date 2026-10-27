@@ -13,8 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -68,28 +66,30 @@ fun HomeScreen(onLogout: () -> Unit) {
     LaunchedEffect(Unit) { try { startFocus.requestFocus() } catch (e: Exception) { } }
 
     Column(Modifier.fillMaxSize()) {
-        // Top menu bar
+        // Top menu: main sections on the first row, sports right under them.
         Row(
             Modifier
                 .fillMaxWidth()
                 .background(Brush.horizontalGradient(listOf(Color(0xFF0B260C), Color(0xFF050805), Color(0xFF0B260C))))
-                .padding(horizontal = 24.dp, vertical = 10.dp),
+                .padding(horizontal = 24.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Image(painterResource(R.drawable.logo), null, Modifier.size(52.dp))
+            Image(painterResource(R.drawable.logo), null, Modifier.size(76.dp))
             Spacer(Modifier.width(14.dp))
-            LazyRow(
-                Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                itemsIndexed(tabs) { i, t ->
-                    Pill(
-                        t.label,
-                        selected = tab == i,
-                        onClick = { tab = i },
-                        modifier = if (i == 1) Modifier.focusRequester(startFocus) else Modifier,
-                    )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf(0..3, 4..7).forEach { range ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        for (i in range) {
+                            val t = tabs[i]
+                            Pill(
+                                t.label,
+                                selected = tab == i,
+                                onClick = { tab = i },
+                                fontSize = if (i >= 4) 15.sp else 17.sp,
+                                modifier = if (i == 1) Modifier.focusRequester(startFocus) else Modifier,
+                            )
+                        }
+                    }
                 }
             }
             Column(horizontalAlignment = Alignment.End) {

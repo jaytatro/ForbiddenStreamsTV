@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -158,7 +159,7 @@ fun SideItem(
     val shape = RoundedCornerShape(50)
     Surface(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.onFocusChanged { if (it.isFocused) onFocus?.invoke() },
         shape = ClickableSurfaceDefaults.shape(shape = shape),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = Color.Transparent,

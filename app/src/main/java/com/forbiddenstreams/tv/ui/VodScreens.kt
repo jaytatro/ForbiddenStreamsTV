@@ -82,9 +82,12 @@ private fun <T> PosterBrowser(
     if (c.isEmpty()) { MessageBox("No $kind on this account"); return }
 
     Row(Modifier.fillMaxSize().padding(start = 16.dp, top = 8.dp)) {
-        LazyColumn(Modifier.width(300.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            items(c, key = { it.id }) { cat ->
-                SideItem(cat.name, cat.id == selected, onClick = { selected = cat.id }, modifier = Modifier.fillMaxWidth())
+        Column(Modifier.width(300.dp).fillMaxHeight()) {
+            MiniPlayer(300.dp, Modifier.padding(bottom = 10.dp))
+            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                items(c, key = { it.id }) { cat ->
+                    SideItem(cat.name, cat.id == selected, onClick = { selected = cat.id }, modifier = Modifier.fillMaxWidth())
+                }
             }
         }
         val catId = selected

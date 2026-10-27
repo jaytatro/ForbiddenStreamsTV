@@ -108,8 +108,10 @@ fun SportsScreen(league: League) {
         // Date strip with game-count badges
         val w = week
         val days = remember(w) { ((w?.keys ?: emptySet()) + todayKey).sorted() }
+        Row(Modifier.fillMaxWidth().padding(start = 24.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        MiniPlayer(240.dp)
         LazyRow(
-            Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 12.dp),
+            Modifier.weight(1f).padding(horizontal = 32.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(28.dp),
         ) {
             items(days) { key ->
@@ -133,6 +135,7 @@ fun SportsScreen(league: League) {
                     }
                 }
             }
+        }
         }
 
         when {

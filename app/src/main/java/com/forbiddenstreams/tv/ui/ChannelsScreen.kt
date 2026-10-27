@@ -63,6 +63,7 @@ import com.forbiddenstreams.tv.data.Program
 import com.forbiddenstreams.tv.data.Session
 import com.forbiddenstreams.tv.player.PlayItem
 import com.forbiddenstreams.tv.player.Playback
+import com.forbiddenstreams.tv.player.PlayerHolder
 import com.forbiddenstreams.tv.recording.Recordings
 import com.forbiddenstreams.tv.reminders.Reminders
 import kotlinx.coroutines.delay
@@ -140,6 +141,7 @@ fun ChannelsScreen() {
     val group = groups.firstOrNull { it.key == groupKey } ?: Group.All
     var channels by remember(group.key) { mutableStateOf<List<LiveChannel>?>(null) }
     LaunchedEffect(group.key, favTick) {
+        delay(200) // wait while the cursor is still moving through the groups
         channels = try { loadGroup(src, prefs, group) } catch (e: Exception) { emptyList() }
     }
     val shown = channels?.let { list ->
@@ -156,11 +158,9 @@ fun ChannelsScreen() {
 
     if (guideOpen && shown != null) {
         GuideView(
-            groups = groups.filter { it != Group.Search },
             group = group,
             channels = shown,
             targetId = guideTarget,
-            onGroup = { groupKey = it.key },
             onBack = { guideOpen = false },
             onToggleFav = { toggleFav(it) },
         )
@@ -168,12 +168,23 @@ fun ChannelsScreen() {
     }
 
     Row(Modifier.fillMaxSize().padding(start = 16.dp, top = 8.dp)) {
-        GroupSidebar(groups, group, Modifier.width(300.dp)) { groupKey = it.key }
+        Column(Modifier.width(300.dp).fillMaxHeight()) {
+            MiniPlayer(300.dp, Modifier.padding(bottom = 10.dp))
+            GroupSidebar(
+                groups, group, Modifier.weight(1f),
+                onFocus = { groupKey = it.key },
+                onSelect = { g ->
+                    groupKey = g.key
+                    // Picking a group hides this list and opens its full-width TV guide.
+                    if (g != Group.Search) { guideTarget = null; guideOpen = true }
+                },
+            )
+        }
         Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
             var focusedIndex by remember(group.key) { mutableIntStateOf(0) }
             Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(group.title, color = FS.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text("Hold OK = favorite   ▶ = TV guide", color = FS.TextDim, fontSize = 14.sp)
+                Text("OK on a group = full TV guide   Hold OK = favorite   ▶ = guide", color = FS.TextDim, fontSize = 14.sp)
                 Spacer(Modifier.width(24.dp))
                 if (shown != null) Text("${if (shown.isEmpty()) 0 else focusedIndex + 1}/${shown.size}", color = FS.TextDim, fontSize = 18.sp)
             }
@@ -216,10 +227,19 @@ fun ChannelsScreen() {
 }
 
 @Composable
-private fun GroupSidebar(groups: List<Group>, selected: Group, modifier: Modifier, onSelect: (Group) -> Unit) {
+private fun GroupSidebar(
+    groups: List<Group>,
+    selected: Group,
+    modifier: Modifier,
+    onFocus: (Group) -> Unit,
+    onSelect: (Group) -> Unit,
+) {
     LazyColumn(modifier.fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         items(groups, key = { it.key }) { g ->
-            SideItem(g.title, selected = g.key == selected.key, onClick = { onSelect(g) }, modifier = Modifier.fillMaxWidth())
+            SideItem(
+                g.title, selected = g.key == selected.key, onClick = { onSelect(g) },
+                onFocus = { onFocus(g) }, modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
@@ -305,11 +325,9 @@ private fun widthDp(ms: Long) = (ms / MIN.toFloat() * DP_PER_MIN).dp
 
 @Composable
 private fun GuideView(
-    groups: List<Group>,
     group: Group,
     channels: List<LiveChannel>,
     targetId: String?,
-    onGroup: (Group) -> Unit,
     onBack: () -> Unit,
     onToggleFav: (LiveChannel) -> Unit,
 ) {
@@ -359,7 +377,7 @@ private fun GuideView(
             Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("OK = watch   Hold OK = record / remind / start over   BACK = list", color = FS.TextDim, fontSize = 14.sp, modifier = Modifier.weight(1f))
+            Text("OK = watch   Hold OK = record / remind / start over   BACK = groups", color = FS.TextDim, fontSize = 14.sp, modifier = Modifier.weight(1f))
             Text("DATE", color = FS.TextDim, fontSize = 16.sp, modifier = Modifier.padding(end = 8.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 items((-3..3).toList()) { d ->
@@ -372,12 +390,7 @@ private fun GuideView(
             }
         }
         Row(Modifier.weight(1f).fillMaxWidth()) {
-            LazyColumn(Modifier.width(220.dp).fillMaxHeight().padding(start = 8.dp)) {
-                items(groups, key = { it.key }) { g ->
-                    SideItem(g.title, g.key == group.key, onClick = { onGroup(g) }, modifier = Modifier.fillMaxWidth())
-                }
-            }
-            Column(Modifier.weight(1f).fillMaxHeight().padding(end = 16.dp)) {
+            Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = 16.dp)) {
                 TimeHeader(group.title, ws, we, now, hState)
                 if (channels.isEmpty()) {
                     MessageBox("No channels in this group")
@@ -436,14 +449,19 @@ private fun GuideView(
 
 @Composable
 private fun GuideInfoPanel(info: Pair<LiveChannel, Program?>?, now: Long) {
+    val mini = PlayerHolder.isMiniActive
     Row(
-        Modifier.fillMaxWidth().height(140.dp).padding(horizontal = 24.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().height(if (mini) 180.dp else 140.dp).padding(horizontal = 24.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val ch = info?.first
         val p = info?.second
-        Box(Modifier.size(width = 170.dp, height = 100.dp), contentAlignment = Alignment.Center) {
-            NetImage(ch?.logo, Modifier.fillMaxSize())
+        if (mini) {
+            MiniPlayer(272.dp)
+        } else {
+            Box(Modifier.size(width = 170.dp, height = 100.dp), contentAlignment = Alignment.Center) {
+                NetImage(ch?.logo, Modifier.fillMaxSize())
+            }
         }
         Spacer(Modifier.width(20.dp))
         Column(Modifier.weight(1f)) {

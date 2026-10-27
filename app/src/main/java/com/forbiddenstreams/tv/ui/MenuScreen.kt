@@ -49,7 +49,11 @@ fun MenuScreen(onLogout: () -> Unit) {
 
     Row(Modifier.fillMaxSize().padding(24.dp)) {
         Column(Modifier.width(320.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Image(painterResource(R.drawable.logo), null, Modifier.size(200.dp).align(Alignment.CenterHorizontally))
+            if (com.forbiddenstreams.tv.player.PlayerHolder.isMiniActive) {
+                MiniPlayer(320.dp)
+            } else {
+                Image(painterResource(R.drawable.logo), null, Modifier.size(200.dp).align(Alignment.CenterHorizontally))
+            }
             Spacer(Modifier.height(12.dp))
             sections.forEachIndexed { i, label ->
                 SideItem(label, selected = section == i, modifier = Modifier.fillMaxWidth(), onClick = {

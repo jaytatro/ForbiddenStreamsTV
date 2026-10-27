@@ -5,6 +5,9 @@ import com.forbiddenstreams.tv.data.jsonObject
 import com.forbiddenstreams.tv.data.str
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -50,21 +53,30 @@ object Espn {
 
     private fun shiftDays(days: Int): Date = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, days) }.time
 
-    /** Games from [fromDays] to [toDays] around today, grouped by local day key (yyyyMMdd). */
-    suspend fun week(league: League, fromDays: Int = -3, toDays: Int = 3): Map<String, List<Game>> {
-        val range = "${dayKey(shiftDays(fromDays))}-${dayKey(shiftDays(toDays))}"
-        val games = fetch(league, "dates=$range&limit=500")
-        return games.groupBy { dayKey(it.start) }
+    /**
+     * Games from [fromDays] to [toDays] around today, grouped by local day key (yyyyMMdd).
+     * ESPN rejects date ranges ("Failed to get events endpoint"), so each day is fetched
+     * on its own, all at the same time.
+     */
+    suspend fun week(league: League, fromDays: Int = -3, toDays: Int = 3): Map<String, List<Game>> =
+        days(league, (fromDays..toDays).toList()).groupBy { dayKey(it.start) }
+
+    private suspend fun days(league: League, offsets: List<Int>): List<Game> = coroutineScope {
+        val results = offsets.map { d ->
+            async { runCatching { fetch(league, "dates=${dayKey(shiftDays(d))}") } }
+        }.awaitAll()
+        if (results.all { it.isFailure }) throw results.first().exceptionOrNull()!!
+        results.flatMap { it.getOrDefault(emptyList()) }.distinctBy { it.id }.sortedBy { it.start }
     }
 
     /** Next game start time after the given window, or null if none found. */
     suspend fun nextGameAfter(league: League, afterDays: Int = 3): Long? {
-        val start = shiftDays(afterDays + 1)
-        val ranged = fetch(league, "dates=${dayKey(start)}-${dayKey(shiftDays(afterDays + 30))}&limit=500")
-        ranged.minOfOrNull { it.start }?.let { return it }
+        val now = System.currentTimeMillis()
+        try {
+            days(league, ((afterDays + 1)..(afterDays + 14)).toList()).firstOrNull { it.start > now }?.let { return it.start }
+        } catch (e: Exception) { /* fall through to the calendar */ }
         // Off-season: look through the league calendar for the next game day.
         val j = jsonObject(Http.get(url(league, ""))) ?: return null
-        val now = start.time
         var best: Long? = null
         fun scan(any: Any?) {
             when (any) {

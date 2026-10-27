@@ -22,7 +22,10 @@ import coil.memory.MemoryCache
 import com.forbiddenstreams.tv.data.Http
 import com.forbiddenstreams.tv.data.Prefs
 import com.forbiddenstreams.tv.data.Session
-import com.forbiddenstreams.tv.player.PlayQueue
+import com.forbiddenstreams.tv.player.PlayerHolder
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.forbiddenstreams.tv.reminders.Alarms
 import com.forbiddenstreams.tv.ui.FS
 import com.forbiddenstreams.tv.ui.ForbiddenTheme
@@ -33,7 +36,12 @@ class App : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         Alarms.createChannels(this)
-        PlayQueue.onChannelWatched = { id -> Prefs(this).addHistory(id) }
+        PlayerHolder.onChannelWatched = { id -> Prefs(this).addHistory(id) }
+        // Pause when the whole app goes to the background (HOME), resume when it comes back.
+        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStop(owner: LifecycleOwner) = PlayerHolder.pause()
+            override fun onStart(owner: LifecycleOwner) = PlayerHolder.resume()
+        })
     }
 
     override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
@@ -59,6 +67,7 @@ class MainActivity : ComponentActivity() {
                         LoginScreen(onLoggedIn = { loggedIn = true })
                     } else {
                         HomeScreen(onLogout = {
+                            PlayerHolder.stop()
                             Session.logout(context)
                             loggedIn = false
                         })
