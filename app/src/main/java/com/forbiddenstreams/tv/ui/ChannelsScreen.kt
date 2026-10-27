@@ -90,10 +90,10 @@ sealed class Group(val key: String, val title: String) {
     class Cat(val cat: Category) : Group("c_" + cat.id, cat.name)
 }
 
-private fun groupsFor(cats: List<Category>): List<Group> =
+fun groupsFor(cats: List<Category>): List<Group> =
     listOf<Group>(Group.Search, Group.All, Group.History, Group.Favorites) + cats.map { Group.Cat(it) }
 
-private fun channelsOf(prefs: Prefs, g: Group): List<LiveChannel> {
+fun channelsOf(prefs: Prefs, g: Group): List<LiveChannel> {
     // Channels in hidden categories are left out of All and Search too.
     val hidden = CategoryPrefs.hidden(prefs.context)
     val all = Session.liveAll.orEmpty().let { l -> if (hidden.isEmpty()) l else l.filter { it.categoryId !in hidden } }
@@ -273,7 +273,7 @@ private fun GroupList(groups: List<Group>, selected: Group, modifier: Modifier, 
 
 /** Slides in from the left over the guide when ◀ is pressed. */
 @Composable
-private fun CategoryDrawer(groups: List<Group>, selected: Group, onPick: (Group) -> Unit, onClose: () -> Unit) {
+fun CategoryDrawer(groups: List<Group>, selected: Group, onPick: (Group) -> Unit, onClose: () -> Unit) {
     BackHandler { onClose() }
     Row(Modifier.fillMaxSize()) {
         Column(
@@ -343,6 +343,7 @@ fun GuideView(
     overlay: Boolean = false,
     onPlayChannel: ((List<LiveChannel>, Int) -> Unit)? = null,
     onPlayItem: ((PlayItem) -> Unit)? = null,
+    leftOpensCategories: Boolean = false,
 ) {
     val context = LocalContext.current
     val src = Session.source ?: return
@@ -372,8 +373,10 @@ fun GuideView(
         onPlayChannel?.invoke(list, i) ?: playChannels(context, list, i)
     fun playItem(item: PlayItem) = onPlayItem?.invoke(item) ?: Playback.one(context, item)
 
-    val ws = remember(dayOffset) { dayStart(dayOffset) }
-    val we = ws + DAY
+    // Each day's grid runs 9 PM the night before to 3 AM the next morning, so the
+    // time line can sit in the middle even around midnight.
+    val ws = remember(dayOffset) { dayStart(dayOffset) - 3 * HOUR }
+    val we = ws + DAY + 6 * HOUR
     LaunchedEffect(channels.size) { if (row >= channels.size) row = (channels.size - 1).coerceAtLeast(0) }
 
 
@@ -382,17 +385,17 @@ fun GuideView(
 
     fun px(ms: Long): Int = with(density) { widthDp(ms).toPx() }.toInt()
 
-    /** Scroll so [t] sits about 40% of the way across the grid (time line near the middle). */
-    fun centerOn(t: Long): Int = (px(t - ws) - (gridWidthPx * 0.4f).toInt()).coerceAtLeast(0)
+    /** Scroll so [t] sits in the middle of the grid. */
+    fun centerOn(t: Long): Int = (px(t - ws) - (gridWidthPx * 0.5f).toInt()).coerceAtLeast(0)
 
     LaunchedEffect(Unit) {
         while (true) {
-            delay(30_000)
+            // Every 5 s: the time line stays in the middle and the shows slide slowly left.
+            delay(5_000)
             now = System.currentTimeMillis()
             if (followNow && dayOffset == 0) {
                 cursor = now
-                // Keep the time line near the middle as the clock moves.
-                if (gridWidthPx > 0) hState.animateScrollTo(centerOn(now))
+                if (gridWidthPx > 0) hState.animateScrollTo(centerOn(now), androidx.compose.animation.core.tween(4_000, easing = androidx.compose.animation.core.LinearEasing))
             }
         }
     }
@@ -427,8 +430,8 @@ fun GuideView(
         val j = i + dir
         when {
             j in cells.indices -> cursor = cells[j].start
-            dir > 0 && dayOffset < 3 -> { dayOffset++; cursor = dayStart(dayOffset) }
-            dir < 0 && dayOffset > -3 -> { dayOffset--; cursor = dayStart(dayOffset) + DAY - 30 * MIN }
+            dir > 0 && dayOffset < 3 -> { dayOffset++; cursor = dayStart(dayOffset) + 3 * HOUR }
+            dir < 0 && dayOffset > -3 -> { dayOffset--; cursor = dayStart(dayOffset) + DAY - 3 * HOUR }
             else -> return
         }
         val t = System.currentTimeMillis()
@@ -503,6 +506,7 @@ fun GuideView(
                                 if (t - lastStep > 160) { lastStep = t; step(dir) }
                             }
                         } else {
+                            if (leftOpensCategories && lrDown && !lrLong && dir < 0) onCategories()
                             lrDown = false
                         }
                         true

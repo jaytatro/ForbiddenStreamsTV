@@ -74,18 +74,42 @@ object PlayerHolder {
 
     val isMiniActive: Boolean get() = current?.live == true
 
-    fun player(context: Context): ExoPlayer {
-        exo?.let { return it }
+    /**
+     * Builds a player. Audio is always decoded on the box to plain PCM (no passthrough),
+     * with FFmpeg as a fallback for Dolby (AC3/E-AC3/TrueHD) and DTS. 4K / Dolby Vision
+     * releases usually carry those tracks, which played silent before.
+     */
+    fun createPlayer(context: Context): ExoPlayer {
         val http = DefaultHttpDataSource.Factory()
             .setUserAgent(Http.USER_AGENT)
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(30_000)
         val app = context.applicationContext
-        appContext = app
-        val p = ExoPlayer.Builder(app)
+        val renderers = object : androidx.media3.exoplayer.DefaultRenderersFactory(app) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean,
+            ): androidx.media3.exoplayer.audio.AudioSink =
+                androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                    .setAudioCapabilities(androidx.media3.exoplayer.audio.AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .build()
+        }
+            .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            .setEnableDecoderFallback(true)
+        return ExoPlayer.Builder(app, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(app, http)))
             .build()
+    }
+
+    fun player(context: Context): ExoPlayer {
+        exo?.let { return it }
+        val app = context.applicationContext
+        appContext = app
+        val p = createPlayer(app)
         p.addListener(object : Player.Listener {
             override fun onPlayerError(e: PlaybackException) {
                 error = "This stream won't play right now (${e.errorCodeName})."
@@ -140,10 +164,32 @@ object PlayerHolder {
     }
 
     /** Starts [items] at [start] and opens full screen. Re-opens without reloading if it's already playing. */
+    /** The live channel that was on before the current one (for "Last Channel"). */
+    private var prevItems: List<PlayItem>? = null
+    private var prevIndex = 0
+    val hasLast: Boolean get() = prevItems != null
+
+    private fun rememberLast(nextUrl: String) {
+        val cur = current ?: return
+        if (cur.live && cur.url != nextUrl) { prevItems = items; prevIndex = index }
+    }
+
+    /** Jumps back to the previous live channel (and remembers this one in its place). */
+    fun playLast(context: Context): Boolean {
+        val list = prevItems ?: return false
+        val i = prevIndex
+        rememberLast(list[i].url)
+        items = list
+        index = i
+        load(context)
+        return true
+    }
+
     fun start(context: Context, list: List<PlayItem>, start: Int, fullScreen: Boolean = true) {
         if (list.isEmpty()) return
         val i = start.coerceIn(0, list.size - 1)
         val same = current?.url == list[i].url && exo != null && list[i].startMs == null
+        if (!same) rememberLast(list[i].url)
         items = list
         index = i
         if (!same) load(context)
@@ -160,7 +206,9 @@ object PlayerHolder {
     fun zap(context: Context, step: Int): Boolean {
         val n = items.size
         if (n < 2) return false
-        index = (index + step + n) % n
+        val next = (index + step + n) % n
+        rememberLast(items[next].url)
+        index = next
         load(context)
         return true
     }

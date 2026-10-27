@@ -20,6 +20,9 @@ import com.forbiddenstreams.tv.ui.Fmt
 import com.forbiddenstreams.tv.ui.GuideView
 import com.forbiddenstreams.tv.ui.Group
 import com.forbiddenstreams.tv.ui.playChannels
+import com.forbiddenstreams.tv.ui.MultiViewScreen
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,6 +60,12 @@ class PlayerActivity : ComponentActivity() {
     /** See-through TV guide over the video (hold OK on live TV). */
     private var guideVisible by mutableStateOf(false)
     private var okLongFired = false
+
+    /** ▼ shown under the bar after OK on live TV; ▼ then opens the action tabs. */
+    private var arrowVisible by mutableStateOf(false)
+    private var actionsVisible by mutableStateOf(false)
+    /** Split screen (up to 4 channels). */
+    private var multiVisible by mutableStateOf(false)
 
     /** "⏪ 10s" / "10s ⏩" flash for movies and episodes. */
     private var seekFlash by mutableStateOf<String?>(null)
@@ -131,6 +140,56 @@ class PlayerActivity : ComponentActivity() {
                             Text(Fmt.time(now), color = FS.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         }
                     }
+                    if (arrowVisible && infoVisible && item?.live == true && !guideVisible) {
+                        Text(
+                            "▼", color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 2.dp),
+                        )
+                    }
+                    if (actionsVisible && item != null) {
+                        BackHandler { actionsVisible = false }
+                        val first = remember { androidx.compose.ui.focus.FocusRequester() }
+                        LaunchedEffect(Unit) { delay(80); try { first.requestFocus() } catch (e: Exception) { } }
+                        Row(
+                            Modifier.align(Alignment.BottomCenter).padding(bottom = 30.dp)
+                                .background(Color(0xE6050805), RoundedCornerShape(50))
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
+                        ) {
+                            com.forbiddenstreams.tv.ui.Pill(
+                                "⏮  Last Channel", selected = false, fontSize = 18.sp,
+                                modifier = Modifier.focusRequester(first),
+                                onClick = {
+                                    actionsVisible = false
+                                    if (PlayerHolder.playLast(this@PlayerActivity)) showInfo()
+                                    else com.forbiddenstreams.tv.ui.toast(this@PlayerActivity, "No previous channel yet")
+                                },
+                            )
+                            com.forbiddenstreams.tv.ui.Pill(
+                                "⏺  Record", selected = false, fontSize = 18.sp,
+                                onClick = { actionsVisible = false; recordNow(prog) },
+                            )
+                            com.forbiddenstreams.tv.ui.Pill(
+                                "⊞  Split Screen", selected = false, fontSize = 18.sp,
+                                onClick = {
+                                    actionsVisible = false
+                                    infoVisible = false
+                                    view.player = null // the split-screen tiles draw the video now
+                                    multiVisible = true
+                                },
+                            )
+                        }
+                    }
+                    if (multiVisible) {
+                        MultiViewScreen(onExit = { ch ->
+                            multiVisible = false
+                            if (ch != null) {
+                                playChannels(this@PlayerActivity, listOf(ch), 0, fullScreen = false)
+                            }
+                            view.player = PlayerHolder.player(this@PlayerActivity)
+                            showInfo()
+                        })
+                    }
                     seekFlash?.let {
                         Text(
                             it, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold,
@@ -182,6 +241,16 @@ class PlayerActivity : ComponentActivity() {
         showInfo()
     }
 
+    /** Records what's on now (or the next hour if there's no guide info). */
+    private fun recordNow(prog: com.forbiddenstreams.tv.data.Program?) {
+        val ch = PlayerHolder.current?.channelId?.let { Session.channelById(it) }
+        if (ch == null) { com.forbiddenstreams.tv.ui.toast(this, "Can't record this stream"); return }
+        val now = System.currentTimeMillis()
+        val p = prog ?: com.forbiddenstreams.tv.data.Program(ch.name, "", now, now + 60 * 60_000L, false)
+        com.forbiddenstreams.tv.recording.Recordings.schedule(this, ch, p)
+        com.forbiddenstreams.tv.ui.toast(this, "Recording ${p.title} until ${Fmt.time(p.end)}")
+    }
+
     private fun skip(ms: Long) {
         val p = PlayerHolder.existingPlayer() ?: return
         val dur = p.duration
@@ -205,11 +274,15 @@ class PlayerActivity : ComponentActivity() {
     private fun showInfo() {
         infoVisible = true
         infoJob?.cancel()
-        infoJob = lifecycleScope.launch { delay(5000); if (!::view.isInitialized || !view.isControllerFullyVisible) infoVisible = false }
+        infoJob = lifecycleScope.launch {
+            delay(5000)
+            if (!::view.isInitialized || !view.isControllerFullyVisible) infoVisible = false
+            arrowVisible = false
+        }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (!::view.isInitialized || guideVisible) return super.dispatchKeyEvent(event)
+        if (!::view.isInitialized || guideVisible || actionsVisible || multiVisible) return super.dispatchKeyEvent(event)
         val live = PlayerHolder.current?.live == true
         val down = event.action == KeyEvent.ACTION_DOWN
         if (event.keyCode == KeyEvent.KEYCODE_INFO) { if (down) showInfo(); return true }
@@ -225,7 +298,14 @@ class PlayerActivity : ComponentActivity() {
         }
         when (event.keyCode) {
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_DOWN -> { if (down) { PlayerHolder.zap(this, -1); showInfo() }; return true }
-            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_UP -> { if (down) { PlayerHolder.zap(this, 1); showInfo() }; return true }
+            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                if (down) {
+                    if (arrowVisible && infoVisible) { actionsVisible = true; arrowVisible = false; infoJob?.cancel() }
+                    else { PlayerHolder.zap(this, 1); showInfo() }
+                }
+                return true
+            }
+            KeyEvent.KEYCODE_CHANNEL_UP -> { if (down) { PlayerHolder.zap(this, 1); showInfo() }; return true }
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                 if (down) {
                     if (event.repeatCount == 0) { okDown = true; okLongFired = false }
@@ -236,7 +316,7 @@ class PlayerActivity : ComponentActivity() {
                         guideVisible = true
                     }
                 } else {
-                    if (okDown && !okLongFired) showInfo()
+                    if (okDown && !okLongFired) { showInfo(); arrowVisible = true }
                     okDown = false
                 }
                 return true
@@ -246,10 +326,10 @@ class PlayerActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        if (::view.isInitialized && view.player != null) {
-            view.player = null
-            PlayerHolder.fullScreen = false
-        }
+        com.forbiddenstreams.tv.ui.MultiView.clear()
+        PlayerHolder.existingPlayer()?.volume = 1f
+        if (::view.isInitialized) view.player = null
+        PlayerHolder.fullScreen = false
         super.onDestroy()
     }
 }
