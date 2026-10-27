@@ -19,6 +19,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.forbiddenstreams.tv.data.Http
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 data class PlayItem(
     val title: String,
@@ -26,6 +27,12 @@ data class PlayItem(
     val live: Boolean,
     val subtitle: String? = null,
     val channelId: String? = null,
+    /** Movies/episodes: key for Recently Watched ("m:<id>" / "e:<id>"), its kind and artwork. */
+    val resumeKey: String? = null,
+    val kind: String? = null,
+    val image: String? = null,
+    /** Start here instead of the beginning (resume). */
+    val startMs: Long? = null,
 )
 
 /**
@@ -35,6 +42,9 @@ data class PlayItem(
 @androidx.annotation.OptIn(UnstableApi::class)
 object PlayerHolder {
     private var exo: ExoPlayer? = null
+    private var appContext: Context? = null
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main)
+    private var progressJob: kotlinx.coroutines.Job? = null
 
     var items: List<PlayItem> = emptyList()
         private set
@@ -72,6 +82,7 @@ object PlayerHolder {
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(30_000)
         val app = context.applicationContext
+        appContext = app
         val p = ExoPlayer.Builder(app)
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(app, http)))
             .build()
@@ -82,6 +93,7 @@ object PlayerHolder {
 
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_READY) error = null
+                if (state == Player.STATE_ENDED) saveProgress()
                 updateQuality(p)
             }
 
@@ -131,7 +143,7 @@ object PlayerHolder {
     fun start(context: Context, list: List<PlayItem>, start: Int, fullScreen: Boolean = true) {
         if (list.isEmpty()) return
         val i = start.coerceIn(0, list.size - 1)
-        val same = current?.url == list[i].url && exo != null
+        val same = current?.url == list[i].url && exo != null && list[i].startMs == null
         items = list
         index = i
         if (!same) load(context)
@@ -154,18 +166,49 @@ object PlayerHolder {
     }
 
     private fun load(context: Context) {
+        saveProgress()
         val item = items[index]
         val p = player(context)
         error = null
         quality = null
         current = item
-        p.setMediaItem(MediaItem.fromUri(item.url))
+        val start = item.startMs
+        if (start != null && start > 0) p.setMediaItem(MediaItem.fromUri(item.url), start)
+        else p.setMediaItem(MediaItem.fromUri(item.url))
         p.prepare()
         p.playWhenReady = true
         item.channelId?.let { onChannelWatched?.invoke(it) }
+        // Movies/episodes: remember the spot every 10 seconds for Recently Watched.
+        progressJob?.cancel()
+        if (item.resumeKey != null) {
+            progressJob = scope.launch {
+                while (true) { kotlinx.coroutines.delay(10_000); saveProgress() }
+            }
+        }
+    }
+
+    /** Saves the current movie/episode position (no-op for live TV). */
+    fun saveProgress() {
+        val item = current ?: return
+        val key = item.resumeKey ?: return
+        val p = exo ?: return
+        val ctx = appContext ?: return
+        val dur = p.duration
+        if (dur == androidx.media3.common.C.TIME_UNSET || dur <= 0) return
+        val pos = if (p.playbackState == Player.STATE_ENDED) dur else p.currentPosition
+        com.forbiddenstreams.tv.data.Recents.save(
+            ctx,
+            com.forbiddenstreams.tv.data.RecentItem(
+                key = key, kind = item.kind ?: "movie", title = item.title, subtitle = item.subtitle,
+                image = item.image, url = item.url, positionMs = pos, durationMs = dur,
+                updatedAt = System.currentTimeMillis(),
+            ),
+        )
     }
 
     fun stop() {
+        saveProgress()
+        progressJob?.cancel()
         exo?.let {
             it.stop()
             it.clearMediaItems()
@@ -177,7 +220,7 @@ object PlayerHolder {
 
     fun existingPlayer(): ExoPlayer? = exo
 
-    fun pause() { exo?.pause() }
+    fun pause() { saveProgress(); exo?.pause() }
     fun resume() { if (current != null) exo?.play() }
 
 }

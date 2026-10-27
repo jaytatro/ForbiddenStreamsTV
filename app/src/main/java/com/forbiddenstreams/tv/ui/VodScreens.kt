@@ -50,13 +50,19 @@ import com.forbiddenstreams.tv.data.VodItem
 import com.forbiddenstreams.tv.player.PlayItem
 import com.forbiddenstreams.tv.player.Playback
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
+import com.forbiddenstreams.tv.data.RecentItem
+import com.forbiddenstreams.tv.data.Recents
 
 /** Sidebar of groups + poster grid; shared by Movies and TV Shows. */
-private const val SEARCH = "__search__"
+private const val RECENT = "__recent__"
 
 @Composable
 private fun <T> PosterBrowser(
     kind: String,
+    recentKind: String,
     loadCats: suspend () -> List<Category>,
     loadItems: suspend (String) -> List<T>,
     loadAll: suspend () -> List<T>,
@@ -64,18 +70,19 @@ private fun <T> PosterBrowser(
     image: (T) -> String?,
     onOpen: (T) -> Unit,
 ) {
+    val context = LocalContext.current
     var cats by remember { mutableStateOf<List<Category>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var reload by remember { mutableIntStateOf(0) }
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
-    var query by remember { mutableStateOf("") }
-    var searched by remember { mutableStateOf("") }
-    val searching = selected == SEARCH
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(reload) {
         try {
             val c = loadCats()
             cats = c
-            if (selected == null || (selected != SEARCH && c.none { it.id == selected })) selected = c.firstOrNull()?.id
+            if (selected == null || (selected != RECENT && c.none { it.id == selected })) {
+                selected = if (Recents.all(context, recentKind).isNotEmpty()) RECENT else c.firstOrNull()?.id
+            }
             error = null
         } catch (e: Exception) { error = e.message ?: "Network error" }
     }
@@ -84,68 +91,185 @@ private fun <T> PosterBrowser(
         if (error != null) MessageBox("Couldn't load $kind", error, "Retry") { reload++ } else LoadingBox("Loading $kind")
         return
     }
-    if (c.isEmpty()) { MessageBox("No $kind on this account"); return }
+
+    if (searchOpen) {
+        SearchScreen(kind, loadAll, title, image, onOpen = onOpen, onClose = { searchOpen = false })
+        return
+    }
 
     Row(Modifier.fillMaxSize().padding(start = 16.dp, top = 8.dp)) {
         Column(Modifier.width(300.dp).fillMaxHeight()) {
-            // Search the whole library (type, then Enter/Done).
-            FsTextField(
-                "🔍 Search all $kind", query, { query = it },
-                androidx.compose.ui.text.input.KeyboardType.Text,
-                done = { if (query.trim().length >= 2) { searched = query.trim(); selected = SEARCH } },
-            )
-            Spacer(Modifier.height(8.dp))
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                item(key = "search") {
+                    // Opens its own screen; results fill in as you type.
+                    SideItem("🔍 Search", false, onClick = { searchOpen = true }, modifier = Modifier.fillMaxWidth())
+                }
+                item(key = RECENT) {
+                    SideItem("🕘 Recently Watched", selected == RECENT, onClick = { selected = RECENT }, modifier = Modifier.fillMaxWidth())
+                }
                 items(c, key = { it.id }) { cat ->
                     SideItem(cat.name, cat.id == selected, onClick = { selected = cat.id }, modifier = Modifier.fillMaxWidth())
                 }
             }
         }
         val catId = selected
-        val catItems by produceState<List<T>?>(null, catId, searched) {
-            value = null
-            value = try {
-                when {
-                    catId == null -> emptyList()
-                    catId == SEARCH -> loadAll().filter { title(it).contains(searched, ignoreCase = true) }
-                    else -> loadItems(catId)
-                }
-            } catch (e: Exception) { emptyList() }
+        if (catId == RECENT) {
+            RecentGrid(recentKind, Modifier.weight(1f).padding(horizontal = 16.dp))
+            return@Row
+        }
+        val catItems by produceState<List<T>?>(null, catId) {
+            value = if (catId == null) emptyList() else try { loadItems(catId) } catch (e: Exception) { emptyList() }
         }
         Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (searching) "Search: \"$searched\"" else c.firstOrNull { it.id == catId }?.name ?: "", color = FS.Text, fontSize = 22.sp,
+                Text(c.firstOrNull { it.id == catId }?.name ?: "", color = FS.Text, fontSize = 22.sp,
                     fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 catItems?.let { Text("${it.size} titles", color = FS.TextDim, fontSize = 16.sp) }
             }
             Spacer(Modifier.height(6.dp))
             val list = catItems
             when {
-                list == null -> LoadingBox(if (searching) "Searching" else "Loading")
-                list.isEmpty() -> MessageBox(if (searching) "Nothing found for \"$searched\"" else "Nothing in this group")
-                else -> {
-                    val shown = list
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(6),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(18.dp),
-                    ) {
-                        items(shown) { item ->
-                            FocusCard(onClick = { onOpen(item) }, modifier = Modifier.fillMaxWidth(), focusedScale = 1.06f) {
-                                Column {
-                                    Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f), contentAlignment = Alignment.Center) {
-                                        Text(title(item), fontSize = 14.sp, maxLines = 3, modifier = Modifier.padding(8.dp))
-                                        NetImage(image(item), Modifier.fillMaxSize(), crop = true)
-                                    }
-                                    Text(title(item), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
-                                }
-                            }
-                        }
+                list == null -> LoadingBox()
+                list.isEmpty() -> MessageBox("Nothing in this group")
+                else -> PosterGrid(list, title, image, onOpen)
+            }
+        }
+    }
+}
+
+@Composable
+private fun <T> PosterGrid(list: List<T>, title: (T) -> String, image: (T) -> String?, onOpen: (T) -> Unit) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(6),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        items(list) { item -> Poster(title(item), image(item), onClick = { onOpen(item) }) }
+    }
+}
+
+@Composable
+private fun Poster(title: String, image: String?, progress: Float? = null, sub: String? = null, onClick: () -> Unit) {
+    FocusCard(onClick = onClick, modifier = Modifier.fillMaxWidth(), focusedScale = 1.06f) {
+        Column {
+            Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f), contentAlignment = Alignment.Center) {
+                Text(title, fontSize = 14.sp, maxLines = 3, modifier = Modifier.padding(8.dp))
+                NetImage(image, Modifier.fillMaxSize(), crop = true)
+                if (progress != null) {
+                    Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(5.dp).background(Color(0xAA000000))) {
+                        Box(Modifier.fillMaxWidth(progress).height(5.dp).background(FS.Green))
+                    }
+                }
+            }
+            Text(title, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp, bottom = if (sub == null) 6.dp else 0.dp))
+            if (sub != null) Text(sub, fontSize = 12.sp, color = FS.TextDim, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 6.dp))
+        }
+    }
+}
+
+private fun clock(ms: Long): String {
+    val t = ms / 1000
+    val h = t / 3600; val m = (t % 3600) / 60; val sec = t % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
+}
+
+/** Movies or episodes that were started and not finished. OK = resume or start over. */
+@Composable
+private fun RecentGrid(kind: String, modifier: Modifier) {
+    val context = LocalContext.current
+    val list = remember(Recents.version) { Recents.all(context, kind) }
+    var ask by remember { mutableStateOf<RecentItem?>(null) }
+    Column(modifier) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Recently Watched", color = FS.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text("OK = resume or start over", color = FS.TextDim, fontSize = 14.sp)
+        }
+        Spacer(Modifier.height(6.dp))
+        if (list.isEmpty()) {
+            MessageBox("Nothing here yet", "Movies and episodes you start show up here until there are 5 minutes or less left.")
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(6),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                items(list, key = { it.key }) { r ->
+                    val left = ((r.durationMs - r.positionMs) / 60_000).coerceAtLeast(1)
+                    Box {
+                        Poster(
+                            r.title, r.image,
+                            progress = (r.positionMs.toFloat() / r.durationMs).coerceIn(0f, 1f),
+                            sub = (r.subtitle?.let { "$it · " } ?: "") + "$left min left",
+                            onClick = { ask = r },
+                        )
                     }
                 }
             }
         }
+    }
+    ask?.let { r ->
+        fun play(from: Long?) {
+            ask = null
+            Playback.one(context, PlayItem(r.title, r.url, live = false, subtitle = r.subtitle,
+                resumeKey = r.key, kind = r.kind, image = r.image, startMs = from))
+        }
+        ChoiceDialog(
+            title = r.title,
+            subtitle = (r.subtitle?.let { "$it\n" } ?: "") + "Watched ${clock(r.positionMs)} of ${clock(r.durationMs)}",
+            options = listOf(
+                "▶  Resume from ${clock(r.positionMs)}" to { play(r.positionMs) },
+                "⏮  Start over" to { play(0L) },
+                "✕  Remove from Recently Watched" to { Recents.remove(context, r.key); ask = null },
+            ),
+            onDismiss = { ask = null },
+        )
+    }
+}
+
+/** Full-screen search: results fill in as you type. */
+@Composable
+private fun <T> SearchScreen(
+    kind: String,
+    loadAll: suspend () -> List<T>,
+    title: (T) -> String,
+    image: (T) -> String?,
+    onOpen: (T) -> Unit,
+    onClose: () -> Unit,
+) {
+    BackHandler { onClose() }
+    var query by rememberSaveable { mutableStateOf("") }
+    val library by produceState<List<T>?>(null) { value = try { loadAll() } catch (e: Exception) { emptyList() } }
+    val box = remember { FocusRequester() }
+    LaunchedEffect(Unit) { delay(150); try { box.requestFocus() } catch (e: Exception) { } }
+    var shown by remember { mutableStateOf<List<T>>(emptyList()) }
+    LaunchedEffect(query, library) {
+        delay(250) // wait for typing to pause
+        val q = query.trim()
+        val lib = library ?: return@LaunchedEffect
+        shown = if (q.isEmpty()) emptyList() else withContext(kotlinx.coroutines.Dispatchers.Default) {
+            lib.filter { title(it).contains(q, ignoreCase = true) }
+                .sortedBy { if (title(it).startsWith(q, ignoreCase = true)) 0 else 1 }
+                .take(300)
+        }
+    }
+    Column(Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 12.dp)) {
+        Box(Modifier.fillMaxWidth().focusRequester(box)) {
+            FsTextField("🔍 Search $kind", query, { query = it }, androidx.compose.ui.text.input.KeyboardType.Text)
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            when {
+                library == null -> "Loading the full $kind list…"
+                query.isBlank() -> "Start typing a title. BACK to return."
+                else -> "${shown.size} results"
+            },
+            color = FS.TextDim, fontSize = 15.sp,
+        )
+        Spacer(Modifier.height(10.dp))
+        if (shown.isNotEmpty()) PosterGrid(shown, title, image, onOpen)
+        else if (query.isNotBlank() && library != null) MessageBox("No $kind found for \"${query.trim()}\"")
     }
 }
 
@@ -160,6 +284,7 @@ fun MoviesScreen() {
     }
     PosterBrowser(
         kind = "movies",
+        recentKind = "movie",
         loadCats = { src.vodCategories() },
         loadItems = { src.vodItems(it) },
         loadAll = { src.allVod() },
@@ -192,7 +317,8 @@ private fun MovieDetails(item: VodItem, onBack: () -> Unit) {
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Pill("▶  Play", selected = true, fontSize = 22.sp, modifier = Modifier.focusRequester(play), onClick = {
-                    Playback.one(context, PlayItem(item.name, src.vodUrl(item), live = false))
+                    Playback.one(context, PlayItem(item.name, src.vodUrl(item), live = false,
+                        resumeKey = "m:${item.id}", kind = "movie", image = item.poster))
                 })
                 Pill("Back", selected = false, onClick = onBack)
             }
@@ -211,6 +337,7 @@ fun SeriesScreen() {
     }
     PosterBrowser(
         kind = "TV shows",
+        recentKind = "episode",
         loadCats = { src.seriesCategories() },
         loadItems = { src.seriesItems(it) },
         loadAll = { src.allSeries() },
@@ -257,7 +384,8 @@ private fun SeriesDetails(series: SeriesItem, onBack: () -> Unit) {
                             FocusCard(
                                 onClick = {
                                     Playback.start(context, list.map {
-                                        PlayItem("${series.name} · S${it.season}E${it.episodeNum}", src.episodeUrl(it), live = false, subtitle = it.title)
+                                        PlayItem("${series.name} · S${it.season}E${it.episodeNum}", src.episodeUrl(it), live = false, subtitle = it.title,
+                                            resumeKey = "e:${it.id}", kind = "episode", image = series.cover ?: it.image)
                                     }, i)
                                 },
                                 modifier = Modifier.fillMaxWidth().height(96.dp),
