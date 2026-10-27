@@ -252,15 +252,19 @@ private fun GameRow(game: Game, channels: GameChannels?, groupMissing: Boolean, 
         focusedScale = 1.02f,
     ) {
         Row(Modifier.fillMaxSize().padding(horizontal = 28.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(110.dp), contentAlignment = Alignment.Center) { NetImage(game.away.logo, Modifier.fillMaxSize()) }
-            Column(Modifier.weight(1f).padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.size(96.dp), contentAlignment = Alignment.Center) { NetImage(game.away.logo, Modifier.fillMaxSize()) }
+            Column(Modifier.weight(1f).padding(horizontal = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                // Full team names: smaller type for long names, and wrap rather than cut off.
+                val len = game.away.displayName.length + game.home.displayName.length
+                val size = when { len <= 30 -> 28.sp; len <= 38 -> 24.sp; else -> 21.sp }
                 Text(
                     buildAnnotatedString {
                         append(game.away.displayName)
-                        withStyle(SpanStyle(fontSize = 20.sp, color = FS.TextDim)) { append("  vs.  ") }
+                        withStyle(SpanStyle(fontSize = 18.sp, color = FS.TextDim)) { append("  vs.  ") }
                         append(game.home.displayName)
                     },
-                    fontSize = 30.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    fontSize = size, fontWeight = FontWeight.Bold, maxLines = 2, softWrap = true,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
                 game.venue?.let { Text(it, color = FS.Green, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 val chText = when {
@@ -273,7 +277,7 @@ private fun GameRow(game: Game, channels: GameChannels?, groupMissing: Boolean, 
                     Text(chText, color = FS.TextDim, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            Box(Modifier.size(110.dp), contentAlignment = Alignment.Center) { NetImage(game.home.logo, Modifier.fillMaxSize()) }
+            Box(Modifier.size(96.dp), contentAlignment = Alignment.Center) { NetImage(game.home.logo, Modifier.fillMaxSize()) }
             Spacer(Modifier.width(24.dp))
             Box(Modifier.width(2.dp).fillMaxHeight(0.55f).background(FS.Line))
             Spacer(Modifier.width(24.dp))

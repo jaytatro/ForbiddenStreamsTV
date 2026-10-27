@@ -180,7 +180,8 @@ fun ChannelsScreen() {
     }
 
     if (guideOpen) {
-        BackHandler(enabled = !drawer) { guideOpen = false }
+        // BACK once in the guide = category list; BACK again (from the list) = leave the guide.
+        BackHandler(enabled = !drawer) { drawer = true }
         val list = remember(group.key, Session.liveAll, favTick) { channelsOf(prefs, group) }
         Box(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
@@ -210,7 +211,7 @@ fun ChannelsScreen() {
                                 Group.Search -> "No channels found"
                                 else -> "No channels in this category"
                             },
-                            if (group == Group.Favorites) "In the guide, hold OK on a show and pick Add to favorites." else "Press ◀ for categories.",
+                            if (group == Group.Favorites) "In the guide, hold OK on a show and pick Add to favorites." else "Press BACK for categories.",
                         )
                         else -> GuideView(
                             group = group,
@@ -224,7 +225,7 @@ fun ChannelsScreen() {
                 }
             }
             if (drawer) {
-                CategoryDrawer(groups, group, onPick = { open(it) }, onClose = { drawer = false })
+                CategoryDrawer(groups, group, onPick = { open(it) }, onClose = { drawer = false; guideOpen = false })
             }
         }
         return
@@ -323,7 +324,7 @@ private fun widthDp(ms: Long) = (ms / MIN.toFloat() * DP_PER_MIN).dp
  * Remote control in the guide:
  *  ▲▼ = channel up/down, staying on the show at the time line
  *  hold ◀ ▶ = scroll through time (short ▶ does nothing)
- *  short ◀ = category list
+ *  BACK = category list (handled by the Channels tab)
  *  OK = watch / catch-up / options, hold OK = options (record, remind, favorite)
  */
 @Composable
@@ -490,7 +491,6 @@ fun GuideView(
                                 if (t - lastStep > 160) { lastStep = t; step(dir) }
                             }
                         } else {
-                            if (lrDown && !lrLong && dir < 0) onCategories()
                             lrDown = false
                         }
                         true
@@ -517,7 +517,7 @@ fun GuideView(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "▲▼ channels   hold ◀ ▶ scroll time   ◀ categories   OK watch   hold OK options",
+                "▲▼ channels   hold ◀ ▶ scroll time   BACK categories   OK watch   hold OK options",
                 color = FS.TextDim, fontSize = 13.sp, modifier = Modifier.weight(1f),
             )
             Text("DATE", color = FS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(end = 8.dp))

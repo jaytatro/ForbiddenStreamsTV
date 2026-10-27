@@ -26,6 +26,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -84,31 +86,44 @@ fun HomeScreen(onLogout: () -> Unit) {
 
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
-        // Top menu: main sections on the first row, sports right under them.
+        // Top menu: CHANNELS · VOD · SPORTS. Moving onto VOD or SPORTS shows its tabs underneath.
+        val vodTabs = listOf(2, 3)
+        val sportTabs = listOf(4, 5, 6, 7)
+        var expanded by remember { mutableIntStateOf(if (tab in vodTabs) 1 else if (tab in sportTabs) 2 else 0) }
         Row(
             Modifier
                 .fillMaxWidth()
                 .background(Brush.horizontalGradient(listOf(Color(0xFF0B260C), Color(0xFF050805), Color(0xFF0B260C))))
-                .padding(horizontal = 24.dp, vertical = 8.dp),
+                .padding(horizontal = 24.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(Modifier.padding(end = 22.dp)) {
-                Text("FORBIDDEN STREAMS", color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
-                Text("TV", color = FS.Green, fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = 6.sp)
-            }
+            Image(painterResource(R.drawable.logo), null, Modifier.size(84.dp))
+            Spacer(Modifier.width(18.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                listOf(0..3, 4..7).forEach { range ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        for (i in range) {
-                            val t = tabs[i]
-                            Pill(
-                                t.label,
-                                selected = tab == i,
-                                onClick = { tab = i },
-                                fontSize = if (i >= 4) 15.sp else 17.sp,
-                                modifier = if (i == 1) Modifier.focusRequester(startFocus) else Modifier,
-                            )
-                        }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Pill(
+                        "📺 CHANNELS", selected = tab == 1, onClick = { tab = 1; expanded = 0 },
+                        modifier = Modifier.focusRequester(startFocus).onFocusChanged { if (it.isFocused) expanded = 0 },
+                    )
+                    Pill(
+                        "🎬 VOD", selected = tab in vodTabs, onClick = { if (tab !in vodTabs) tab = 2; expanded = 1 },
+                        modifier = Modifier.onFocusChanged { if (it.isFocused) expanded = 1 },
+                    )
+                    Pill(
+                        "🏆 SPORTS", selected = tab in sportTabs, onClick = { if (tab !in sportTabs) tab = 4; expanded = 2 },
+                        modifier = Modifier.onFocusChanged { if (it.isFocused) expanded = 2 },
+                    )
+                }
+                Row(
+                    Modifier.height(40.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val sub = when (expanded) { 1 -> vodTabs; 2 -> sportTabs; else -> emptyList() }
+                    if (expanded == 2) Spacer(Modifier.width(150.dp)) // line up under SPORTS
+                    if (expanded == 1) Spacer(Modifier.width(110.dp)) // line up under VOD
+                    for (i in sub) {
+                        Pill(tabs[i].label, selected = tab == i, onClick = { tab = i }, fontSize = 15.sp)
                     }
                 }
             }
@@ -116,6 +131,10 @@ fun HomeScreen(onLogout: () -> Unit) {
                 Text(Fmt.time(now), color = FS.Green, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 Text(Fmt.longDay(now), color = FS.TextDim, fontSize = 13.sp)
             }
+            Spacer(Modifier.width(12.dp))
+            // Settings (was the MENU tab).
+            Pill("⚙", selected = tab == 0, onClick = { tab = 0; expanded = 0 }, fontSize = 24.sp,
+                modifier = Modifier.onFocusChanged { if (it.isFocused) expanded = 0 })
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             val t = tabs[tab]
