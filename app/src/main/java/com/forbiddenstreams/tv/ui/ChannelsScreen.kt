@@ -39,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -139,15 +140,12 @@ fun ChannelsScreen() {
         listOf<Group>(Group.Search, Group.All, Group.History, Group.Favorites) + c.map { Group.Cat(it) }
     }
     val group = groups.firstOrNull { it.key == groupKey } ?: Group.All
-    var channels by remember(group.key) { mutableStateOf<List<LiveChannel>?>(null) }
-    LaunchedEffect(group.key, favTick) {
-        delay(200) // wait while the cursor is still moving through the groups
-        channels = try { loadGroup(src, prefs, group) } catch (e: Exception) { emptyList() }
-    }
-    val shown = channels?.let { list ->
-        if (group == Group.Search) {
-            if (query.trim().length < 2) emptyList() else list.filter { it.name.contains(query.trim(), ignoreCase = true) }
-        } else list
+    var submitted by remember { mutableStateOf("") }
+
+    // Channels load only after a category is picked.
+    var channels by remember(group.key, guideOpen) { mutableStateOf<List<LiveChannel>?>(null) }
+    LaunchedEffect(group.key, guideOpen, favTick) {
+        if (guideOpen) channels = try { loadGroup(src, prefs, group) } catch (e: Exception) { emptyList() }
     }
 
     fun toggleFav(ch: LiveChannel) {
@@ -156,71 +154,80 @@ fun ChannelsScreen() {
         favTick++
     }
 
-    if (guideOpen && shown != null) {
-        GuideView(
-            group = group,
-            channels = shown,
-            targetId = guideTarget,
-            onBack = { guideOpen = false },
-            onToggleFav = { toggleFav(it) },
-        )
-        return
-    }
-
-    Row(Modifier.fillMaxSize().padding(start = 16.dp, top = 8.dp)) {
-        Column(Modifier.width(300.dp).fillMaxHeight()) {
-            MiniPlayer(300.dp, Modifier.padding(bottom = 10.dp))
-            GroupSidebar(
-                groups, group, Modifier.weight(1f),
-                onFocus = { groupKey = it.key },
-                onSelect = { g ->
-                    groupKey = g.key
-                    // Picking a group hides this list and opens its full-width TV guide.
-                    if (g != Group.Search) { guideTarget = null; guideOpen = true }
-                },
-            )
-        }
-        Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
-            var focusedIndex by remember(group.key) { mutableIntStateOf(0) }
-            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(group.title, color = FS.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text("OK on a group = full TV guide   Hold OK = favorite   ▶ = guide", color = FS.TextDim, fontSize = 14.sp)
-                Spacer(Modifier.width(24.dp))
-                if (shown != null) Text("${if (shown.isEmpty()) 0 else focusedIndex + 1}/${shown.size}", color = FS.TextDim, fontSize = 18.sp)
-            }
+    if (guideOpen) {
+        BackHandler { guideOpen = false }
+        val list = channels
+        Column(Modifier.fillMaxSize()) {
             if (group == Group.Search) {
-                FsTextField("Type a channel name", query, { query = it }, androidx.compose.ui.text.input.KeyboardType.Text)
-                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), verticalAlignment = Alignment.Bottom) {
+                    Box(Modifier.weight(1f)) {
+                        FsTextField(
+                            "Search channels (type, then press Enter/Done)", query, { query = it },
+                            androidx.compose.ui.text.input.KeyboardType.Text,
+                            done = { submitted = query.trim() },
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Pill("Search", selected = true, onClick = { submitted = query.trim() })
+                }
             }
-            when {
-                shown == null -> LoadingBox()
-                shown.isEmpty() -> MessageBox(
-                    when (group) {
-                        Group.Favorites -> "No favorites yet"
-                        Group.History -> "Nothing watched yet"
-                        Group.Search -> if (query.length < 2) "Search all channels" else "No channels found"
-                        else -> "No channels in this group"
-                    },
-                    when (group) {
-                        Group.Favorites -> "Hold OK on any channel to add it here."
-                        else -> null
-                    },
-                )
-                else -> {
-                    val favs = remember(favTick) { prefs.favorites }
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        itemsIndexed(shown, key = { _, ch -> ch.id }) { i, ch ->
-                            ChannelRow(
-                                ch = ch,
-                                isFav = ch.id in favs,
-                                onPlay = { playChannels(context, shown, i) },
-                                onFav = { toggleFav(ch) },
-                                onGuide = { guideTarget = ch.id; guideOpen = true },
-                                onFocused = { focusedIndex = i },
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when {
+                    list == null -> LoadingBox("Loading ${group.title}")
+                    group == Group.Search && submitted.length < 2 ->
+                        MessageBox("Search all channels", "Type at least 2 letters of a channel name.")
+                    else -> {
+                        val shown = if (group == Group.Search) list.filter { it.name.contains(submitted, ignoreCase = true) } else list
+                        if (shown.isEmpty()) {
+                            MessageBox(
+                                when (group) {
+                                    Group.Favorites -> "No favorites yet"
+                                    Group.History -> "Nothing watched yet"
+                                    Group.Search -> "No channels found"
+                                    else -> "No channels in this category"
+                                },
+                                if (group == Group.Favorites) "In the TV guide, hold OK on a channel name to add it here." else null,
+                            )
+                        } else {
+                            GuideView(
+                                group = group,
+                                channels = shown,
+                                targetId = guideTarget,
+                                onBack = { guideOpen = false },
+                                onToggleFav = { toggleFav(it) },
                             )
                         }
                     }
                 }
+            }
+        }
+        return
+    }
+
+    // Category picker only: no channels until a category is clicked.
+    Row(Modifier.fillMaxSize().padding(start = 16.dp, top = 8.dp)) {
+        Column(Modifier.width(420.dp).fillMaxHeight()) {
+            MiniPlayer(420.dp, Modifier.padding(bottom = 10.dp))
+            GroupSidebar(
+                groups, group, Modifier.weight(1f),
+                onFocus = { },
+                onSelect = { g ->
+                    groupKey = g.key
+                    guideTarget = null
+                    if (g != Group.Search) submitted = ""
+                    guideOpen = true
+                },
+            )
+        }
+        Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                androidx.compose.foundation.Image(
+                    androidx.compose.ui.res.painterResource(com.forbiddenstreams.tv.R.drawable.logo), null,
+                    Modifier.size(360.dp).alpha(0.35f),
+                )
+                Spacer(Modifier.height(16.dp))
+                Text("Pick a category to open its TV guide", color = FS.TextDim, fontSize = 22.sp)
+                Text("${c.size} categories", color = FS.TextDim, fontSize = 16.sp)
             }
         }
     }
@@ -240,51 +247,6 @@ private fun GroupSidebar(
                 g.title, selected = g.key == selected.key, onClick = { onSelect(g) },
                 onFocus = { onFocus(g) }, modifier = Modifier.fillMaxWidth(),
             )
-        }
-    }
-}
-
-@Composable
-private fun ChannelRow(
-    ch: LiveChannel,
-    isFav: Boolean,
-    onPlay: () -> Unit,
-    onFav: () -> Unit,
-    onGuide: () -> Unit,
-    onFocused: () -> Unit,
-) {
-    val epg by produceState(Session.cachedEpg(ch), ch.id) { value = Session.epg(ch) }
-    val now = System.currentTimeMillis()
-    val current = epg?.firstOrNull { it.isLive(now) }
-    FocusCard(
-        onClick = onPlay,
-        onLongClick = onFav,
-        container = Color.Transparent,
-        focusedScale = 1.01f,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(82.dp)
-            .onFocusChanged { if (it.isFocused) onFocused() }
-            .onPreviewKeyEvent {
-                if (it.type == KeyEventType.KeyDown && it.key == Key.DirectionRight) { onGuide(); true } else false
-            },
-    ) {
-        Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("${ch.num}", fontSize = 20.sp, modifier = Modifier.width(64.dp))
-            Box(Modifier.size(width = 100.dp, height = 56.dp), contentAlignment = Alignment.Center) {
-                NetImage(ch.logo, Modifier.fillMaxSize())
-            }
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text(ch.name, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    current?.title ?: if (epg == null) "" else "No program info",
-                    fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (isFav) Text("★", color = FS.Green, fontSize = 24.sp, modifier = Modifier.padding(horizontal = 8.dp))
-            if (ch.hasArchive) Text("⟲", fontSize = 26.sp, modifier = Modifier.padding(horizontal = 8.dp))
-            Text("›", fontSize = 30.sp, modifier = Modifier.padding(start = 8.dp))
         }
     }
 }
@@ -331,7 +293,6 @@ private fun GuideView(
     onBack: () -> Unit,
     onToggleFav: (LiveChannel) -> Unit,
 ) {
-    BackHandler { onBack() }
     val context = LocalContext.current
     val src = Session.source ?: return
     val density = LocalDensity.current
