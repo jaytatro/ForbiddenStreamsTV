@@ -87,10 +87,16 @@ interface ContentSource {
     suspend fun vodDetails(item: VodItem): VodDetails?
     fun vodUrl(item: VodItem): String
 
+    /** Every movie, for search. */
+    suspend fun allVod(): List<VodItem> = vodCategories().flatMap { vodItems(it.id) }.distinctBy { it.id }
+
     suspend fun seriesCategories(): List<Category>
     suspend fun seriesItems(categoryId: String): List<SeriesItem>
     suspend fun episodes(series: SeriesItem): List<Episode>
     fun episodeUrl(episode: Episode): String
+
+    /** Every show, for search. */
+    suspend fun allSeries(): List<SeriesItem> = seriesCategories().flatMap { seriesItems(it.id) }.distinctBy { it.id }
 
     fun clearCache()
 }

@@ -52,11 +52,14 @@ import com.forbiddenstreams.tv.player.Playback
 import kotlinx.coroutines.delay
 
 /** Sidebar of groups + poster grid; shared by Movies and TV Shows. */
+private const val SEARCH = "__search__"
+
 @Composable
 private fun <T> PosterBrowser(
     kind: String,
     loadCats: suspend () -> List<Category>,
     loadItems: suspend (String) -> List<T>,
+    loadAll: suspend () -> List<T>,
     title: (T) -> String,
     image: (T) -> String?,
     onOpen: (T) -> Unit,
@@ -66,11 +69,13 @@ private fun <T> PosterBrowser(
     var reload by remember { mutableIntStateOf(0) }
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
+    var searched by remember { mutableStateOf("") }
+    val searching = selected == SEARCH
     LaunchedEffect(reload) {
         try {
             val c = loadCats()
             cats = c
-            if (selected == null || c.none { it.id == selected }) selected = c.firstOrNull()?.id
+            if (selected == null || (selected != SEARCH && c.none { it.id == selected })) selected = c.firstOrNull()?.id
             error = null
         } catch (e: Exception) { error = e.message ?: "Network error" }
     }
@@ -83,6 +88,13 @@ private fun <T> PosterBrowser(
 
     Row(Modifier.fillMaxSize().padding(start = 16.dp, top = 8.dp)) {
         Column(Modifier.width(300.dp).fillMaxHeight()) {
+            // Search the whole library (type, then Enter/Done).
+            FsTextField(
+                "🔍 Search all $kind", query, { query = it },
+                androidx.compose.ui.text.input.KeyboardType.Text,
+                done = { if (query.trim().length >= 2) { searched = query.trim(); selected = SEARCH } },
+            )
+            Spacer(Modifier.height(8.dp))
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 items(c, key = { it.id }) { cat ->
                     SideItem(cat.name, cat.id == selected, onClick = { selected = cat.id }, modifier = Modifier.fillMaxWidth())
@@ -90,23 +102,29 @@ private fun <T> PosterBrowser(
             }
         }
         val catId = selected
-        val catItems by produceState<List<T>?>(null, catId) {
-            value = if (catId == null) emptyList() else try { loadItems(catId) } catch (e: Exception) { emptyList() }
+        val catItems by produceState<List<T>?>(null, catId, searched) {
+            value = null
+            value = try {
+                when {
+                    catId == null -> emptyList()
+                    catId == SEARCH -> loadAll().filter { title(it).contains(searched, ignoreCase = true) }
+                    else -> loadItems(catId)
+                }
+            } catch (e: Exception) { emptyList() }
         }
         Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
             Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(c.firstOrNull { it.id == catId }?.name ?: "", color = FS.Text, fontSize = 22.sp,
+                Text(if (searching) "Search: \"$searched\"" else c.firstOrNull { it.id == catId }?.name ?: "", color = FS.Text, fontSize = 22.sp,
                     fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 catItems?.let { Text("${it.size} titles", color = FS.TextDim, fontSize = 16.sp) }
             }
-            FsTextField("Filter this group", query, { query = it }, androidx.compose.ui.text.input.KeyboardType.Text)
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(6.dp))
             val list = catItems
             when {
-                list == null -> LoadingBox()
-                list.isEmpty() -> MessageBox("Nothing in this group")
+                list == null -> LoadingBox(if (searching) "Searching" else "Loading")
+                list.isEmpty() -> MessageBox(if (searching) "Nothing found for \"$searched\"" else "Nothing in this group")
                 else -> {
-                    val shown = if (query.isBlank()) list else list.filter { title(it).contains(query.trim(), true) }
+                    val shown = list
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(6),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -144,6 +162,7 @@ fun MoviesScreen() {
         kind = "movies",
         loadCats = { src.vodCategories() },
         loadItems = { src.vodItems(it) },
+        loadAll = { src.allVod() },
         title = { it.name },
         image = { it.poster },
         onOpen = { open = it },
@@ -194,6 +213,7 @@ fun SeriesScreen() {
         kind = "TV shows",
         loadCats = { src.seriesCategories() },
         loadItems = { src.seriesItems(it) },
+        loadAll = { src.allSeries() },
         title = { it.name },
         image = { it.cover },
         onOpen = { open = it },

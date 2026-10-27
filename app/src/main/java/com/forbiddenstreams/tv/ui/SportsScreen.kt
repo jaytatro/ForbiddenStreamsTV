@@ -142,7 +142,6 @@ fun SportsScreen(league: League) {
                 }
             }
         }
-        MiniPlayer(240.dp)
         }
 
         when {

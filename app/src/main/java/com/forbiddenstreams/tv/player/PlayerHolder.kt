@@ -51,6 +51,12 @@ object PlayerHolder {
     var error by mutableStateOf<String?>(null)
         private set
 
+    /** Preview hidden (and muted) while the top-menu cursor is on VOD or SPORTS. */
+    private var hiddenState by mutableStateOf(false)
+    var previewHidden: Boolean
+        get() = hiddenState
+        set(v) { hiddenState = v; exo?.volume = if (v) 0f else 1f }
+
     /** True while the full-screen player owns the video; the mini window waits until it closes. */
     var fullScreen by mutableStateOf(false)
 
@@ -134,6 +140,7 @@ object PlayerHolder {
 
     fun openFullScreen(context: Context) {
         if (current == null) return
+        previewHidden = false
         fullScreen = true
         context.startActivity(Intent(context, PlayerActivity::class.java))
     }

@@ -68,8 +68,8 @@ fun HomeScreen(onLogout: () -> Unit) {
     LaunchedEffect(Unit) { while (true) { delay(20_000); now = System.currentTimeMillis() } }
     val startFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { try { startFocus.requestFocus() } catch (e: Exception) { } }
-    // Movies and TV Shows don't show the live preview: switch it off there.
-    LaunchedEffect(tab) { if ((tab == 2 || tab == 3) && PlayerHolder.isMiniActive) PlayerHolder.stop() }
+    // VOD (Movies, TV Shows) and Sports don't show the live preview: switch it off there.
+    LaunchedEffect(tab) { if (tab in 2..7 && PlayerHolder.isMiniActive) PlayerHolder.stop() }
 
     // BACK on the main screens: first press shows a hint, second press within 2.5 s closes the app.
     val activity = LocalContext.current as? android.app.Activity
@@ -107,11 +107,11 @@ fun HomeScreen(onLogout: () -> Unit) {
                     )
                     Pill(
                         "🎬 VOD", selected = tab in vodTabs, onClick = { if (tab !in vodTabs) tab = 2; expanded = 1 },
-                        modifier = Modifier.onFocusChanged { if (it.isFocused) expanded = 1 },
+                        modifier = Modifier.onFocusChanged { if (it.isFocused) expanded = 1; PlayerHolder.previewHidden = it.isFocused },
                     )
                     Pill(
                         "🏆 SPORTS", selected = tab in sportTabs, onClick = { if (tab !in sportTabs) tab = 4; expanded = 2 },
-                        modifier = Modifier.onFocusChanged { if (it.isFocused) expanded = 2 },
+                        modifier = Modifier.onFocusChanged { if (it.isFocused) expanded = 2; PlayerHolder.previewHidden = it.isFocused },
                     )
                 }
                 Row(
@@ -122,7 +122,8 @@ fun HomeScreen(onLogout: () -> Unit) {
                     val sub = when (expanded) { 1 -> vodTabs; 2 -> sportTabs; else -> emptyList() }
                     // Sub-tabs start at the left edge, under CHANNELS.
                     for (i in sub) {
-                        Pill(tabs[i].label, selected = tab == i, onClick = { tab = i }, fontSize = 15.sp)
+                        Pill(tabs[i].label, selected = tab == i, onClick = { tab = i }, fontSize = 15.sp,
+                            modifier = Modifier.onFocusChanged { PlayerHolder.previewHidden = it.isFocused })
                     }
                 }
             }

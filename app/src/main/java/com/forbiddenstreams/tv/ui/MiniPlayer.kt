@@ -35,7 +35,7 @@ import com.forbiddenstreams.tv.player.PlayerHolder
 @Composable
 fun MiniPlayer(width: Dp, modifier: Modifier = Modifier, focusable: Boolean = true) {
     val item = PlayerHolder.current ?: return
-    if (!item.live) return
+    if (!item.live || PlayerHolder.previewHidden) return
     val context = LocalContext.current
     val shape = RoundedCornerShape(8.dp)
     val video: @Composable () -> Unit = {

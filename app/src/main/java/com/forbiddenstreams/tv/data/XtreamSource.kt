@@ -140,9 +140,24 @@ class XtreamSource(
     override suspend fun vodCategories(): List<Category> =
         vodCats ?: parseCategories(Http.get(api("get_vod_categories"))).also { vodCats = it }
 
+    private var allVodCache: List<VodItem>? = null
+    private var allSeriesCache: List<SeriesItem>? = null
+
+    override suspend fun allVod(): List<VodItem> =
+        allVodCache ?: parseVod(Http.get(api("get_vod_streams")), "").also { allVodCache = it }
+
+    override suspend fun allSeries(): List<SeriesItem> =
+        allSeriesCache ?: parseSeries(Http.get(api("get_series")), "").also { allSeriesCache = it }
+
     override suspend fun vodItems(categoryId: String): List<VodItem> {
         vodByCat[categoryId]?.let { return it }
-        val arr = jsonArray(Http.get(api("get_vod_streams", "&category_id=${Http.enc(categoryId)}")))
+        val out = parseVod(Http.get(api("get_vod_streams", "&category_id=${Http.enc(categoryId)}")), categoryId)
+        vodByCat[categoryId] = out
+        return out
+    }
+
+    private fun parseVod(text: String, categoryId: String): List<VodItem> {
+        val arr = jsonArray(text)
         val out = ArrayList<VodItem>(arr.length())
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
@@ -156,7 +171,6 @@ class XtreamSource(
                 ext = o.str("container_extension") ?: "mp4",
             )
         }
-        vodByCat[categoryId] = out
         return out
     }
 
@@ -181,7 +195,13 @@ class XtreamSource(
 
     override suspend fun seriesItems(categoryId: String): List<SeriesItem> {
         seriesByCat[categoryId]?.let { return it }
-        val arr = jsonArray(Http.get(api("get_series", "&category_id=${Http.enc(categoryId)}")))
+        val out = parseSeries(Http.get(api("get_series", "&category_id=${Http.enc(categoryId)}")), categoryId)
+        seriesByCat[categoryId] = out
+        return out
+    }
+
+    private fun parseSeries(text: String, categoryId: String): List<SeriesItem> {
+        val arr = jsonArray(text)
         val out = ArrayList<SeriesItem>(arr.length())
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
@@ -195,7 +215,6 @@ class XtreamSource(
                 categoryId = o.str("category_id") ?: categoryId,
             )
         }
-        seriesByCat[categoryId] = out
         return out
     }
 
@@ -232,6 +251,7 @@ class XtreamSource(
         liveCats = null; allLive = null; liveByCat.clear()
         vodCats = null; vodByCat.clear()
         seriesCats = null; seriesByCat.clear()
+        allVodCache = null; allSeriesCache = null
     }
 
     private fun parseCategories(text: String): List<Category> {
