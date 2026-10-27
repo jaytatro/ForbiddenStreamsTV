@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import com.forbiddenstreams.tv.R
 import com.forbiddenstreams.tv.data.Category
+import com.forbiddenstreams.tv.data.CategoryPrefs
 import com.forbiddenstreams.tv.data.LiveChannel
 import com.forbiddenstreams.tv.data.Prefs
 import com.forbiddenstreams.tv.data.Program
@@ -93,7 +94,9 @@ private fun groupsFor(cats: List<Category>): List<Group> =
     listOf<Group>(Group.Search, Group.All, Group.History, Group.Favorites) + cats.map { Group.Cat(it) }
 
 private fun channelsOf(prefs: Prefs, g: Group): List<LiveChannel> {
-    val all = Session.liveAll.orEmpty()
+    // Channels in hidden categories are left out of All and Search too.
+    val hidden = CategoryPrefs.hidden(prefs.context)
+    val all = Session.liveAll.orEmpty().let { l -> if (hidden.isEmpty()) l else l.filter { it.categoryId !in hidden } }
     return when (g) {
         Group.Search, Group.All -> all
         Group.History -> {
@@ -161,7 +164,8 @@ fun ChannelsScreen() {
         }
         return
     }
-    val groups = remember(cats) { groupsFor(cats) }
+    // Settings › Categories decides the order and which ones are hidden.
+    val groups = remember(cats, CategoryPrefs.version) { groupsFor(CategoryPrefs.visible(context, cats)) }
     val group = groups.firstOrNull { it.key == groupKey } ?: Group.All
 
     fun toggleFav(ch: LiveChannel) {
@@ -376,7 +380,11 @@ fun GuideView(
         while (true) {
             delay(30_000)
             now = System.currentTimeMillis()
-            if (followNow && dayOffset == 0) cursor = now
+            if (followNow && dayOffset == 0) {
+                cursor = now
+                // Keep the time line near the middle as the clock moves.
+                if (gridWidthPx > 0) hState.animateScrollTo(centerOn(now))
+            }
         }
     }
 
@@ -384,6 +392,9 @@ fun GuideView(
     fun cellAt(r: Int): Cell? = cellsOf(r).firstOrNull { cursor >= it.start && cursor < it.end }
 
     fun px(ms: Long): Int = with(density) { widthDp(ms).toPx() }.toInt()
+
+    /** Scroll so [t] sits about 40% of the way across the grid (time line near the middle). */
+    fun centerOn(t: Long): Int = (px(t - ws) - (gridWidthPx * 0.4f).toInt()).coerceAtLeast(0)
 
     fun keepCursorVisible() {
         val viewport = gridWidthPx
@@ -393,7 +404,7 @@ fun GuideView(
         val cx = px(cursor - ws)
         val left = hState.value
         if (x < left || cx > left + viewport - px(20 * MIN)) {
-            scope.launch { hState.animateScrollTo((px(cursor - ws) - px(30 * MIN)).coerceAtLeast(0)) }
+            scope.launch { hState.animateScrollTo(centerOn(cursor)) }
         }
     }
 
@@ -448,8 +459,8 @@ fun GuideView(
     // First layout: jump to the time line and the starting channel, then take focus.
     LaunchedEffect(group.key, dayOffset) {
         snapshotFlow { hState.maxValue }.first { it > 0 }
-        val anchor = if (dayOffset == 0) cursor - 30 * MIN else cursor - 30 * MIN
-        hState.scrollTo(px(anchor - ws).coerceAtLeast(0))
+        snapshotFlow { gridWidthPx }.first { it > 0 }
+        hState.scrollTo(centerOn(cursor))
         if (channels.isNotEmpty()) listState.scrollToItem((row - 2).coerceAtLeast(0))
     }
     LaunchedEffect(active) {

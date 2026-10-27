@@ -26,6 +26,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
@@ -201,9 +202,25 @@ fun ChoiceDialog(
     onDismiss: () -> Unit,
 ) {
     val first = remember { FocusRequester() }
+    // A long-press opens this while OK is still held down. Ignore that held key (and its
+    // release) so the first option isn't picked by accident; a fresh press works normally.
+    var armed by remember { mutableStateOf(false) }
     Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier
+                .onPreviewKeyEvent { ev ->
+                    val ne = ev.nativeKeyEvent
+                    val ok = ne.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+                        ne.keyCode == android.view.KeyEvent.KEYCODE_ENTER ||
+                        ne.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
+                    if (!ok || armed) return@onPreviewKeyEvent false
+                    if (ne.action == android.view.KeyEvent.ACTION_DOWN && ne.repeatCount == 0) {
+                        armed = true
+                        false
+                    } else {
+                        true
+                    }
+                }
                 .width(520.dp)
                 .background(FS.Panel, RoundedCornerShape(16.dp))
                 .border(2.dp, FS.GreenDeep, RoundedCornerShape(16.dp))

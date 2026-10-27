@@ -22,6 +22,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
+import com.forbiddenstreams.tv.data.CategoryPrefs
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -45,7 +49,7 @@ fun MenuScreen(onLogout: () -> Unit) {
     var section by remember { mutableIntStateOf(0) }
     var tick by remember { mutableIntStateOf(0) }
     var confirmLogout by remember { mutableStateOf(false) }
-    val sections = listOf("⏺  Recordings", "⏰  Reminders", "⟳  Refresh content", "👤  Account", "⎋  Log out")
+    val sections = listOf("⏺  Recordings", "⏰  Reminders", "🗂  Categories", "⟳  Refresh content", "👤  Account", "⎋  Log out")
 
     Row(Modifier.fillMaxSize().padding(24.dp)) {
         Column(Modifier.width(320.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -54,8 +58,8 @@ fun MenuScreen(onLogout: () -> Unit) {
             sections.forEachIndexed { i, label ->
                 SideItem(label, selected = section == i, modifier = Modifier.fillMaxWidth(), onClick = {
                     when (i) {
-                        2 -> { Session.refresh(context); toast(context, "Updating channels, movies and shows…") }
-                        4 -> { confirmLogout = true }
+                        3 -> { Session.refresh(context); toast(context, "Updating channels, movies and shows…") }
+                        5 -> { confirmLogout = true }
                         else -> { section = i }
                     }
                 })
@@ -89,6 +93,7 @@ fun MenuScreen(onLogout: () -> Unit) {
                         }
                     }
                 }
+                2 -> CategoryEditor()
                 1 -> {
                     val rems = remember(tick) { Reminders.prune(context); Reminders.all(context) }
                     Header("Reminders", "Hold OK = delete")
@@ -163,6 +168,46 @@ private fun ListCard(title: String, sub: String, onClick: () -> Unit, onLongClic
         Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
             Text(title, fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(sub, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+
+/** Settings › Categories: reorder (▲ ▼) and hide/show the live TV categories. */
+@Composable
+private fun CategoryEditor() {
+    val context = LocalContext.current
+    val cats = Session.liveCats
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Categories", color = FS.Green, fontSize = 30.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text("▲ ▼ move · Hide/Show", color = FS.TextDim, fontSize = 15.sp)
+            Spacer(Modifier.width(16.dp))
+            Pill("Reset", selected = false, onClick = { CategoryPrefs.reset(context); toast(context, "Categories back to the provider's order") })
+        }
+        if (cats == null) { LoadingBox("Loading categories"); return@Column }
+        val list = remember(cats, CategoryPrefs.version) { CategoryPrefs.ordered(context, cats) }
+        val hidden = remember(CategoryPrefs.version) { CategoryPrefs.hidden(context) }
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            itemsIndexed(list, key = { _, c -> c.id }) { i, c ->
+                val off = c.id in hidden
+                Row(
+                    Modifier.fillMaxWidth().background(FS.Panel, RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("${i + 1}", color = FS.TextDim, fontSize = 16.sp, modifier = Modifier.width(44.dp))
+                    Text(
+                        c.name, color = if (off) FS.TextDim else FS.Text, fontSize = 19.sp,
+                        fontWeight = if (off) FontWeight.Normal else FontWeight.Bold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                    )
+                    if (off) Text("hidden", color = FS.Live, fontSize = 14.sp, modifier = Modifier.padding(end = 12.dp))
+                    Pill("▲", selected = false, fontSize = 16.sp, onClick = { CategoryPrefs.move(context, cats, c.id, -1) })
+                    Pill("▼", selected = false, fontSize = 16.sp, onClick = { CategoryPrefs.move(context, cats, c.id, 1) })
+                    Spacer(Modifier.width(6.dp))
+                    Pill(if (off) "Show" else "Hide", selected = off, fontSize = 15.sp, onClick = { CategoryPrefs.toggleHidden(context, c.id) })
+                }
+            }
         }
     }
 }

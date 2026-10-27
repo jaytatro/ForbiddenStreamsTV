@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.SharedPreferences
 
 class Prefs(context: Context) {
+    val context: Context = context.applicationContext
+
     private val sp: SharedPreferences =
         context.applicationContext.getSharedPreferences("forbidden_streams", Context.MODE_PRIVATE)
 

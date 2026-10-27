@@ -57,6 +57,10 @@ class PlayerActivity : ComponentActivity() {
     /** See-through TV guide over the video (hold OK on live TV). */
     private var guideVisible by mutableStateOf(false)
     private var okLongFired = false
+
+    /** "⏪ 10s" / "10s ⏩" flash for movies and episodes. */
+    private var seekFlash by mutableStateOf<String?>(null)
+    private var seekJob: Job? = null
     private var okDown = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,6 +81,8 @@ class PlayerActivity : ComponentActivity() {
                 infoVisible = v == android.view.View.VISIBLE
             })
         }
+
+        view.findViewById<androidx.media3.ui.DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress)?.setKeyTimeIncrement(10_000)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -125,6 +131,14 @@ class PlayerActivity : ComponentActivity() {
                             Text(Fmt.time(now), color = FS.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         }
                     }
+                    seekFlash?.let {
+                        Text(
+                            it, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.align(Alignment.Center)
+                                .background(Color(0xB3050805), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 26.dp, vertical = 14.dp),
+                        )
+                    }
                     PlayerHolder.error?.let {
                         Text(
                             it + if (item?.live == true) "\nPress up/down to try another channel or BACK to return." else "\nPress BACK to return.",
@@ -168,6 +182,20 @@ class PlayerActivity : ComponentActivity() {
         showInfo()
     }
 
+    private fun skip(ms: Long) {
+        val p = PlayerHolder.existingPlayer() ?: return
+        val dur = p.duration
+        var target = p.currentPosition + ms
+        if (target < 0) target = 0
+        if (dur > 0 && target > dur - 1000) target = dur - 1000
+        p.seekTo(target)
+        val pos = target / 1000
+        val at = if (pos >= 3600) "%d:%02d:%02d".format(pos / 3600, pos % 3600 / 60, pos % 60) else "%d:%02d".format(pos / 60, pos % 60)
+        seekFlash = (if (ms < 0) "⏪ 10s" else "10s ⏩") + "   $at"
+        seekJob?.cancel()
+        seekJob = lifecycleScope.launch { delay(1200); seekFlash = null }
+    }
+
     private fun close() {
         view.player = null
         PlayerHolder.fullScreen = false
@@ -185,7 +213,16 @@ class PlayerActivity : ComponentActivity() {
         val live = PlayerHolder.current?.live == true
         val down = event.action == KeyEvent.ACTION_DOWN
         if (event.keyCode == KeyEvent.KEYCODE_INFO) { if (down) showInfo(); return true }
-        if (!live) return super.dispatchKeyEvent(event)
+        if (!live) {
+            // Movies/episodes: ◀ = back 10 s, ▶ = forward 10 s (when the control bar isn't open).
+            val l = event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+            val r = event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+            if ((l || r) && !view.isControllerFullyVisible) {
+                if (down) skip(if (l) -10_000 else 10_000)
+                return true
+            }
+            return super.dispatchKeyEvent(event)
+        }
         when (event.keyCode) {
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_DOWN -> { if (down) { PlayerHolder.zap(this, -1); showInfo() }; return true }
             KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_UP -> { if (down) { PlayerHolder.zap(this, 1); showInfo() }; return true }
