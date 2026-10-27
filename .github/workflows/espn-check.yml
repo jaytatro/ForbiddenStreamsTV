@@ -1,32 +1,15 @@
-name: ESPN check
+name: Maven check
 on:
   push:
     branches: [main]
     paths: [".github/workflows/espn-check.yml"]
   workflow_dispatch:
-permissions:
-  contents: write
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch scoreboards like the app does
-        run: |
-          mkdir out
-          FROM=$(date -d '-3 day' +%Y%m%d); TO=$(date -d '+3 day' +%Y%m%d); TODAY=$(date +%Y%m%d)
-          for L in football/nfl basketball/nba hockey/nhl baseball/mlb; do
-            N=$(echo $L | cut -d/ -f2)
-            for UA in "ForbiddenStreams/1.0 (Linux; Android TV)" "Mozilla/5.0"; do
-              code=$(curl -s -A "$UA" -o out/${N}_range.json -w "%{http_code}" "https://site.api.espn.com/apis/site/v2/sports/$L/scoreboard?dates=$FROM-$TO&limit=500")
-              echo "::notice title=$N range::UA=[$UA] HTTP $code events=$(jq '.events|length' out/${N}_range.json 2>/dev/null) bytes=$(wc -c < out/${N}_range.json)"
-            done
-            code=$(curl -s -A "Mozilla/5.0" -o out/${N}_today.json -w "%{http_code}" "https://site.api.espn.com/apis/site/v2/sports/$L/scoreboard?dates=$TODAY")
-            echo "::notice title=$N today::HTTP $code events=$(jq '.events|length' out/${N}_today.json 2>/dev/null) first=$(jq -c '.events[0]|{date,name}' out/${N}_today.json 2>/dev/null)"
-          done
-      - name: Save samples to the espn-data branch
-        run: |
-          cd out
-          git init -q -b espn-data
-          git -c user.name=ci -c user.email=ci@example.com add . 
-          git -c user.name=ci -c user.email=ci@example.com commit -qm "ESPN samples"
-          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" espn-data
+      - run: |
+          v=$(curl -s https://repo1.maven.org/maven2/org/jellyfin/media3/media3-ffmpeg-decoder/maven-metadata.xml | grep -o '<version>[^<]*</version>' | sed 's/<[^>]*>//g' | tr '\n' ' ')
+          echo "::notice title=jellyfin ffmpeg::$v"
+          m=$(curl -s https://dl.google.com/android/maven2/androidx/media3/media3-exoplayer/maven-metadata.xml | grep -o '<version>[^<]*</version>' | sed 's/<[^>]*>//g' | tr '\n' ' ')
+          echo "::notice title=media3::$m"
