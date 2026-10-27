@@ -107,7 +107,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                     )
                     Pill(
                         "🎬 VOD", selected = tab in vodTabs, onClick = { if (tab !in vodTabs) tab = 2; expanded = 1 },
-                        modifier = Modifier.onFocusChanged { if (it.isFocused) expanded = 1; PlayerHolder.previewHidden = it.isFocused },
+                        modifier = Modifier.onFocusChanged { if (it.isFocused) expanded = 1 },
                     )
                     Pill(
                         "🏆 SPORTS", selected = tab in sportTabs, onClick = { if (tab !in sportTabs) tab = 4; expanded = 2 },
@@ -122,10 +122,9 @@ fun HomeScreen(onLogout: () -> Unit) {
                     val sub = when (expanded) { 1 -> vodTabs; 2 -> sportTabs; else -> emptyList() }
                     // Sub-tabs start at the left edge, under CHANNELS.
                     for (i in sub) {
-                        // Under VOD the preview hides while the cursor is here; under SPORTS it keeps
-                        // playing until NFL/NBA/NHL/MLB is actually opened.
+                        // The preview keeps playing until Movies, TV Shows or a sport is actually opened.
                         Pill(tabs[i].label, selected = tab == i, onClick = { tab = i }, fontSize = 15.sp,
-                            modifier = Modifier.onFocusChanged { if (i in vodTabs) PlayerHolder.previewHidden = it.isFocused })
+                            modifier = Modifier)
                     }
                 }
             }
