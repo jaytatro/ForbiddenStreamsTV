@@ -39,6 +39,7 @@ import androidx.tv.material3.Text
 import com.forbiddenstreams.tv.R
 import com.forbiddenstreams.tv.player.PlayItem
 import com.forbiddenstreams.tv.player.Playback
+import com.forbiddenstreams.tv.player.PlayerHolder
 import com.forbiddenstreams.tv.reminders.Reminder
 import com.forbiddenstreams.tv.reminders.Reminders
 import com.forbiddenstreams.tv.sports.League
@@ -64,6 +65,8 @@ fun HomeScreen(onLogout: () -> Unit) {
     LaunchedEffect(Unit) { while (true) { delay(20_000); now = System.currentTimeMillis() } }
     val startFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { try { startFocus.requestFocus() } catch (e: Exception) { } }
+    // Movies and TV Shows don't show the live preview: switch it off there.
+    LaunchedEffect(tab) { if ((tab == 2 || tab == 3) && PlayerHolder.isMiniActive) PlayerHolder.stop() }
 
     Column(Modifier.fillMaxSize()) {
         // Top menu: main sections on the first row, sports right under them.

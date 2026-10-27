@@ -60,6 +60,15 @@ object FS {
 
 @Composable
 fun ForbiddenTheme(content: @Composable () -> Unit) {
+    // Everything drawn ~15% smaller than the default TV size.
+    val d = androidx.compose.ui.platform.LocalDensity.current
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(d.density * 0.85f, d.fontScale),
+    ) { ThemeInner(content) }
+}
+
+@Composable
+private fun ThemeInner(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = darkColorScheme(
             primary = FS.Green,

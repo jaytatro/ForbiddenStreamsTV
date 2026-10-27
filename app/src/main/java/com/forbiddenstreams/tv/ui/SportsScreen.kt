@@ -50,7 +50,7 @@ import java.util.Locale
 
 @Composable
 fun SportsScreen(league: League) {
-    val src = Session.source ?: return
+    if (Session.source == null) return
     val context = LocalContext.current
     val todayKey = remember { Espn.dayKey(System.currentTimeMillis()) }
 
@@ -61,18 +61,15 @@ fun SportsScreen(league: League) {
     var teamChannels by remember(league) { mutableStateOf<List<LiveChannel>?>(null) }
     var groupMissing by remember(league) { mutableStateOf(false) }
     var matches by remember(league) { mutableStateOf<Map<String, GameChannels>>(emptyMap()) }
-    var picker by remember { mutableStateOf<Pair<Game, GameChannels>?>(null) }
+    var picker by remember { mutableStateOf<Game?>(null) }
     val epgCache = remember(league) { HashMap<String, List<Program>>() }
 
     // Team channel group (only the agreed "USA | <League> Teams" group is used).
-    LaunchedEffect(league) {
-        try {
-            val g = GameMatcher.findGroup(src.liveCategories(), league)
-            if (g == null) { groupMissing = true; teamChannels = emptyList() }
-            else { teamChannels = src.liveChannels(g.id) }
-        } catch (e: Exception) {
-            teamChannels = emptyList()
-        }
+    LaunchedEffect(league, Session.liveCats, Session.liveAll) {
+        val cats = Session.liveCats ?: return@LaunchedEffect
+        val g = GameMatcher.findGroup(cats, league)
+        groupMissing = g == null
+        teamChannels = if (g == null) emptyList() else Session.channelsIn(g.id)
     }
 
     // Scores: refresh every 30 seconds while this tab is open.
@@ -108,8 +105,7 @@ fun SportsScreen(league: League) {
         // Date strip with game-count badges
         val w = week
         val days = remember(w) { ((w?.keys ?: emptySet()) + todayKey).sorted() }
-        Row(Modifier.fillMaxWidth().padding(start = 24.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        MiniPlayer(240.dp)
+        Row(Modifier.fillMaxWidth().padding(end = 24.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         LazyRow(
             Modifier.weight(1f).padding(horizontal = 32.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(28.dp),
@@ -136,6 +132,7 @@ fun SportsScreen(league: League) {
                 }
             }
         }
+        MiniPlayer(240.dp)
         }
 
         when {
@@ -153,15 +150,7 @@ fun SportsScreen(league: League) {
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     items(sorted, key = { it.id }) { g ->
-                        GameRow(g, matches[g.id], groupMissing, teamChannels == null) {
-                            val m = matches[g.id]
-                            val opts = m?.options.orEmpty()
-                            when {
-                                opts.isEmpty() -> toast(context, m?.note ?: "Still looking for the team channel…")
-                                opts.size == 1 -> openChannel(context, teamChannels.orEmpty(), opts[0])
-                                else -> { picker = g to m!! }
-                            }
-                        }
+                        GameRow(g, matches[g.id], groupMissing, teamChannels == null) { picker = g }
                     }
                     item { Spacer(Modifier.height(24.dp)) }
                 }
@@ -169,11 +158,27 @@ fun SportsScreen(league: League) {
         }
     }
 
-    picker?.let { (g, m) ->
+    // OK on a game: always show where it can be watched.
+    picker?.let { g ->
+        val m = matches[g.id]
+        val team = teamChannels.orEmpty()
         val options = ArrayList<Pair<String, () -> Unit>>()
-        m.away?.let { c -> options.add("${g.away.displayName} feed · ${c.name}" to { picker = null; openChannel(context, teamChannels.orEmpty(), c) }) }
-        m.home?.let { c -> options.add("${g.home.displayName} feed · ${c.name}" to { picker = null; openChannel(context, teamChannels.orEmpty(), c) }) }
-        ChoiceDialog("${g.away.displayName} vs. ${g.home.displayName}", "Pick which team's channel to watch", options, onDismiss = { picker = null })
+        m?.away?.let { c -> options.add("📺 ${g.away.displayName} feed · ${c.name}" to { picker = null; openChannel(context, team, c) }) }
+        m?.home?.let { c -> options.add("📺 ${g.home.displayName} feed · ${c.name}" to { picker = null; openChannel(context, team, c) }) }
+        val used = m?.options.orEmpty().map { it.id }.toSet()
+        GameMatcher.networkChannels(g, Session.liveAll.orEmpty(), used).forEach { (net, c) ->
+            options.add("📡 On $net · ${c.name}" to { picker = null; openChannel(context, listOf(c), c) })
+        }
+        val sub = when {
+            options.isNotEmpty() -> "Pick a channel to watch" + (g.networks.takeIf { it.isNotEmpty() }?.let { " · TV: ${it.joinToString(", ")}" } ?: "")
+            m == null -> "Still looking for channels for this game. Try again in a moment."
+            else -> (m.note ?: "No channel found") + (g.networks.takeIf { it.isNotEmpty() }?.let { " · TV: ${it.joinToString(", ")}" } ?: "")
+        }
+        ChoiceDialog(
+            "${g.away.displayName} vs. ${g.home.displayName}", sub,
+            options.ifEmpty { listOf<Pair<String, () -> Unit>>("OK" to { picker = null }) },
+            onDismiss = { picker = null },
+        )
     }
 }
 

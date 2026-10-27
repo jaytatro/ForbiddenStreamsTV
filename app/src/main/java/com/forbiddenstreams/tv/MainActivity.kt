@@ -62,6 +62,8 @@ class MainActivity : ComponentActivity() {
             ForbiddenTheme {
                 val context = LocalContext.current
                 var loggedIn by remember { mutableStateOf(Session.source != null || Session.restore(context)) }
+                // Show the saved channel list instantly and update the playlist in the background.
+                androidx.compose.runtime.LaunchedEffect(loggedIn) { if (loggedIn) Session.onAppOpened(context) }
                 Box(Modifier.fillMaxSize().background(FS.background)) {
                     if (!loggedIn) {
                         LoginScreen(onLoggedIn = { loggedIn = true })

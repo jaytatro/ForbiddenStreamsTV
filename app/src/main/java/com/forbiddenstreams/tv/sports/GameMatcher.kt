@@ -57,6 +57,29 @@ object GameMatcher {
         return scored.filter { it.second == best }.map { it.first }
     }
 
+    /**
+     * Channels showing the game's TV network (ESPN, ABC, NBC, Prime Video...), for games
+     * that aren't on a team channel, like Monday/Thursday/Sunday night NFL.
+     */
+    fun networkChannels(game: Game, all: List<LiveChannel>, exclude: Set<String>): List<Pair<String, LiveChannel>> {
+        val out = ArrayList<Pair<String, LiveChannel>>()
+        val seen = HashSet<String>(exclude)
+        for (net in game.networks) {
+            val key = norm(net.replace("+", " plus").replace("Prime Video", "Prime")).trim()
+            if (key.isEmpty()) continue
+            val hits = all.filter { c ->
+                val n = norm(c.name)
+                c.id !in seen && n.contains(" $key ") && excluded.none { n.contains(" $it ") }
+            }.sortedWith(compareBy(
+                { if (norm(it.name).let { n -> n.startsWith(" us ") || n.startsWith(" usa ") }) 0 else 1 },
+                { it.name.length },
+            )).take(4)
+            hits.forEach { seen += it.id; out += net to it }
+            if (out.size >= 8) break
+        }
+        return out
+    }
+
     suspend fun match(
         game: Game,
         league: League,

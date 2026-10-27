@@ -122,14 +122,14 @@ object PlayerHolder {
     }
 
     /** Starts [items] at [start] and opens full screen. Re-opens without reloading if it's already playing. */
-    fun start(context: Context, list: List<PlayItem>, start: Int) {
+    fun start(context: Context, list: List<PlayItem>, start: Int, fullScreen: Boolean = true) {
         if (list.isEmpty()) return
         val i = start.coerceIn(0, list.size - 1)
         val same = current?.url == list[i].url && exo != null
         items = list
         index = i
         if (!same) load(context)
-        openFullScreen(context)
+        if (fullScreen) openFullScreen(context)
     }
 
     fun openFullScreen(context: Context) {
@@ -167,6 +167,8 @@ object PlayerHolder {
         quality = null
         error = null
     }
+
+    fun existingPlayer(): ExoPlayer? = exo
 
     fun pause() { exo?.pause() }
     fun resume() { if (current != null) exo?.play() }

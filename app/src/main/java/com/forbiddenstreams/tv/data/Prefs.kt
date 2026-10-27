@@ -64,6 +64,11 @@ class Prefs(context: Context) {
         history = listOf(id) + history.filter { it != id }
     }
 
+    /** Category whose guide was open last, so the app can go back to it. */
+    var lastGroup: String
+        get() = sp.getString("last_group", "all") ?: "all"
+        set(v) = sp.edit().putString("last_group", v).apply()
+
     var remindersJson: String
         get() = sp.getString("reminders", "[]") ?: "[]"
         set(v) = sp.edit().putString("reminders", v).apply()

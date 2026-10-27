@@ -1,8 +1,20 @@
 package com.forbiddenstreams.tv.data
 
 import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
@@ -13,6 +25,22 @@ object Session {
 
     private val epgCache = ConcurrentHashMap<String, Pair<Long, List<Program>>>()
     private val epgLimiter = Semaphore(6)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    // ---- Live channel list: saved on the box so the app opens instantly,
+    // ---- then refreshed from the provider in the background every time the app opens.
+    var liveCats by mutableStateOf<List<Category>?>(null)
+        private set
+    var liveAll by mutableStateOf<List<LiveChannel>?>(null)
+        private set
+    var liveError by mutableStateOf<String?>(null)
+        private set
+    var refreshing by mutableStateOf(false)
+        private set
+    private var refreshJob: Job? = null
+
+    /** True until the first screen has handled "resume last channel" for this app launch. */
+    var resumePending = true
 
     fun restore(context: Context): Boolean {
         val c = Prefs(context).loadLogin() ?: return false
@@ -42,17 +70,99 @@ object Session {
             }
         }
         epgCache.clear()
+        liveCats = null
+        liveAll = null
+        cacheFile(context).delete()
     }
 
     fun logout(context: Context) {
         Prefs(context).clearLogin()
+        refreshJob?.cancel()
         source = null
         epgCache.clear()
+        liveCats = null
+        liveAll = null
+        cacheFile(context).delete()
     }
 
-    fun refresh() {
+    /** Called when the app opens: show the saved list right away, then update it quietly. */
+    fun onAppOpened(context: Context) {
+        val app = context.applicationContext
+        if (liveAll == null) loadSaved(app)
+        refreshInBackground(app)
+    }
+
+    fun refreshInBackground(context: Context) {
+        if (refreshJob?.isActive == true) return
+        val src = source ?: return
+        refreshJob = scope.launch {
+            refreshing = true
+            try {
+                src.clearCache()
+                val cats = src.liveCategories()
+                val all = src.allLiveChannels()
+                liveCats = cats
+                liveAll = all
+                liveError = null
+                epgCache.clear()
+                withContext(Dispatchers.IO) { save(context, cats, all) }
+            } catch (e: Exception) {
+                if (liveAll == null) liveError = e.message ?: "Couldn't load channels"
+            } finally {
+                refreshing = false
+            }
+        }
+    }
+
+    fun channelsIn(categoryId: String): List<LiveChannel> = liveAll.orEmpty().filter { it.categoryId == categoryId }
+
+    fun channelById(id: String): LiveChannel? = liveAll?.firstOrNull { it.id == id }
+
+    private fun cacheFile(context: Context) = File(context.filesDir, "live_cache.json")
+
+    private fun loadSaved(context: Context) {
+        try {
+            val f = cacheFile(context)
+            if (!f.exists()) return
+            val j = JSONObject(f.readText())
+            val ca = j.getJSONArray("cats")
+            liveCats = (0 until ca.length()).map { i ->
+                val o = ca.getJSONObject(i); Category(o.getString("id"), o.getString("name"))
+            }
+            val ch = j.getJSONArray("ch")
+            liveAll = (0 until ch.length()).map { i ->
+                val o = ch.getJSONObject(i)
+                LiveChannel(
+                    id = o.getString("id"), num = o.optInt("num"), name = o.getString("name"),
+                    logo = o.optString("logo").ifEmpty { null }, categoryId = o.optString("cat"),
+                    epgId = o.optString("epg").ifEmpty { null }, hasArchive = o.optBoolean("arc"),
+                    archiveDays = o.optInt("days"), url = o.getString("url"),
+                )
+            }
+        } catch (e: Exception) {
+            liveCats = null
+            liveAll = null
+        }
+    }
+
+    private fun save(context: Context, cats: List<Category>, all: List<LiveChannel>) {
+        val ca = JSONArray()
+        cats.forEach { ca.put(JSONObject().put("id", it.id).put("name", it.name)) }
+        val ch = JSONArray()
+        all.forEach {
+            ch.put(JSONObject().put("id", it.id).put("num", it.num).put("name", it.name).put("logo", it.logo ?: "")
+                .put("cat", it.categoryId).put("epg", it.epgId ?: "").put("arc", it.hasArchive)
+                .put("days", it.archiveDays).put("url", it.url))
+        }
+        val tmp = File(context.filesDir, "live_cache.tmp")
+        tmp.writeText(JSONObject().put("cats", ca).put("ch", ch).toString())
+        tmp.renameTo(cacheFile(context))
+    }
+
+    fun refresh(context: Context) {
         source?.clearCache()
         epgCache.clear()
+        refreshInBackground(context)
     }
 
     /** EPG for one channel, cached for 15 minutes, max 6 requests at once. */

@@ -49,16 +49,12 @@ fun MenuScreen(onLogout: () -> Unit) {
 
     Row(Modifier.fillMaxSize().padding(24.dp)) {
         Column(Modifier.width(320.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (com.forbiddenstreams.tv.player.PlayerHolder.isMiniActive) {
-                MiniPlayer(320.dp)
-            } else {
-                Image(painterResource(R.drawable.logo), null, Modifier.size(200.dp).align(Alignment.CenterHorizontally))
-            }
+            Image(painterResource(R.drawable.logo), null, Modifier.size(200.dp).align(Alignment.CenterHorizontally))
             Spacer(Modifier.height(12.dp))
             sections.forEachIndexed { i, label ->
                 SideItem(label, selected = section == i, modifier = Modifier.fillMaxWidth(), onClick = {
                     when (i) {
-                        2 -> { Session.refresh(); toast(context, "Channels, movies and shows will reload") }
+                        2 -> { Session.refresh(context); toast(context, "Updating channels, movies and shows…") }
                         4 -> { confirmLogout = true }
                         else -> { section = i }
                     }
@@ -67,6 +63,7 @@ fun MenuScreen(onLogout: () -> Unit) {
         }
         Spacer(Modifier.width(32.dp))
         Column(Modifier.weight(1f).fillMaxHeight()) {
+            MiniPlayer(300.dp, Modifier.align(Alignment.End).padding(bottom = 8.dp))
             when (section) {
                 0 -> {
                     val recs = remember(tick) { Recordings.all(context) }
