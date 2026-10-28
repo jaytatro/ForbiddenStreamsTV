@@ -45,28 +45,11 @@ import com.forbiddenstreams.tv.reminders.Reminders
 import java.io.File
 
 @Composable
-fun MenuScreen(onLogout: () -> Unit) {
+fun MenuScreen(section: Int) {
     val context = LocalContext.current
-    var section by remember { mutableIntStateOf(0) }
     var tick by remember { mutableIntStateOf(0) }
-    var confirmLogout by remember { mutableStateOf(false) }
-    val sections = listOf("⏺  Recordings", "⏰  Reminders", "🗂  Categories", "⟳  Refresh content", "👤  Account", "⎋  Log out")
 
     Row(Modifier.fillMaxSize().padding(24.dp)) {
-        Column(Modifier.width(320.dp).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Image(painterResource(R.drawable.logo), null, Modifier.size(200.dp).align(Alignment.CenterHorizontally))
-            Spacer(Modifier.height(12.dp))
-            sections.forEachIndexed { i, label ->
-                SideItem(label, selected = section == i, modifier = Modifier.fillMaxWidth(), onClick = {
-                    when (i) {
-                        3 -> { Session.refresh(context); toast(context, "Updating channels, movies and shows…") }
-                        5 -> { confirmLogout = true }
-                        else -> { section = i }
-                    }
-                })
-            }
-        }
-        Spacer(Modifier.width(32.dp))
         Column(Modifier.weight(1f).fillMaxHeight()) {
             MiniPlayer(300.dp, Modifier.align(Alignment.End).padding(bottom = 8.dp))
             when (section) {
@@ -134,17 +117,6 @@ fun MenuScreen(onLogout: () -> Unit) {
         }
     }
 
-    if (confirmLogout) {
-        ChoiceDialog(
-            title = "Log out?",
-            subtitle = "You'll need your login details to sign back in.",
-            options = listOf(
-                "Log out" to { confirmLogout = false; onLogout() },
-                "Cancel" to { confirmLogout = false },
-            ),
-            onDismiss = { confirmLogout = false },
-        )
-    }
 }
 
 @Composable

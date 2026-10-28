@@ -130,19 +130,15 @@ fun playChannels(context: Context, list: List<LiveChannel>, index: Int, fullScre
 // ------------------------------------------------------------ Channels tab
 
 @Composable
-fun ChannelsScreen() {
+fun ChannelsScreen(groupKey: String?, onGroup: (String?) -> Unit) {
     val context = LocalContext.current
     val prefs = remember { Prefs(context) }
     val cats = Session.liveCats
-    var groupKey by rememberSaveable { mutableStateOf(prefs.lastGroup) }
-    var guideOpen by rememberSaveable { mutableStateOf(false) }
-    var startId by remember { mutableStateOf<String?>(null) }
-    var drawer by remember { mutableStateOf(false) }
     var favTick by remember { mutableIntStateOf(0) }
     var query by remember { mutableStateOf("") }
     var submitted by remember { mutableStateOf("") }
 
-    // When the app opens: play the last channel in the preview on the right of the category list.
+    // When the app opens: play the last channel in the preview (right side, middle).
     LaunchedEffect(Session.liveAll) {
         if (!Session.resumePending || Session.liveAll == null) return@LaunchedEffect
         Session.resumePending = false
@@ -150,8 +146,6 @@ fun ChannelsScreen() {
         val gk = prefs.lastGroup
         val g = groupsFor(Session.liveCats.orEmpty()).firstOrNull { it.key == gk && it != Group.Search } ?: Group.All
         val list = channelsOf(prefs, g).let { l -> if (l.any { it.id == last.id }) l else listOf(last) }
-        groupKey = g.key
-        startId = last.id
         if (PlayerHolder.current == null) playChannels(context, list, list.indexOfFirst { it.id == last.id }, fullScreen = false)
     }
 
@@ -164,9 +158,8 @@ fun ChannelsScreen() {
         }
         return
     }
-    // Settings › Categories decides the order and which ones are hidden.
     val groups = remember(cats, CategoryPrefs.version) { groupsFor(CategoryPrefs.visible(context, cats)) }
-    val group = groups.firstOrNull { it.key == groupKey } ?: Group.All
+    val group = groupKey?.let { k -> groups.firstOrNull { it.key == k } }
 
     fun toggleFav(ch: LiveChannel) {
         val added = prefs.toggleFavorite(ch.id)
@@ -174,74 +167,11 @@ fun ChannelsScreen() {
         favTick++
     }
 
-    fun open(g: Group) {
-        groupKey = g.key
-        if (g != Group.Search) prefs.lastGroup = g.key
-        // Land on the channel that's playing if it's in this category.
-        startId = PlayerHolder.current?.channelId
-        drawer = false
-        guideOpen = true
-    }
-
-    if (guideOpen) {
-        // BACK once in the guide = category list; BACK again (from the list) = leave the guide.
-        BackHandler(enabled = !drawer) { drawer = true }
-        val list = remember(group.key, Session.liveAll, favTick) { channelsOf(prefs, group) }
-        Box(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize()) {
-                if (group == Group.Search) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp), verticalAlignment = Alignment.Bottom) {
-                        Box(Modifier.weight(1f)) {
-                            FsTextField(
-                                "Search channels (type, then press Enter/Done)", query, { query = it },
-                                androidx.compose.ui.text.input.KeyboardType.Text,
-                                done = { submitted = query.trim() },
-                            )
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Pill("Search", selected = true, onClick = { submitted = query.trim() })
-                    }
-                }
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    val shown = if (group == Group.Search) {
-                        if (submitted.length < 2) null else list.filter { it.name.contains(submitted, ignoreCase = true) }
-                    } else list
-                    when {
-                        shown == null -> MessageBox("Search all channels", "Type at least 2 letters of a channel name.")
-                        shown.isEmpty() -> MessageBox(
-                            when (group) {
-                                Group.Favorites -> "No favorites yet"
-                                Group.History -> "Nothing watched yet"
-                                Group.Search -> "No channels found"
-                                else -> "No channels in this category"
-                            },
-                            if (group == Group.Favorites) "In the guide, hold OK on a show and pick Add to favorites." else "Press BACK for categories.",
-                        )
-                        else -> GuideView(
-                            group = group,
-                            channels = shown,
-                            startId = startId,
-                            active = !drawer,
-                            onCategories = { drawer = true },
-                            onToggleFav = { toggleFav(it) },
-                        )
-                    }
-                }
-            }
-            if (drawer) {
-                CategoryDrawer(groups, group, onPick = { open(it) }, onClose = { drawer = false; guideOpen = false })
-            }
-        }
-        return
-    }
-
-    // Category list only. Channels appear after a category is picked.
-    Row(Modifier.fillMaxSize().padding(start = 16.dp, top = 8.dp, end = 16.dp)) {
-        GroupList(groups, group, Modifier.width(380.dp)) { open(it) }
-        Box(Modifier.weight(1f).fillMaxHeight().padding(start = 24.dp)) {
+    if (group == null) {
+        // Nothing picked yet: the live preview, right side, middle of the screen.
+        Box(Modifier.fillMaxSize().padding(24.dp)) {
             if (PlayerHolder.isMiniActive) {
-                // Last/current channel, right side, middle of the screen. OK = full screen.
-                MiniPlayer(760.dp, Modifier.align(Alignment.CenterEnd))
+                MiniPlayer(820.dp, Modifier.align(Alignment.CenterEnd))
             } else {
                 Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                     Image(painterResource(R.drawable.logo), null, Modifier.size(300.dp).alpha(0.3f))
@@ -251,6 +181,50 @@ fun ChannelsScreen() {
             }
             if (Session.refreshing) {
                 Text("Updating playlist…", color = FS.TextDim, fontSize = 13.sp, modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp))
+            }
+        }
+        return
+    }
+
+    // A category was picked in the rail box: show only its TV guide.
+    val list = remember(group.key, Session.liveAll, favTick) { channelsOf(prefs, group) }
+    Column(Modifier.fillMaxSize()) {
+        if (group == Group.Search) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp), verticalAlignment = Alignment.Bottom) {
+                Box(Modifier.weight(1f)) {
+                    FsTextField(
+                        "Search channels (type, then press Enter/Done)", query, { query = it },
+                        androidx.compose.ui.text.input.KeyboardType.Text,
+                        done = { submitted = query.trim() },
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Pill("Search", selected = true, onClick = { submitted = query.trim() })
+            }
+        }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            val shown = if (group == Group.Search) {
+                if (submitted.length < 2) null else list.filter { it.name.contains(submitted, ignoreCase = true) }
+            } else list
+            when {
+                shown == null -> MessageBox("Search all channels", "Type at least 2 letters of a channel name.")
+                shown.isEmpty() -> MessageBox(
+                    when (group) {
+                        Group.Favorites -> "No favorites yet"
+                        Group.History -> "Nothing watched yet"
+                        Group.Search -> "No channels found"
+                        else -> "No channels in this category"
+                    },
+                    if (group == Group.Favorites) "In the guide, hold OK on a show and pick Add to favorites." else "Press BACK for categories.",
+                )
+                else -> GuideView(
+                    group = group,
+                    channels = shown,
+                    startId = PlayerHolder.current?.channelId,
+                    active = true,
+                    onCategories = { },
+                    onToggleFav = { toggleFav(it) },
+                )
             }
         }
     }

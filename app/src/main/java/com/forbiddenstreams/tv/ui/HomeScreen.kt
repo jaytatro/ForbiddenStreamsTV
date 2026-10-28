@@ -48,32 +48,85 @@ import com.forbiddenstreams.tv.reminders.Reminder
 import com.forbiddenstreams.tv.reminders.Reminders
 import com.forbiddenstreams.tv.sports.League
 import kotlinx.coroutines.delay
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
+import com.forbiddenstreams.tv.data.CategoryPrefs
+import com.forbiddenstreams.tv.data.Prefs
+import com.forbiddenstreams.tv.data.Session
+import kotlinx.coroutines.launch
 
-private data class TopTab(val label: String, val league: League? = null)
+enum class Sec { CHANNELS, MOVIES, SHOWS, SPORTS, SETTINGS }
 
-private val tabs = listOf(
-    TopTab("MENU"),
-    TopTab("CHANNELS"),
-    TopTab("🎬 MOVIES"),
-    TopTab("📼 TV SHOWS"),
-    TopTab("🏈 NFL", League.NFL),
-    TopTab("🏀 NBA", League.NBA),
-    TopTab("🏒 NHL", League.NHL),
-    TopTab("⚾ MLB", League.MLB),
+private val railIcon = mapOf(
+    Sec.CHANNELS to RailIcon.CHANNELS, Sec.MOVIES to RailIcon.MOVIES, Sec.SHOWS to RailIcon.SHOWS,
+    Sec.SPORTS to RailIcon.SPORTS, Sec.SETTINGS to RailIcon.SETTINGS,
 )
 
+val SETTINGS_SECTIONS = listOf("⏺  Recordings", "⏰  Reminders", "🗂  Categories", "⟳  Refresh content", "👤  Account", "⎋  Log out")
+
+/**
+ * Left rail (logo, line icons for Channels, Movies, TV Shows, Sports, Settings, clock).
+ * Moving onto an icon opens a small box next to it (same black/green look as the rail):
+ *  Channels → categories; picking one closes the box and shows that category's guide.
+ *  Movies / TV Shows → Search, Recently Watched, categories; picking one shows the posters.
+ *  Sports → NFL, NBA, NHL, MLB; highlighting one shows its games right away.
+ *  Settings → settings sections.
+ * BACK on any screen comes back to the rail; BACK on the rail = "click back one more time".
+ */
 @Composable
 fun HomeScreen(onLogout: () -> Unit) {
-    var tab by rememberSaveable { mutableIntStateOf(1) }
+    val context = LocalContext.current
+    val prefs = remember { Prefs(context) }
+    val density = LocalDensity.current
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(20_000); now = System.currentTimeMillis() } }
-    val startFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { try { startFocus.requestFocus() } catch (e: Exception) { } }
-    // VOD (Movies, TV Shows) and Sports don't show the live preview: switch it off there.
-    LaunchedEffect(tab) { if (tab in 2..7 && PlayerHolder.isMiniActive) PlayerHolder.stop() }
 
-    // BACK on the main screens: first press shows a hint, second press within 2.5 s closes the app.
-    val activity = LocalContext.current as? android.app.Activity
+    var section by rememberSaveable { mutableStateOf(Sec.CHANNELS) }      // what the screen shows
+    var hover by remember { mutableStateOf<Sec?>(Sec.CHANNELS) }         // which box is open
+    var railFocus by remember { mutableStateOf(false) }
+    var flyFocus by remember { mutableStateOf(false) }
+    var contentFocus by remember { mutableStateOf(false) }
+    // Selections made in the boxes.
+    var chGroup by rememberSaveable { mutableStateOf<String?>(null) }    // null = no guide yet (preview)
+    var movieCat by rememberSaveable { mutableStateOf<String?>(null) }
+    var showCat by rememberSaveable { mutableStateOf<String?>(null) }
+    var league by rememberSaveable { mutableStateOf(League.NFL) }
+    var setSec by rememberSaveable { mutableIntStateOf(0) }
+    var confirmLogout by remember { mutableStateOf(false) }
+
+    val iconReq = remember { Sec.entries.associateWith { FocusRequester() } }
+    val flyEntry = remember { FocusRequester() }
+    val contentReq = remember { FocusRequester() }
+    val iconY = remember { mutableStateMapOf<Sec, Float>() }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) { delay(200); try { iconReq.getValue(Sec.CHANNELS).requestFocus() } catch (e: Exception) { } }
+    // Movies, TV Shows and Sports don't show the live preview: opening them stops it.
+    LaunchedEffect(section) { if (section in setOf(Sec.MOVIES, Sec.SHOWS, Sec.SPORTS) && PlayerHolder.isMiniActive) PlayerHolder.stop() }
+
+    fun toContent() {
+        scope.launch {
+            delay(80)
+            try { contentReq.requestFocus() } catch (e: Exception) { }
+        }
+    }
+
+    // BACK: from a screen → back to the rail; on the rail → exit hint, then close.
+    val activity = context as? android.app.Activity
     var exitHint by remember { mutableStateOf(false) }
     BackHandler {
         if (exitHint) {
@@ -83,85 +136,236 @@ fun HomeScreen(onLogout: () -> Unit) {
             exitHint = true
         }
     }
+    BackHandler(enabled = contentFocus) {
+        try { iconReq.getValue(section).requestFocus() } catch (e: Exception) { }
+    }
     LaunchedEffect(exitHint) { if (exitHint) { delay(2500); exitHint = false } }
 
     Box(Modifier.fillMaxSize()) {
-    Column(Modifier.fillMaxSize()) {
-        // Top menu: CHANNELS · VOD · SPORTS. Moving onto VOD or SPORTS shows its tabs underneath.
-        val vodTabs = listOf(2, 3)
-        val sportTabs = listOf(4, 5, 6, 7)
-        var expanded by remember { mutableIntStateOf(if (tab in vodTabs) 1 else if (tab in sportTabs) 2 else 0) }
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .background(Brush.horizontalGradient(listOf(Color(0xFF0B260C), Color(0xFF050805), Color(0xFF0B260C))))
-                .padding(horizontal = 24.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Image(painterResource(R.drawable.logo), null, Modifier.size(84.dp))
-            Spacer(Modifier.width(18.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Pill(
-                        "📺 CHANNELS", selected = tab == 1, onClick = { tab = 1; expanded = 0 },
-                        modifier = Modifier.focusRequester(startFocus).onFocusChanged { if (it.isFocused) expanded = 0 },
-                    )
-                    Pill(
-                        "🎬 VOD", selected = tab in vodTabs, onClick = { if (tab !in vodTabs) tab = 2; expanded = 1 },
-                        modifier = Modifier.onFocusChanged { if (it.isFocused) expanded = 1 },
-                    )
-                    Pill(
-                        "🏆 SPORTS", selected = tab in sportTabs, onClick = { if (tab !in sportTabs) tab = 4; expanded = 2 },
-                        modifier = Modifier.onFocusChanged { if (it.isFocused) expanded = 2 },
-                    )
+        Row(Modifier.fillMaxSize()) {
+            // ---- Rail ----
+            Column(
+                Modifier.width(RAIL_W).fillMaxHeight().background(Color.Black)
+                    .onFocusChanged { railFocus = it.hasFocus }
+                    .padding(vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Image(painterResource(R.drawable.logo), null, Modifier.size(58.dp))
+                Spacer(Modifier.height(40.dp))
+                for (s in listOf(Sec.CHANNELS, Sec.MOVIES, Sec.SHOWS, Sec.SPORTS)) {
+                    RailButton(s, selected = section == s, req = iconReq.getValue(s), flyEntry = flyEntry,
+                        onY = { iconY[s] = it },
+                        onFocus = { hover = s },
+                        onClick = { hover = s; try { flyEntry.requestFocus() } catch (e: Exception) { } })
+                    Spacer(Modifier.height(30.dp))
                 }
-                Row(
-                    Modifier.height(40.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    val sub = when (expanded) { 1 -> vodTabs; 2 -> sportTabs; else -> emptyList() }
-                    // Sub-tabs start at the left edge, under CHANNELS.
-                    for (i in sub) {
-                        // The preview keeps playing until Movies, TV Shows or a sport is actually opened.
-                        Pill(tabs[i].label, selected = tab == i, onClick = { tab = i }, fontSize = 15.sp,
-                            modifier = Modifier)
+                Spacer(Modifier.weight(1f))
+                RailButton(Sec.SETTINGS, selected = section == Sec.SETTINGS, req = iconReq.getValue(Sec.SETTINGS), flyEntry = flyEntry,
+                    onY = { iconY[Sec.SETTINGS] = it },
+                    onFocus = { hover = Sec.SETTINGS },
+                    onClick = { hover = Sec.SETTINGS; try { flyEntry.requestFocus() } catch (e: Exception) { } })
+                Spacer(Modifier.height(14.dp))
+                Text(Fmt.time(now).substringBefore(' '), color = FS.Green, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text(Fmt.time(now).substringAfter(' '), color = FS.TextDim, fontSize = 11.sp)
+            }
+            Box(Modifier.width(1.dp).fillMaxHeight().background(Color(0xFF12301A)))
+            // ---- Screen ----
+            Box(
+                Modifier.weight(1f).fillMaxHeight()
+                    .onFocusChanged { contentFocus = it.hasFocus }
+                    .focusRequester(contentReq)
+                    .focusGroup(),
+            ) {
+                CompositionLocalProvider(LocalTopMenuFocus provides iconReq.getValue(section)) {
+                    when (section) {
+                        Sec.CHANNELS -> ChannelsScreen(chGroup, onGroup = { chGroup = it })
+                        Sec.MOVIES -> MoviesScreen(movieCat, onSelect = { movieCat = it })
+                        Sec.SHOWS -> SeriesScreen(showCat, onSelect = { showCat = it })
+                        Sec.SPORTS -> SportsScreen(league)
+                        Sec.SETTINGS -> MenuScreen(setSec)
                     }
                 }
             }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(Fmt.time(now), color = FS.Green, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                Text(Fmt.longDay(now), color = FS.TextDim, fontSize = 13.sp)
-            }
-            Spacer(Modifier.width(12.dp))
-            // Settings (was the MENU tab).
-            Pill("⚙", selected = tab == 0, onClick = { tab = 0; expanded = 0 }, fontSize = 24.sp,
-                modifier = Modifier.onFocusChanged { if (it.isFocused) expanded = 0 })
         }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            val t = tabs[tab]
-            androidx.compose.runtime.CompositionLocalProvider(LocalTopMenuFocus provides startFocus) {
-            when {
-                tab == 0 -> MenuScreen(onLogout = onLogout)
-                tab == 1 -> ChannelsScreen()
-                tab == 2 -> MoviesScreen()
-                tab == 3 -> SeriesScreen()
-                t.league != null -> SportsScreen(t.league)
+
+        // ---- Box next to the highlighted icon ----
+        val open = hover
+        if (open != null && (railFocus || flyFocus)) {
+            val y = with(density) { (iconY[open] ?: 0f).toDp() }
+            val box = Modifier
+                .padding(start = RAIL_W + 10.dp)
+                .onFocusChanged { flyFocus = it.hasFocus }
+                .background(Color.Black, RoundedCornerShape(14.dp))
+                .border(1.dp, FS.GreenDeep, RoundedCornerShape(14.dp))
+                .padding(10.dp)
+            val back = iconReq.getValue(open)
+            val placed = if (open == Sec.SETTINGS) Modifier.align(Alignment.BottomStart).padding(bottom = 60.dp)
+                else Modifier.align(Alignment.TopStart).padding(top = (y - 8.dp).coerceAtLeast(8.dp), bottom = 16.dp)
+            Box(placed.then(box)) {
+                when (open) {
+                    Sec.CHANNELS -> {
+                        val groups = remember(Session.liveCats, CategoryPrefs.version) {
+                            groupsFor(CategoryPrefs.visible(context, Session.liveCats.orEmpty()))
+                        }
+                        if (groups.size <= 4) FlyMessage("Loading channels…", flyEntry, back)
+                        else FlyList("CHANNELS", groups.map { it.key to it.title }, chGroup, flyEntry, back, onPick = { k ->
+                            chGroup = k
+                            if (k != Group.Search.key) prefs.lastGroup = k
+                            section = Sec.CHANNELS
+                            toContent()
+                        })
+                    }
+                    Sec.MOVIES, Sec.SHOWS -> {
+                        val movies = open == Sec.MOVIES
+                        val cats by produceState<List<com.forbiddenstreams.tv.data.Category>?>(null, open) {
+                            value = try { if (movies) Session.source?.vodCategories() else Session.source?.seriesCategories() } catch (e: Exception) { emptyList() }
+                        }
+                        val c = cats
+                        if (c == null) FlyMessage("Loading…", flyEntry, back)
+                        else FlyList(
+                            if (movies) "MOVIES" else "TV SHOWS",
+                            listOf(VOD_SEARCH to "🔍  Search", VOD_RECENT to "🕘  Recently Watched") + c.map { it.id to it.name },
+                            if (movies) movieCat else showCat, flyEntry, back,
+                            onPick = { k ->
+                                if (movies) { movieCat = k; section = Sec.MOVIES } else { showCat = k; section = Sec.SHOWS }
+                                toContent()
+                            },
+                        )
+                    }
+                    Sec.SPORTS -> FlyList(
+                        "SPORTS", League.entries.map { it.name to "${it.icon}  ${it.label}" }, league.name, flyEntry, back,
+                        onFocusItem = { k -> league = League.valueOf(k); section = Sec.SPORTS },
+                        onPick = { k -> league = League.valueOf(k); section = Sec.SPORTS; toContent() },
+                    )
+                    Sec.SETTINGS -> FlyList(
+                        "SETTINGS", SETTINGS_SECTIONS.mapIndexed { i, t -> "$i" to t }, "$setSec", flyEntry, back,
+                        onPick = { k ->
+                            when (val i = k.toInt()) {
+                                3 -> { Session.refresh(context); toast(context, "Updating channels, movies and shows…") }
+                                5 -> { confirmLogout = true }
+                                else -> { setSec = i; section = Sec.SETTINGS; toContent() }
+                            }
+                        },
+                    )
+                }
             }
-            }
+        }
+
+        if (exitHint) {
+            Text(
+                "Click back one more time to close",
+                color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp)
+                    .background(FS.Green, RoundedCornerShape(50))
+                    .padding(horizontal = 28.dp, vertical = 12.dp),
+            )
         }
     }
-    if (exitHint) {
-        Text(
-            "Click back one more time to close",
-            color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp)
-                .background(FS.Green, RoundedCornerShape(50))
-                .padding(horizontal = 28.dp, vertical = 12.dp),
+    if (confirmLogout) {
+        ChoiceDialog(
+            title = "Log out?",
+            subtitle = "You'll need your login details to sign back in.",
+            options = listOf(
+                "Log out" to { confirmLogout = false; onLogout() },
+                "Cancel" to { confirmLogout = false },
+            ),
+            onDismiss = { confirmLogout = false },
         )
     }
-    }
     ReminderWatcher()
+}
+
+private val RAIL_W = 92.dp
+const val VOD_SEARCH = "__search__"
+const val VOD_RECENT = "__recent__"
+
+@Composable
+private fun RailButton(
+    sec: Sec,
+    selected: Boolean,
+    req: FocusRequester,
+    flyEntry: FocusRequester,
+    onY: (Float) -> Unit,
+    onFocus: () -> Unit,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(14.dp)
+    androidx.tv.material3.Surface(
+        onClick = onClick,
+        modifier = Modifier.size(60.dp)
+            .focusRequester(req)
+            .focusProperties { right = flyEntry }
+            .onGloballyPositioned { onY(it.positionInRoot().y) }
+            .onFocusChanged { if (it.isFocused) onFocus() },
+        shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(shape = shape),
+        colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
+            containerColor = if (selected) Color(0xFF0F2A10) else Color.Black,
+            focusedContainerColor = Color(0xFF0F2A10),
+            pressedContainerColor = FS.GreenDeep,
+        ),
+        border = androidx.tv.material3.ClickableSurfaceDefaults.border(
+            border = if (selected) androidx.tv.material3.Border(androidx.compose.foundation.BorderStroke(1.dp, FS.GreenDeep), shape = shape)
+                else androidx.tv.material3.Border.None,
+            focusedBorder = androidx.tv.material3.Border(androidx.compose.foundation.BorderStroke(2.dp, FS.Green), shape = shape),
+        ),
+        scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            LineIcon(railIcon.getValue(sec), 34.dp, FS.Green)
+        }
+    }
+}
+
+/** The list inside a rail box: green on black, sized to its longest entry; ▼ at the end wraps to the top. */
+@Composable
+private fun FlyList(
+    title: String,
+    items: List<Pair<String, String>>,
+    selectedKey: String?,
+    entry: FocusRequester,
+    back: FocusRequester,
+    onFocusItem: ((String) -> Unit)? = null,
+    onPick: (String) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val top = remember { FocusRequester() }
+    val selIndex = items.indexOfFirst { it.first == selectedKey }.let { if (it < 0) 0 else it }
+    val state = rememberLazyListState(selIndex)
+    val longest = items.maxOfOrNull { it.second.length } ?: 10
+    val w = (longest * 11 + 70).coerceIn(200, 400).dp
+    Column(Modifier.width(w)) {
+        Text(title, color = FS.Green, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp,
+            modifier = Modifier.padding(start = 14.dp, bottom = 6.dp))
+        LazyColumn(state = state, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            itemsIndexed(items, key = { _, it -> it.first }) { i, (key, label) ->
+                SideItem(
+                    label, selected = key == selectedKey, onClick = { onPick(key) },
+                    onFocus = { onFocusItem?.invoke(key) },
+                    textColor = FS.Green,
+                    modifier = Modifier.fillMaxWidth()
+                        .then(if (i == selIndex) Modifier.focusRequester(entry) else Modifier)
+                        .then(if (i == 0) Modifier.focusRequester(top) else Modifier)
+                        .focusProperties { left = back }
+                        .then(
+                            if (i == items.size - 1) Modifier.onPreviewKeyEvent { ev ->
+                                if (ev.type == KeyEventType.KeyDown && ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN) {
+                                    scope.launch { state.scrollToItem(0); delay(60); try { top.requestFocus() } catch (e: Exception) { } }
+                                    true
+                                } else false
+                            } else Modifier
+                        ),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FlyMessage(text: String, entry: FocusRequester, back: FocusRequester) {
+    Text(
+        text, color = FS.Green, fontSize = 16.sp,
+        modifier = Modifier.width(220.dp).padding(14.dp).focusRequester(entry).focusProperties { left = back }.focusable(),
+    )
 }
 
 /** Pops up "Starting now" when a reminder is due while the app is open. */

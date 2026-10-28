@@ -57,12 +57,18 @@ import com.forbiddenstreams.tv.data.RecentItem
 import com.forbiddenstreams.tv.data.Recents
 
 /** Sidebar of groups + poster grid; shared by Movies and TV Shows. */
-private const val RECENT = "__recent__"
+private const val RECENT = VOD_RECENT
 
+/**
+ * Movies / TV Shows content. The category (or Search / Recently Watched) is picked in the
+ * rail box; [selected] null = Recently Watched if there's anything, else the first category.
+ */
 @Composable
 private fun <T> PosterBrowser(
     kind: String,
     recentKind: String,
+    selected: String?,
+    onSelect: (String?) -> Unit,
     loadCats: suspend () -> List<Category>,
     loadItems: suspend (String) -> List<T>,
     loadAll: suspend () -> List<T>,
@@ -74,65 +80,39 @@ private fun <T> PosterBrowser(
     var cats by remember { mutableStateOf<List<Category>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var reload by remember { mutableIntStateOf(0) }
-    var selected by rememberSaveable { mutableStateOf<String?>(null) }
-    var searchOpen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(reload) {
-        try {
-            val c = loadCats()
-            cats = c
-            if (selected == null || (selected != RECENT && c.none { it.id == selected })) {
-                selected = if (Recents.all(context, recentKind).isNotEmpty()) RECENT else c.firstOrNull()?.id
-            }
-            error = null
-        } catch (e: Exception) { error = e.message ?: "Network error" }
+        try { cats = loadCats(); error = null } catch (e: Exception) { error = e.message ?: "Network error" }
     }
     val c = cats
     if (c == null) {
         if (error != null) MessageBox("Couldn't load $kind", error, "Retry") { reload++ } else LoadingBox("Loading $kind")
         return
     }
+    val catId = selected ?: if (Recents.all(context, recentKind).isNotEmpty()) RECENT else c.firstOrNull()?.id
 
-    if (searchOpen) {
-        SearchScreen(kind, loadAll, title, image, onOpen = onOpen, onClose = { searchOpen = false })
+    if (catId == VOD_SEARCH) {
+        SearchScreen(kind, loadAll, title, image, onOpen = onOpen, onClose = { onSelect(null) })
         return
     }
-
-    Row(Modifier.fillMaxSize().padding(start = 16.dp, top = 8.dp)) {
-        Column(Modifier.width(300.dp).fillMaxHeight()) {
-            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                item(key = "search") {
-                    // Opens its own screen; results fill in as you type.
-                    SideItem("🔍 Search", false, onClick = { searchOpen = true }, modifier = Modifier.fillMaxWidth())
-                }
-                item(key = RECENT) {
-                    SideItem("🕘 Recently Watched", selected == RECENT, onClick = { selected = RECENT }, modifier = Modifier.fillMaxWidth())
-                }
-                items(c, key = { it.id }) { cat ->
-                    SideItem(cat.name, cat.id == selected, onClick = { selected = cat.id }, modifier = Modifier.fillMaxWidth())
-                }
-            }
+    if (catId == RECENT) {
+        RecentGrid(recentKind, Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 8.dp))
+        return
+    }
+    val catItems by produceState<List<T>?>(null, catId) {
+        value = if (catId == null) emptyList() else try { loadItems(catId) } catch (e: Exception) { emptyList() }
+    }
+    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 8.dp)) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(c.firstOrNull { it.id == catId }?.name ?: "", color = FS.Text, fontSize = 22.sp,
+                fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            catItems?.let { Text("${it.size} titles", color = FS.TextDim, fontSize = 16.sp) }
         }
-        val catId = selected
-        if (catId == RECENT) {
-            RecentGrid(recentKind, Modifier.weight(1f).padding(horizontal = 16.dp))
-            return@Row
-        }
-        val catItems by produceState<List<T>?>(null, catId) {
-            value = if (catId == null) emptyList() else try { loadItems(catId) } catch (e: Exception) { emptyList() }
-        }
-        Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
-            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(c.firstOrNull { it.id == catId }?.name ?: "", color = FS.Text, fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                catItems?.let { Text("${it.size} titles", color = FS.TextDim, fontSize = 16.sp) }
-            }
-            Spacer(Modifier.height(6.dp))
-            val list = catItems
-            when {
-                list == null -> LoadingBox()
-                list.isEmpty() -> MessageBox("Nothing in this group")
-                else -> PosterGrid(list, title, image, onOpen)
-            }
+        Spacer(Modifier.height(6.dp))
+        val list = catItems
+        when {
+            list == null -> LoadingBox()
+            list.isEmpty() -> MessageBox(if (c.isEmpty()) "No $kind on this account" else "Nothing in this group")
+            else -> PosterGrid(list, title, image, onOpen)
         }
     }
 }
@@ -274,7 +254,7 @@ private fun <T> SearchScreen(
 }
 
 @Composable
-fun MoviesScreen() {
+fun MoviesScreen(selected: String?, onSelect: (String?) -> Unit) {
     val src = Session.source ?: return
     var open by remember { mutableStateOf<VodItem?>(null) }
     val o = open
@@ -285,6 +265,8 @@ fun MoviesScreen() {
     PosterBrowser(
         kind = "movies",
         recentKind = "movie",
+        selected = selected,
+        onSelect = onSelect,
         loadCats = { src.vodCategories() },
         loadItems = { src.vodItems(it) },
         loadAll = { src.allVod() },
@@ -327,7 +309,7 @@ private fun MovieDetails(item: VodItem, onBack: () -> Unit) {
 }
 
 @Composable
-fun SeriesScreen() {
+fun SeriesScreen(selected: String?, onSelect: (String?) -> Unit) {
     val src = Session.source ?: return
     var open by remember { mutableStateOf<SeriesItem?>(null) }
     val o = open
@@ -338,6 +320,8 @@ fun SeriesScreen() {
     PosterBrowser(
         kind = "TV shows",
         recentKind = "episode",
+        selected = selected,
+        onSelect = onSelect,
         loadCats = { src.seriesCategories() },
         loadItems = { src.seriesItems(it) },
         loadAll = { src.allSeries() },
