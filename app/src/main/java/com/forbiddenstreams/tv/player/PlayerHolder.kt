@@ -105,6 +105,29 @@ object PlayerHolder {
         return ExoPlayer.Builder(app, renderers).setMediaSourceFactory(sources).build()
     }
 
+    /**
+     * Extra Multi-View screens: same sound setup as live TV, plus a software-decoder fallback
+     * (boxes run out of hardware video decoders with 3–4 screens) and smaller buffers to save memory.
+     */
+    fun createTilePlayer(context: Context): ExoPlayer {
+        val app = context.applicationContext
+        val http = DefaultHttpDataSource.Factory()
+            .setUserAgent(Http.USER_AGENT)
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(30_000)
+        val load = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+            .setBufferDurationsMs(4_000, 15_000, 1_500, 3_000)
+            .build()
+        val p = ExoPlayer.Builder(app, androidx.media3.exoplayer.DefaultRenderersFactory(app).setEnableDecoderFallback(true))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(app, http)))
+            .setLoadControl(load)
+            .build()
+        // Small screens don't need full-HD variants when the stream offers a choice.
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setMaxVideoSize(1280, 720).build()
+        return p
+    }
+
     /** Bumped whenever a new player is built, so preview windows re-attach. */
     var playerVersion by mutableIntStateOf(0)
         private set

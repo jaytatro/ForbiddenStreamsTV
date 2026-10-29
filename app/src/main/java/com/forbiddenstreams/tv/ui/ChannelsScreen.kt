@@ -133,7 +133,7 @@ fun playChannels(context: Context, list: List<LiveChannel>, index: Int, fullScre
 // ------------------------------------------------------------ Channels tab
 
 @Composable
-fun ChannelsScreen(groupKey: String?, onGroup: (String?) -> Unit) {
+fun ChannelsScreen(groupKey: String?, onGroup: (String?) -> Unit, active: Boolean = true) {
     val context = LocalContext.current
     val prefs = remember { Prefs(context) }
     val cats = Session.liveCats
@@ -224,7 +224,7 @@ fun ChannelsScreen(groupKey: String?, onGroup: (String?) -> Unit) {
                     group = group,
                     channels = shown,
                     startId = PlayerHolder.current?.channelId,
-                    active = true,
+                    active = active,
                     onCategories = { },
                     onToggleFav = { toggleFav(it) },
                 )

@@ -5,6 +5,7 @@ import android.view.TextureView
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,6 +59,7 @@ import kotlinx.coroutines.delay
 class MvTile(ch: LiveChannel?, val player: ExoPlayer, val main: Boolean) {
     var ch by mutableStateOf(ch)
     var paused by mutableStateOf(false)
+    var failed by mutableStateOf(false)
 }
 
 /** Screens in Multi-View (up to 4). */
@@ -72,21 +74,41 @@ object MultiView {
 
     fun add(context: Context, ch: LiveChannel) {
         if (tiles.size >= 4) return
-        val p = PlayerHolder.createPlayer(context)
+        val p = PlayerHolder.createTilePlayer(context)
         p.setMediaItem(MediaItem.fromUri(ch.url))
         p.volume = 0f
         p.prepare()
         p.playWhenReady = true
-        tiles += MvTile(ch, p, main = false)
+        val t = MvTile(ch, p, main = false)
+        watch(t)
+        tiles += t
     }
 
     fun change(context: Context, i: Int, ch: LiveChannel) {
         val t = tiles.getOrNull(i) ?: return
         if (t.main) playChannels(context, listOf(ch), 0, fullScreen = false)
-        else { t.player.setMediaItem(MediaItem.fromUri(ch.url)); t.player.prepare(); t.player.playWhenReady = true }
+        else { t.player.setMediaItem(MediaItem.fromUri(ch.url)); t.player.prepare(); t.player.playWhenReady = true; t.failed = false }
         t.ch = ch
         t.paused = false
     }
+
+    /** A screen whose stream drops shows "Reconnecting…" and retries by itself (up to 3 times in a row). */
+    private fun watch(t: MvTile) {
+        var tries = 0
+        t.player.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                t.failed = true
+                if (tries++ >= 3 || t !in tiles) return
+                retryHandler.postDelayed({
+                    if (t in tiles) { t.player.prepare(); t.player.playWhenReady = !t.paused }
+                }, 3_000)
+            }
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == androidx.media3.common.Player.STATE_READY) { t.failed = false; tries = 0 }
+            }
+        })
+    }
+    private val retryHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     fun togglePause(i: Int) {
         val t = tiles.getOrNull(i) ?: return
@@ -110,6 +132,7 @@ object MultiView {
     }
 
     fun clear() {
+        retryHandler.removeCallbacksAndMessages(null)
         tiles.filter { !it.main }.forEach { it.player.release() }
         tiles.clear()
         PlayerHolder.existingPlayer()?.let { it.volume = 1f; it.playWhenReady = true }
@@ -152,12 +175,16 @@ fun MultiViewScreen(onExit: (LiveChannel?) -> Unit) {
     @Composable
     fun tile(i: Int, modifier: Modifier) {
         val t = tiles.getOrNull(i) ?: return
-        MvVideo(
-            t, selected = i == sel, req = reqs[i],
-            modifier = modifier,
-            onFocus = { sel = i },
-            onClick = { sel = i; menu = true },
-        )
+        // Keyed by the screen itself: after "Remove screen" the slot gets a fresh video view
+        // for the screen that moved into it (before, it stayed frozen on the removed stream).
+        androidx.compose.runtime.key(t) {
+            MvVideo(
+                t, selected = i == sel, req = reqs[i],
+                modifier = modifier,
+                onFocus = { sel = i },
+                onClick = { sel = i; menu = true },
+            )
+        }
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -173,7 +200,7 @@ fun MultiViewScreen(onExit: (LiveChannel?) -> Unit) {
             tiles.size <= 1 -> Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                 tile(0, Modifier.width(820.dp).aspectRatio(16f / 9f))
                 Spacer(Modifier.height(18.dp))
-                Text("Press OK to show menu", color = Color.White, fontSize = 17.sp)
+                Text("Press OK to show menu", color = FS.Green, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 Text("Your IPTV provider may limit the number of concurrent connections", color = FS.TextDim, fontSize = 13.sp)
             }
             tiles.size == 2 -> Row(Modifier.fillMaxSize().padding(12.dp), verticalAlignment = Alignment.CenterVertically,
@@ -235,8 +262,8 @@ private fun MvVideo(t: MvTile, selected: Boolean, req: FocusRequester, modifier:
         shape = ClickableSurfaceDefaults.shape(shape = shape),
         colors = ClickableSurfaceDefaults.colors(containerColor = Color.Black, focusedContainerColor = Color.Black),
         border = ClickableSurfaceDefaults.border(
-            border = Border(BorderStroke(2.dp, Color(0x33FFFFFF)), shape = shape),
-            focusedBorder = Border(BorderStroke(3.dp, Color.White), shape = shape),
+            border = Border(BorderStroke(2.dp, FS.GreenDim), shape = shape),
+            focusedBorder = Border(BorderStroke(3.dp, FS.Green), shape = shape),
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
     ) {
@@ -246,10 +273,13 @@ private fun MvVideo(t: MvTile, selected: Boolean, req: FocusRequester, modifier:
                 onRelease = { try { t.player.clearVideoTextureView(it) } catch (e: Exception) { } },
                 modifier = Modifier.fillMaxSize(),
             )
+            if (t.failed && !t.paused) {
+                Text("Reconnecting…", color = FS.Green, fontSize = 15.sp, modifier = Modifier.align(Alignment.Center))
+            }
             if (selected || t.paused) {
                 Text(
                     (if (selected) "🔊 " else "") + (if (t.paused) "⏸ " else "") + (t.ch?.name ?: ""),
-                    color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    color = FS.Green, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.align(Alignment.TopStart).padding(8.dp)
                         .background(Color(0xB3000000), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
                 )
@@ -264,7 +294,8 @@ private fun MvMenu(options: List<Pair<String, () -> Unit>>, modifier: Modifier) 
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { delay(100); try { first.requestFocus() } catch (e: Exception) { } }
     Column(
-        modifier.width(300.dp).background(Color(0xF2262626), RoundedCornerShape(12.dp)).padding(8.dp),
+        modifier.width(300.dp).background(Color(0xF2000000), RoundedCornerShape(12.dp))
+            .border(1.dp, FS.GreenDeep, RoundedCornerShape(12.dp)).padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         options.forEachIndexed { i, (label, action) ->
@@ -274,8 +305,8 @@ private fun MvMenu(options: List<Pair<String, () -> Unit>>, modifier: Modifier) 
                 modifier = Modifier.fillMaxWidth().then(if (i == 0) Modifier.focusRequester(first) else Modifier),
                 shape = ClickableSurfaceDefaults.shape(shape = shape),
                 colors = ClickableSurfaceDefaults.colors(
-                    containerColor = Color.Transparent, contentColor = Color.White,
-                    focusedContainerColor = Color(0xFFE8E8E8), focusedContentColor = Color.Black,
+                    containerColor = Color.Transparent, contentColor = FS.Green,
+                    focusedContainerColor = FS.Green, focusedContentColor = Color.Black,
                 ),
                 scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
             ) {
@@ -314,7 +345,7 @@ private fun SearchChannelPicker(onPick: (LiveChannel) -> Unit, onClose: () -> Un
                     Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(width = 70.dp, height = 38.dp), contentAlignment = Alignment.Center) { NetImage(c.logo, Modifier.fillMaxSize()) }
                         Spacer(Modifier.width(14.dp))
-                        Text(c.name, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(c.name, color = FS.Green, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
