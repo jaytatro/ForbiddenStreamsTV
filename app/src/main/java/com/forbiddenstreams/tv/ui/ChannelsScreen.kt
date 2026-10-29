@@ -322,6 +322,13 @@ private fun buildCells(programs: List<Program>?, ws: Long, we: Long): List<Cell>
     return out
 }
 
+/** True if [time] is inside the channel's catch-up window. */
+private fun inArchive(ch: LiveChannel, time: Long): Boolean {
+    if (!ch.hasArchive) return false
+    val days = if (ch.archiveDays > 0) ch.archiveDays else 7
+    return time >= System.currentTimeMillis() - days * DAY
+}
+
 private fun dayStart(offset: Int): Long = Calendar.getInstance().apply {
     set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
     add(Calendar.DAY_OF_YEAR, offset)
@@ -471,6 +478,14 @@ fun GuideView(
         val p = cellAt(row)?.program
         val t = System.currentTimeMillis()
         when {
+            p == null && cellAt(row)?.let { it.end <= t } == true && inArchive(ch, cellAt(row)!!.start) -> {
+                // Past hour with no guide info on a catch-up channel: play that hour.
+                val c = cellAt(row)!!
+                val prog = Program("${ch.name} · ${Fmt.time(c.start)}", "", c.start, c.end, true)
+                val u = src.catchupUrl(ch, prog)
+                if (u != null) playItem(PlayItem(prog.title, u, live = false, subtitle = ch.name))
+                else toast(context, "Catch-up isn't available for this time")
+            }
             p == null || p.isLive(t) -> playCh(channels, row)
             p.end <= t -> {
                 val u = src.catchupUrl(ch, p)
@@ -777,9 +792,10 @@ private fun GuideRow(
                             .padding(start = 8.dp + shift, end = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        if (p != null && past && p.hasArchive) Text("⟲ ", color = FS.Green, fontSize = 13.sp)
+                        val catchup = past && inArchive(ch, cell.start) && (p == null || p.hasArchive || ch.hasArchive)
+                        if (catchup) Text("⟲ ", color = FS.Green, fontSize = 13.sp)
                         Text(
-                            p?.title ?: if (epg == null) "…" else "No information",
+                            p?.title ?: if (epg == null) "…" else if (catchup) "${ch.name} · ${Fmt.time(cell.start)}" else "No information",
                             color = if (sel) Color.White else FS.Text,
                             fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )

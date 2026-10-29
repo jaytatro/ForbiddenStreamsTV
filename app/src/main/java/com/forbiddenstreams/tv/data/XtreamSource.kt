@@ -90,11 +90,19 @@ class XtreamSource(
     override suspend fun epg(channel: LiveChannel): List<Program> {
         val table = jsonObject(Http.get(api("get_simple_data_table", "&stream_id=${channel.id}")))
         var list = parseListings(table, channel)
-        if (list.isEmpty()) {
-            val short = jsonObject(Http.get(api("get_short_epg", "&stream_id=${channel.id}&limit=30")))
-            list = parseListings(short, channel)
+        val now = System.currentTimeMillis()
+        if (list.none { now >= it.start && now < it.end }) {
+            // Some providers' full table misses today's shows: add the short guide.
+            val short = try {
+                parseListings(jsonObject(Http.get(api("get_short_epg", "&stream_id=${channel.id}&limit=50"))), channel)
+            } catch (e: Exception) { emptyList() }
+            list = list + short
         }
-        return list.sortedBy { it.start }.distinctBy { it.start }
+        // Past shows on a catch-up channel can be played back (within its catch-up days).
+        val days = if (channel.archiveDays > 0) channel.archiveDays else 7
+        return list.sortedBy { it.start }.distinctBy { it.start }.map { p ->
+            if (channel.hasArchive && p.end <= now && p.start >= now - days * 86_400_000L) p.copy(hasArchive = true) else p
+        }
     }
 
     private fun parseListings(j: JSONObject?, channel: LiveChannel): List<Program> {

@@ -169,8 +169,8 @@ class PlayerActivity : ComponentActivity() {
                                 }
                             }
                             Row(
-                                Modifier.padding(top = 10.dp),
-                                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
+                                Modifier.fillMaxWidth().padding(top = 10.dp),
+                                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
                             ) {
                             com.forbiddenstreams.tv.ui.Pill(
                                 "⏮  Last Channel", selected = false, fontSize = 18.sp,
