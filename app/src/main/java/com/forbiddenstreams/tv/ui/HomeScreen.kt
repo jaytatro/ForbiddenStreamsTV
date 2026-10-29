@@ -450,8 +450,10 @@ private fun FlyList(
     val selIndex = items.indexOfFirst { it.first == selectedKey }.let { if (it < 0) 0 else it }
     val state = rememberLazyListState(selIndex)
     // Wide enough for every word of the longest entry (emoji count double, icons add room).
-    val longest = items.maxOfOrNull { (k, label) ->
-        label.sumOf { c -> if (c.isSurrogate()) 1 else if (c.code > 0x2000) 2 else 1 } + if (k in icons) 3 else 0
+    val longest: Int = items.maxOfOrNull { (k, label) ->
+        var n = 0
+        for (c in label) n += if (c.isSurrogate()) 1 else if (c.code > 0x2000) 2 else 1
+        n + (if (k in icons) 3 else 0)
     } ?: 10
     val w = (longest * 12 + 64).coerceIn(210, 420).dp
     Column(Modifier.width(w)) {
