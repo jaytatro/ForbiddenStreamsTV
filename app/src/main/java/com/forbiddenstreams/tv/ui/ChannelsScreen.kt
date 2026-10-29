@@ -133,7 +133,7 @@ fun playChannels(context: Context, list: List<LiveChannel>, index: Int, fullScre
 // ------------------------------------------------------------ Channels tab
 
 @Composable
-fun ChannelsScreen(groupKey: String?, onGroup: (String?) -> Unit, active: Boolean = true) {
+fun ChannelsScreen(groupKey: String?, onGroup: (String?) -> Unit, active: Boolean = true, onCategories: () -> Unit = {}) {
     val context = LocalContext.current
     val prefs = remember { Prefs(context) }
     val cats = Session.liveCats
@@ -225,7 +225,8 @@ fun ChannelsScreen(groupKey: String?, onGroup: (String?) -> Unit, active: Boolea
                     channels = shown,
                     startId = PlayerHolder.current?.channelId,
                     active = active,
-                    onCategories = { },
+                    onCategories = onCategories,
+                    leftOpensCategories = true,
                     onToggleFav = { toggleFav(it) },
                 )
             }
@@ -375,6 +376,9 @@ fun GuideView(
     var okLong by remember { mutableStateOf(false) }
     var okDown by remember { mutableStateOf(false) }
     var lrDown by remember { mutableStateOf(false) }
+    var lrDownAt by remember { mutableLongStateOf(0L) }
+    // ▲ on the top channel highlights the DATE strip: ◀ ▶ then change the day.
+    var dateMode by remember { mutableStateOf(false) }
 
     fun playCh(list: List<LiveChannel>, i: Int) =
         onPlayChannel?.invoke(list, i) ?: playChannels(context, list, i)
@@ -447,6 +451,16 @@ fun GuideView(
         keepCursorVisible()
     }
 
+    fun changeDay(d: Int) {
+        val n = (dayOffset + d).coerceIn(-3, 3)
+        if (n == dayOffset) return
+        val t = System.currentTimeMillis()
+        dayOffset = n
+        // Same time of day on the new date (now, for today).
+        cursor = if (n == 0) t else dayStart(n) + (t - dayStart(0))
+        followNow = n == 0
+    }
+
     fun openMenu() {
         val ch = channels.getOrNull(row) ?: return
         menu = ch to cellAt(row)?.program
@@ -496,6 +510,23 @@ fun GuideView(
                     }
                     return@onPreviewKeyEvent false
                 }
+                if (dateMode) {
+                    when (ne.keyCode) {
+                        AKeyEvent.KEYCODE_DPAD_LEFT, AKeyEvent.KEYCODE_DPAD_RIGHT -> {
+                            if (down) changeDay(if (ne.keyCode == AKeyEvent.KEYCODE_DPAD_LEFT) -1 else 1)
+                            return@onPreviewKeyEvent true
+                        }
+                        AKeyEvent.KEYCODE_DPAD_DOWN, AKeyEvent.KEYCODE_DPAD_CENTER, AKeyEvent.KEYCODE_ENTER, AKeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                            if (down) { dateMode = false; okDown = false }
+                            return@onPreviewKeyEvent true
+                        }
+                        AKeyEvent.KEYCODE_DPAD_UP -> {
+                            if (down) dateMode = false
+                            return@onPreviewKeyEvent false // on up to the search box / rail
+                        }
+                        else -> {}
+                    }
+                }
                 when (ne.keyCode) {
                     AKeyEvent.KEYCODE_DPAD_UP -> {
                         // Held ▲ = go to the live preview (OK there = full screen); without a preview, to the rail.
@@ -504,7 +535,11 @@ fun GuideView(
                             try { target?.requestFocus() } catch (e: Exception) { }
                             return@onPreviewKeyEvent true
                         }
-                        if (row == 0) return@onPreviewKeyEvent false // lets focus go up to the search box / menu
+                        if (row == 0) {
+                            if (overlay) return@onPreviewKeyEvent false
+                            if (down && ne.repeatCount == 0) dateMode = true
+                            return@onPreviewKeyEvent true
+                        }
                         if (down && ne.repeatCount == 0) { row--; keepRowVisible() }
                         true
                     }
@@ -520,14 +555,20 @@ fun GuideView(
                             if (ne.repeatCount == 0) {
                                 lrLong = false
                                 lrDown = true
+                                lrDownAt = System.currentTimeMillis()
                             } else {
-                                // Held down: scroll through time, a few steps per second.
+                                // Held down for the set time (Settings › Buttons, 2 s by default):
+                                // scroll through time, a few steps per second.
                                 lrLong = true
                                 val t = System.currentTimeMillis()
-                                if (t - lastStep > 160) { lastStep = t; step(dir) }
+                                if (t - lrDownAt >= ButtonPrefs.holdMs && t - lastStep > 160) { lastStep = t; step(dir) }
                             }
                         } else {
-                            if (leftOpensCategories && lrDown && !lrLong && dir < 0) onCategories()
+                            if (lrDown && !lrLong) {
+                                // Short press: ◀ = back to the categories (or one show back, see Settings › Buttons); ▶ = next show.
+                                if (dir < 0 && leftOpensCategories && (ButtonPrefs.leftOpensCategories || onPlayChannel != null)) onCategories()
+                                else step(dir)
+                            }
                             lrDown = false
                         }
                         true
@@ -553,16 +594,18 @@ fun GuideView(
             Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("DATE", color = FS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(end = 12.dp))
+            Text(if (dateMode) "◀ ▶ DAY" else "DATE", color = if (dateMode) FS.Green else FS.TextDim, fontSize = 14.sp,
+                fontWeight = if (dateMode) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.padding(end = 12.dp))
             // The 7 days spread evenly across the full width.
             for (d in -3..3) {
                 val sel = d == dayOffset
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                     Text(
                         if (d == 0) "TODAY" else Fmt.day(dayStart(d)),
-                        color = if (sel) FS.Green else FS.TextDim,
+                        color = if (sel && dateMode) androidx.compose.ui.graphics.Color.Black else if (sel) FS.Green else FS.TextDim,
                         fontSize = 14.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
                         modifier = Modifier
+                            .then(if (sel && dateMode) Modifier.background(FS.Green, RoundedCornerShape(50)) else Modifier)
                             .then(if (sel) Modifier.border(2.dp, FS.Green, RoundedCornerShape(50)) else Modifier)
                             .padding(horizontal = 14.dp, vertical = 3.dp),
                     )
@@ -575,7 +618,7 @@ fun GuideView(
                 itemsIndexed(channels, key = { _, ch -> ch.id }) { i, ch ->
                     GuideRow(
                         ch = ch, ws = ws, we = we, now = now, hState = hState,
-                        cursor = if (i == row && active) cursor else null,
+                        cursor = if (i == row && active && !dateMode) cursor else null,
                         playing = PlayerHolder.current?.channelId == ch.id,
                         overlay = overlay,
                         onEpg = { epgTick++ },

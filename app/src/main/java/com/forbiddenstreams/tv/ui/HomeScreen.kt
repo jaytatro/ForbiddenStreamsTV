@@ -77,7 +77,10 @@ private val railIcon = mapOf(
 )
 
 /** Settings box: MenuScreen section number to label (Recordings moved to its own rail icon). */
-val SETTINGS_SECTIONS = listOf(1 to "⏰  Reminders", 2 to "🗂  Categories", 3 to "⟳  Refresh content", 4 to "👤  Account", 5 to "⎋  Log out")
+val SETTINGS_SECTIONS = listOf(
+    1 to "⏰  Reminders", 2 to "🗂  Categories", 6 to "⭐  Favorite Teams", 7 to "🎮  Buttons",
+    3 to "⟳  Refresh content", 4 to "👤  Account", 5 to "⎋  Log out",
+)
 
 /**
  * Left rail (logo, line icons for Channels, Movies, TV Shows, Sports, Settings, clock).
@@ -118,6 +121,16 @@ fun HomeScreen(onLogout: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) { delay(200); try { iconReq.getValue(Sec.CHANNELS).requestFocus() } catch (e: Exception) { } }
+    remember { ButtonPrefs.load(context); true }
+    // First start after install: walk through the buttons.
+    var showTour by remember { mutableStateOf(!ButtonPrefs.tourSeen(context)) }
+    // Keep the box (and its screensaver) from stopping the preview while something plays.
+    val playingNow = PlayerHolder.current != null
+    LaunchedEffect(playingNow) {
+        val w = (context as? android.app.Activity)?.window ?: return@LaunchedEffect
+        if (playingNow) w.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else w.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
     // Movies, TV Shows and Sports don't show the live preview: opening them stops it.
     // Also when coming back from full screen to one of them (e.g. BACK after watching a game).
     LaunchedEffect(section, PlayerHolder.fullScreen) {
@@ -133,6 +146,20 @@ fun HomeScreen(onLogout: () -> Unit) {
         if (k != Group.Search.key) prefs.lastGroup = k
         section = Sec.CHANNELS
     }
+
+    /** Opens the current screen's category list with the cursor on the category in use. */
+    fun openList() {
+        if (section == Sec.RECORDINGS) { try { iconReq.getValue(section).requestFocus() } catch (e: Exception) { }; return }
+        hover = section
+        scope.launch {
+            try { iconReq.getValue(section).requestFocus() } catch (e: Exception) { }
+            delay(60)
+            try { flyEntry.requestFocus() } catch (e: Exception) { }
+        }
+    }
+    // When ◀ takes the cursor out of a screen onto the side bar, go to the category list instead.
+    var contentLeftAt by remember { mutableLongStateOf(0L) }
+    var backToRail by remember { mutableStateOf(false) }
 
     fun toContent() {
         scope.launch {
@@ -153,6 +180,7 @@ fun HomeScreen(onLogout: () -> Unit) {
         }
     }
     BackHandler(enabled = contentFocus) {
+        backToRail = true
         try { iconReq.getValue(section).requestFocus() } catch (e: Exception) { }
     }
     LaunchedEffect(exitHint) { if (exitHint) { delay(2500); exitHint = false } }
@@ -213,8 +241,8 @@ fun HomeScreen(onLogout: () -> Unit) {
                     )
                 }
                 Sec.SPORTS -> FlyList(
-                    "SPORTS", League.entries.map { it.name to "${it.icon}  ${it.label}" } + ("FAV" to "⭐  Favorite Teams"),
-                    if (favTeams) "FAV" else league.name, flyEntry, back,
+                    "SPORTS", League.entries.map { it.name to "${it.icon}  ${it.label}" },
+                    league.name, flyEntry, back,
                     onFocusItem = { k ->
                         if (k == "FAV") favTeams = true else { favTeams = false; league = League.valueOf(k) }
                         section = Sec.SPORTS
@@ -255,7 +283,12 @@ fun HomeScreen(onLogout: () -> Unit) {
                 for (s in listOf(Sec.CHANNELS, Sec.MOVIES, Sec.SHOWS, Sec.SPORTS, Sec.RECORDINGS)) {
                     RailButton(s, selected = section == s, req = iconReq.getValue(s), flyEntry = flyEntry,
                         onY = { iconY[s] = it },
-                        onFocus = { hover = s },
+                        onFocus = {
+                            hover = s
+                            val fromScreen = android.os.SystemClock.uptimeMillis() - contentLeftAt < 400
+                            if (fromScreen && !backToRail && section != Sec.RECORDINGS) { contentLeftAt = 0L; openList() }
+                            backToRail = false
+                        },
                         onClick = {
                             hover = s
                             when (s) {
@@ -271,7 +304,12 @@ fun HomeScreen(onLogout: () -> Unit) {
                 Spacer(Modifier.weight(1f))
                 RailButton(Sec.SETTINGS, selected = section == Sec.SETTINGS, req = iconReq.getValue(Sec.SETTINGS), flyEntry = flyEntry,
                     onY = { iconY[Sec.SETTINGS] = it },
-                    onFocus = { hover = Sec.SETTINGS },
+                    onFocus = {
+                        hover = Sec.SETTINGS
+                        val fromScreen = android.os.SystemClock.uptimeMillis() - contentLeftAt < 400
+                        if (fromScreen && !backToRail) { contentLeftAt = 0L; openList() }
+                        backToRail = false
+                    },
                     onClick = { hover = Sec.SETTINGS; try { flyEntry.requestFocus() } catch (e: Exception) { } })
                 Spacer(Modifier.height(14.dp))
                 Text(Fmt.time(now).substringBefore(' '), color = FS.Green, fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -283,19 +321,27 @@ fun HomeScreen(onLogout: () -> Unit) {
             // ---- Screen ----
             Box(
                 Modifier.weight(1f).fillMaxHeight()
-                    .onFocusChanged { contentFocus = it.hasFocus }
+                    .onFocusChanged {
+                        if (contentFocus && !it.hasFocus) contentLeftAt = android.os.SystemClock.uptimeMillis()
+                        contentFocus = it.hasFocus
+                    }
                     .focusRequester(contentReq)
                     .focusGroup(),
             ) {
                 CompositionLocalProvider(LocalTopMenuFocus provides iconReq.getValue(section)) {
                     when (section) {
-                        Sec.CHANNELS -> ChannelsScreen(chGroup, onGroup = { chGroup = it }, active = !(railFocus || flyFocus))
+                        Sec.CHANNELS -> ChannelsScreen(chGroup, onGroup = { chGroup = it }, active = !(railFocus || flyFocus),
+                            onCategories = { openList() })
                         Sec.MOVIES -> MoviesScreen(movieCat, onSelect = { movieCat = it })
                         Sec.SHOWS -> SeriesScreen(showCat, onSelect = { showCat = it })
                         Sec.SPORTS -> if (favTeams) FavoriteTeamsScreen() else SportsScreen(league, openGame, onOpened = { openGame = null })
                         Sec.SPLIT -> ChannelsScreen(chGroup, onGroup = { chGroup = it })
                         Sec.RECORDINGS -> MenuScreen(0)
-                        Sec.SETTINGS -> MenuScreen(setSec)
+                        Sec.SETTINGS -> when (setSec) {
+                            6 -> FavoriteTeamsScreen()
+                            7 -> ButtonSetupScreen()
+                            else -> MenuScreen(setSec)
+                        }
                     }
                 }
             }
@@ -331,6 +377,7 @@ fun HomeScreen(onLogout: () -> Unit) {
         )
     }
     ReminderWatcher()
+    if (showTour) Walkthrough(onDone = { ButtonPrefs.setTourSeen(context); showTour = false })
 }
 
 private val RAIL_W = 60.dp

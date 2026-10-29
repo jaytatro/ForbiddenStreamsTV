@@ -87,6 +87,7 @@ object PlayerHolder {
             .setReadTimeoutMs(30_000)
         val app = context.applicationContext
         val sources = DefaultMediaSourceFactory(DefaultDataSource.Factory(app, http))
+            .setLoadErrorHandlingPolicy(androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(8))
         if (!vod) return ExoPlayer.Builder(app).setMediaSourceFactory(sources).build()
         val renderers = object : androidx.media3.exoplayer.DefaultRenderersFactory(app) {
             override fun buildAudioSink(
@@ -120,7 +121,10 @@ object PlayerHolder {
             .setBufferDurationsMs(4_000, 15_000, 1_500, 3_000)
             .build()
         val p = ExoPlayer.Builder(app, androidx.media3.exoplayer.DefaultRenderersFactory(app).setEnableDecoderFallback(true))
-            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(app, http)))
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(DefaultDataSource.Factory(app, http))
+                    .setLoadErrorHandlingPolicy(androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(8)),
+            )
             .setLoadControl(load)
             .build()
         // Small screens don't need full-HD variants when the stream offers a choice.
@@ -155,12 +159,20 @@ object PlayerHolder {
         val p = createPlayer(app, exoVod)
         p.addListener(object : Player.Listener {
             override fun onPlayerError(e: PlaybackException) {
+                // Streams drop now and then: reconnect by itself before showing an error.
+                if (reconnect(p, e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW)) return
+                reconnecting = false
                 error = "This stream won't play right now (${e.errorCodeName})."
             }
 
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) error = null
-                if (state == Player.STATE_ENDED) saveProgress()
+                if (state == Player.STATE_READY) { error = null; reconnecting = false; retries = 0; bufferingSince = 0L }
+                if (state == Player.STATE_BUFFERING) { if (bufferingSince == 0L) bufferingSince = android.os.SystemClock.elapsedRealtime() }
+                else bufferingSince = 0L
+                if (state == Player.STATE_ENDED) {
+                    // A live channel never really "ends": the provider closed the connection. Reconnect.
+                    if (current?.live == true) reconnect(p, false) else saveProgress()
+                }
                 updateQuality(p)
             }
 
@@ -169,6 +181,54 @@ object PlayerHolder {
         })
         exo = p
         return p
+    }
+
+    /** True while the player is reconnecting a dropped stream (shown as "Reconnecting…"). */
+    var reconnecting by mutableStateOf(false)
+        private set
+    private var retries = 0
+    private var bufferingSince = 0L
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var watchdog: kotlinx.coroutines.Job? = null
+
+    /** Restarts the current stream after a short pause; gives up after 6 tries in a row. */
+    private fun reconnect(p: ExoPlayer, behindLive: Boolean): Boolean {
+        val item = current ?: return false
+        if (retries >= 6) return false
+        retries++
+        reconnecting = true
+        error = null
+        handler.removeCallbacksAndMessages(null)
+        handler.postDelayed({
+            if (current?.url != item.url || exo !== p) return@postDelayed
+            if (item.live) {
+                // Fresh connection, back at the live edge.
+                p.setMediaItem(MediaItem.fromUri(item.url))
+            } else if (behindLive) {
+                p.seekToDefaultPosition()
+            }
+            p.prepare()
+            p.playWhenReady = true
+        }, if (retries == 1) 1_000L else 3_000L)
+        return true
+    }
+
+    /** Live TV stuck "loading" for 15 s (frozen picture) also counts as a dropped stream. */
+    private fun startWatchdog() {
+        if (watchdog?.isActive == true) return
+        watchdog = scope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(5_000)
+                val p = exo ?: continue
+                val since = bufferingSince
+                if (current?.live == true && p.playWhenReady && since > 0 &&
+                    android.os.SystemClock.elapsedRealtime() - since > 15_000
+                ) {
+                    bufferingSince = 0L
+                    reconnect(p, false)
+                }
+            }
+        }
     }
 
     private fun updateQuality(p: ExoPlayer) {
@@ -315,6 +375,11 @@ object PlayerHolder {
         val p = player(context)
         error = null
         quality = null
+        reconnecting = false
+        retries = 0
+        bufferingSince = 0L
+        handler.removeCallbacksAndMessages(null)
+        startWatchdog()
         current = item
         p.volume = 1f // never stay muted from Multi-View
         val start = item.startMs
@@ -361,6 +426,8 @@ object PlayerHolder {
         current = null
         quality = null
         error = null
+        reconnecting = false
+        handler.removeCallbacksAndMessages(null)
     }
 
     fun existingPlayer(): ExoPlayer? = exo

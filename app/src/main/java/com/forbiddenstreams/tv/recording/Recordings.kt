@@ -106,6 +106,19 @@ object Recordings {
         return rec
     }
 
+    /** The recording of [url] that's running right now, if any. */
+    fun activeFor(context: Context, url: String): Recording? {
+        val t = System.currentTimeMillis()
+        return all(context).firstOrNull { it.url == url && it.status == "recording" && it.end > t }
+    }
+
+    /** Stops a running recording and keeps what was recorded so far. */
+    fun stopNow(context: Context, id: Long) {
+        val t = System.currentTimeMillis()
+        save(context, all(context).map { if (it.id == id) it.copy(end = t, status = "done") else it })
+        RecordingService.stop(context, id)
+    }
+
     fun delete(context: Context, id: Long) {
         get(context, id)?.let { r ->
             RecordingService.stop(context, id)
@@ -162,23 +175,30 @@ class RecordingService : Service() {
         val buf = ByteArray(64 * 1024)
         try {
             FileOutputStream(File(rec.file), true).use { out ->
-                while (System.currentTimeMillis() < rec.end && tries < 8 && scope.isActive) {
+                while (System.currentTimeMillis() < rec.end && tries < 8 && kotlin.coroutines.coroutineContext.isActive) {
                     try {
                         Http.client.newCall(Request.Builder().url(rec.url).build()).execute().use { r ->
                             val input = r.body?.byteStream() ?: throw java.io.IOException("empty")
-                            while (System.currentTimeMillis() < rec.end) {
+                            while (System.currentTimeMillis() < rec.end && kotlin.coroutines.coroutineContext.isActive) {
                                 val n = input.read(buf)
                                 if (n < 0) break
                                 out.write(buf, 0, n)
                                 ok = true
                             }
                         }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         tries++
                         delay(3000)
                     }
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Stopped from the player: stopNow() already saved it as done; a cancelled one was deleted.
+            jobs.remove(rec.id)
+            stopIfIdle()
+            return
         } catch (e: Exception) { /* storage problem */ }
         Recordings.setStatus(this, rec.id, if (ok) "done" else "failed")
         jobs.remove(rec.id)

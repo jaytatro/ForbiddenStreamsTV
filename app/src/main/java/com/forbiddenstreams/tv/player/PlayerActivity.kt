@@ -67,6 +67,8 @@ class PlayerActivity : ComponentActivity() {
     private var panelVisible by mutableStateOf(false)
     /** Split screen (up to 4 channels). */
     private var multiVisible by mutableStateOf(false)
+    private var recStopAsk by mutableStateOf<com.forbiddenstreams.tv.recording.Recording?>(null)
+    private var recTick by mutableStateOf(0)
 
     /** "⏪ 10s" / "10s ⏩" flash for movies and episodes. */
     private var seekFlash by mutableStateOf<String?>(null)
@@ -169,9 +171,15 @@ class PlayerActivity : ComponentActivity() {
                                     else com.forbiddenstreams.tv.ui.toast(this@PlayerActivity, "No previous channel yet")
                                 },
                             )
+                            val recording = remember(actionsVisible, recTick) {
+                                com.forbiddenstreams.tv.recording.Recordings.activeFor(this@PlayerActivity, item.url)
+                            }
                             com.forbiddenstreams.tv.ui.Pill(
-                                "⏺  Record", selected = false, fontSize = 18.sp,
-                                onClick = { actionsVisible = false; recordNow(prog) },
+                                if (recording != null) "⏹  Recording…" else "⏺  Record", selected = recording != null, fontSize = 18.sp,
+                                onClick = {
+                                    actionsVisible = false
+                                    if (recording != null) recStopAsk = recording else { recordNow(prog); recTick++ }
+                                },
                             )
                             com.forbiddenstreams.tv.ui.Pill(
                                 "⊞  Multi-View", selected = false, fontSize = 18.sp,
@@ -196,6 +204,26 @@ class PlayerActivity : ComponentActivity() {
                             onClose = { panelVisible = false },
                         )
                     }
+                    recStopAsk?.let { r ->
+                        com.forbiddenstreams.tv.ui.ChoiceDialog(
+                            title = "Recording ${r.title}",
+                            subtitle = "Until ${Fmt.time(r.end)} on ${r.channelName}",
+                            options = listOf(
+                                "⏹  Stop recording (keep it)" to {
+                                    com.forbiddenstreams.tv.recording.Recordings.stopNow(this@PlayerActivity, r.id)
+                                    com.forbiddenstreams.tv.ui.toast(this@PlayerActivity, "Recording stopped and saved")
+                                    recStopAsk = null; recTick++
+                                },
+                                "✖  Cancel recording (delete it)" to {
+                                    com.forbiddenstreams.tv.recording.Recordings.delete(this@PlayerActivity, r.id)
+                                    com.forbiddenstreams.tv.ui.toast(this@PlayerActivity, "Recording cancelled")
+                                    recStopAsk = null; recTick++
+                                },
+                                "Keep recording" to { recStopAsk = null },
+                            ),
+                            onDismiss = { recStopAsk = null },
+                        )
+                    }
                     if (multiVisible) {
                         MultiViewScreen(onExit = { ch ->
                             multiVisible = false
@@ -212,6 +240,13 @@ class PlayerActivity : ComponentActivity() {
                             modifier = Modifier.align(Alignment.Center)
                                 .background(Color(0xB3050805), RoundedCornerShape(12.dp))
                                 .padding(horizontal = 26.dp, vertical = 14.dp),
+                        )
+                    }
+                    if (PlayerHolder.reconnecting) {
+                        Text(
+                            "Reconnecting…", color = FS.Green, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.align(Alignment.TopEnd).padding(24.dp)
+                                .background(Color(0xCC000000), RoundedCornerShape(50)).padding(horizontal = 18.dp, vertical = 8.dp),
                         )
                     }
                     PlayerHolder.error?.let {
