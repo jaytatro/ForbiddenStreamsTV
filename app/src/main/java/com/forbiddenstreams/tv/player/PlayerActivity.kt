@@ -76,6 +76,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        volumeControlStream = android.media.AudioManager.STREAM_MUSIC // remote volume keys = media volume
         if (PlayerHolder.current == null) { PlayerHolder.fullScreen = false; finish(); return }
         PlayerHolder.fullScreen = true
         val live = PlayerHolder.current?.live == true
@@ -139,6 +140,10 @@ class PlayerActivity : ComponentActivity() {
                             PlayerHolder.audioInfo?.let {
                                 Text("🔊 $it", color = if (it.startsWith("No") || it.startsWith("Audio not")) FS.Live else FS.Text,
                                     fontSize = 15.sp, modifier = Modifier.padding(end = 14.dp))
+                            }
+                            produceState(PlayerHolder.boxVolume(this@PlayerActivity)) { while (true) { delay(1_000); value = PlayerHolder.boxVolume(this@PlayerActivity) } }.value?.let { (txt, bad) ->
+                                Text(txt, color = if (bad) FS.Live else FS.TextDim, fontSize = 15.sp,
+                                    fontWeight = if (bad) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.padding(end = 14.dp))
                             }
                             QualityBadge(PlayerHolder.quality?.substringBeforeLast(" · ") ?: "Loading…")
                             Spacer(Modifier.width(18.dp))

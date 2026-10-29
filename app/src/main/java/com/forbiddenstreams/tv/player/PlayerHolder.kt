@@ -180,6 +180,25 @@ object PlayerHolder {
     }
 
 
+    /**
+     * The box's own media volume (separate from the TV's). Red warning when it's at 0 or muted,
+     * or when the player itself is muted, so silent channels can be told apart from silent streams.
+     */
+    fun boxVolume(context: Context): Pair<String, Boolean>? {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager ?: return null
+        val s = android.media.AudioManager.STREAM_MUSIC
+        val v = am.getStreamVolume(s)
+        val max = am.getStreamMaxVolume(s)
+        val muted = android.os.Build.VERSION.SDK_INT >= 23 && am.isStreamMute(s)
+        val appVol = exo?.volume ?: 1f
+        return when {
+            muted -> "Box sound is muted – press Mute or Volume + on the box remote" to true
+            v == 0 -> "Box volume is 0 – press Volume + on the box remote" to true
+            appVol < 0.5f -> "Player muted" to true
+            else -> "Vol $v/$max" to false
+        }
+    }
+
     fun describe(w: Int, h: Int, f: Format?): String {
         // Use the shorter side, so 1920x1080 and 1920x1072 both read 1080p.
         val s = minOf(w, h)
