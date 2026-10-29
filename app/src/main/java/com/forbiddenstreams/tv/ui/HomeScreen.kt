@@ -160,9 +160,9 @@ fun HomeScreen(onLogout: () -> Unit) {
     // ◀◀ in the live player: back here with the Channels list open.
     LaunchedEffect(PlayerHolder.sideBarRequest) {
         if (PlayerHolder.sideBarRequest == 0) return@LaunchedEffect
-        delay(300)
         section = Sec.CHANNELS
-        openList()
+        // The home screen may still be coming back to the front: try a few times.
+        repeat(4) { delay(250); openList() }
     }
     // When ◀ takes the cursor out of a screen onto the side bar, go to the category list instead.
     var contentLeftAt by remember { mutableLongStateOf(0L) }

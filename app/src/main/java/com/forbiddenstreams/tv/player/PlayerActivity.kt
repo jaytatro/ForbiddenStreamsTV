@@ -357,7 +357,7 @@ class PlayerActivity : ComponentActivity() {
             event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0
         ) {
             val t = android.os.SystemClock.uptimeMillis()
-            if (t - lastLeftAt < 700) {
+            if (t - lastLeftAt < 1_000) {
                 lastLeftAt = 0L
                 panelVisible = false
                 actionsVisible = false
