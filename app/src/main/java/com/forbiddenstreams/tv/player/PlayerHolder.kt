@@ -74,11 +74,7 @@ object PlayerHolder {
 
     val isMiniActive: Boolean get() = current?.live == true
 
-    /**
-     * Builds a player. Audio is always decoded on the box to plain PCM (no passthrough),
-     * with FFmpeg as a fallback for Dolby (AC3/E-AC3/TrueHD) and DTS. 4K / Dolby Vision
-     * releases usually carry those tracks, which played silent before.
-     */
+    /** Builds a player exactly like the builds that had sound (plain ExoPlayer, default audio). */
     fun createPlayer(context: Context): ExoPlayer {
         val http = DefaultHttpDataSource.Factory()
             .setUserAgent(Http.USER_AGENT)
@@ -86,38 +82,10 @@ object PlayerHolder {
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(30_000)
         val app = context.applicationContext
-        val passthrough = passthrough(app)
-        val renderers = object : androidx.media3.exoplayer.DefaultRenderersFactory(app) {
-            @Suppress("DEPRECATION")
-            override fun buildAudioSink(
-                context: Context,
-                enableFloatOutput: Boolean,
-                enableAudioTrackPlaybackParams: Boolean,
-            ): androidx.media3.exoplayer.audio.AudioSink =
-                if (passthrough) {
-                    // Send Dolby/DTS as-is over HDMI (for AV receivers / soundbars that decode it).
-                    super.buildAudioSink(context, enableFloatOutput, enableAudioTrackPlaybackParams)!!
-                } else {
-                    // Decode everything on the box to plain stereo/PCM. NOTE: the Builder(context)
-                    // version ignores setAudioCapabilities and still passes Dolby through HDMI —
-                    // which is why there was no sound. The no-context Builder honours it.
-                    androidx.media3.exoplayer.audio.DefaultAudioSink.Builder()
-                        .setAudioCapabilities(androidx.media3.exoplayer.audio.AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES)
-                        .setEnableFloatOutput(false)
-                        .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                        .build()
-                }
-        }
-            .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-            .setEnableDecoderFallback(true)
-        return ExoPlayer.Builder(app, renderers)
+        return ExoPlayer.Builder(app)
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(app, http)))
             .build()
     }
-
-    /** Bumped whenever a new player is built, so preview windows re-attach. */
-    var playerVersion by mutableIntStateOf(0)
-        private set
 
     fun player(context: Context): ExoPlayer {
         exo?.let { return it }
@@ -174,27 +142,6 @@ object PlayerHolder {
         return "$codec $ch".trim()
     }
 
-    // ---- Audio output setting ----
-    private fun passthrough(context: Context) =
-        context.applicationContext.getSharedPreferences("forbidden_streams", Context.MODE_PRIVATE).getBoolean("audio_passthrough", false)
-
-    var passthroughSetting by mutableStateOf<Boolean?>(null)
-        private set
-
-    fun isPassthrough(context: Context): Boolean = passthroughSetting ?: passthrough(context).also { passthroughSetting = it }
-
-    /** Switches audio output and rebuilds the player (the playing channel restarts). */
-    fun setPassthrough(context: Context, on: Boolean) {
-        context.applicationContext.getSharedPreferences("forbidden_streams", Context.MODE_PRIVATE)
-            .edit().putBoolean("audio_passthrough", on).apply()
-        passthroughSetting = on
-        val playing = current
-        val list = items
-        val i = index
-        exo?.release()
-        exo = null
-        if (playing != null && list.isNotEmpty()) { items = list; index = i; load(context) }
-    }
 
     fun describe(w: Int, h: Int, f: Format?): String {
         // Use the shorter side, so 1920x1080 and 1920x1072 both read 1080p.
