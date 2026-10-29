@@ -87,6 +87,10 @@ object PlayerHolder {
             .build()
     }
 
+    /** Bumped whenever a new player is built, so preview windows re-attach. */
+    var playerVersion by mutableIntStateOf(0)
+        private set
+
     fun player(context: Context): ExoPlayer {
         exo?.let { return it }
         playerVersion++
