@@ -5,6 +5,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.io.IOException
+import kotlinx.coroutines.async
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -17,7 +18,8 @@ class XtreamSource(
     var timezone: String?,
 ) : ContentSource {
 
-    val base: String = normalizeServer(server)
+    var base: String = normalizeServer(server)
+        private set
 
     private val lock = Mutex()
     private var liveCats: List<Category>? = null
@@ -32,18 +34,55 @@ class XtreamSource(
         "$base/player_api.php?username=${Http.enc(user)}&password=${Http.enc(pass)}" +
             (if (action != null) "&action=$action" else "") + extra
 
-    /** Checks the account. Returns the server's time zone (used for catch-up links). */
-    suspend fun login(): String? {
-        val text = Http.get(api())
-        val j = jsonObject(text) ?: throw IOException("That doesn't look like an Xtream Codes server. Check the server address.")
-        val ui = j.optJSONObject("user_info") ?: throw IOException("That doesn't look like an Xtream Codes server. Check the server address.")
-        if (ui.int("auth") != 1) throw IOException("Login failed. Check your username and password.")
-        val status = ui.str("status")
-        if (status != null && !status.equals("Active", ignoreCase = true)) {
-            throw IOException("Your account status is: $status")
+    /**
+     * Checks the account. Returns the server's time zone (used for catch-up links).
+     * If the address as typed doesn't answer like an Xtream Codes server, common ports
+     * (8080, 80, 25461, 8000, 2095, 2082) and http/https are tried, with a few app
+     * names (some providers only answer known IPTV apps). What works is kept.
+     */
+    suspend fun login(): String? = kotlinx.coroutines.coroutineScope {
+        val bases = candidateBases(base)
+        val agents = listOf(Http.DEFAULT_USER_AGENT, "IPTVSmartersPro", "okhttp/4.12.0", "VLC/3.0.20 LibVLC/3.0.20")
+        var lastAnswer: String? = null
+        // First the address exactly as typed (one request at a time), then the other ports together.
+        val rounds = agents.map { listOf(bases.first()) to it } + agents.map { bases.drop(1) to it }
+        for ((group, ua) in rounds) {
+            if (group.isEmpty()) continue
+            val results = group.map { b ->
+                async { b to Http.probe("$b/player_api.php?username=${Http.enc(user)}&password=${Http.enc(pass)}", ua) }
+            }.map { it.await() }
+            for ((b, r) in results) {
+                if (r == null) continue
+                val (code, body) = r
+                val j = jsonObject(body)
+                val ui = j?.optJSONObject("user_info")
+                if (ui == null) {
+                    if (b == bases.first()) lastAnswer = when {
+                        code == 401 || code == 403 -> "the server refused (HTTP $code)"
+                        code >= 400 -> "HTTP $code"
+                        body.trimStart().startsWith("<") -> "a web page, not an IPTV login"
+                        body.isBlank() -> "an empty answer"
+                        else -> "something that isn't an Xtream login"
+                    }
+                    continue
+                }
+                // Found the server.
+                base = b
+                Http.userAgent = ua
+                if (ui.int("auth") != 1) throw IOException("Login failed. Check your username and password.")
+                val status = ui.str("status")
+                if (status != null && !status.equals("Active", ignoreCase = true)) {
+                    throw IOException("Your account status is: $status")
+                }
+                timezone = j.optJSONObject("server_info")?.str("timezone")
+                return@coroutineScope timezone
+            }
         }
-        timezone = j.optJSONObject("server_info")?.str("timezone")
-        return timezone
+        throw IOException(
+            if (lastAnswer == null) "Couldn't reach $base. Check the server address and your internet connection."
+            else "No Xtream Codes login found at $base (it answered with $lastAnswer). " +
+                "Check the address and port in your provider's details, e.g. http://server.com:8080",
+        )
     }
 
     // ---------- Live ----------
@@ -274,6 +313,25 @@ class XtreamSource(
     }
 
     companion object {
+        /** The address as typed first, then other ports / http(s) for the same host. */
+        fun candidateBases(b: String): List<String> {
+            val out = LinkedHashSet<String>()
+            out += b
+            val u = try { java.net.URI(b) } catch (e: Exception) { return out.toList() }
+            val host = u.host ?: return out.toList()
+            val path = (u.rawPath ?: "").trimEnd('/')
+            val scheme = u.scheme ?: "http"
+            val other = if (scheme == "https") "http" else "https"
+            if (u.port == -1) {
+                for (p in listOf(8080, 80, 25461, 8000, 2095, 2082)) out += "http://$host:$p$path"
+                out += "$other://$host$path"
+            } else {
+                out += "$other://$host:${u.port}$path"
+                out += "$scheme://$host$path"
+            }
+            return out.toList()
+        }
+
         fun normalizeServer(raw: String): String {
             var s = raw.trim()
             if (!s.startsWith("http://", true) && !s.startsWith("https://", true)) s = "http://$s"

@@ -81,7 +81,7 @@ object PlayerHolder {
      */
     fun createPlayer(context: Context, vod: Boolean = false): ExoPlayer {
         val http = DefaultHttpDataSource.Factory()
-            .setUserAgent(Http.USER_AGENT)
+            .setUserAgent(Http.userAgent)
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(30_000)
@@ -113,7 +113,7 @@ object PlayerHolder {
     fun createTilePlayer(context: Context): ExoPlayer {
         val app = context.applicationContext
         val http = DefaultHttpDataSource.Factory()
-            .setUserAgent(Http.USER_AGENT)
+            .setUserAgent(Http.userAgent)
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(30_000)

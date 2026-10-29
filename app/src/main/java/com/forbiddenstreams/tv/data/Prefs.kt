@@ -43,6 +43,11 @@ class Prefs(context: Context) {
     }
 
     /** Last values typed on the login screen, so re-login is quick. */
+    /** The app name (user agent) the provider answered to at login. */
+    var userAgent: String?
+        get() = sp.getString("user_agent", null)
+        set(v) { sp.edit().putString("user_agent", v).apply() }
+
     fun lastField(key: String): String = sp.getString("last_$key", "") ?: ""
     fun setLastField(key: String, value: String) = sp.edit().putString("last_$key", value).apply()
 

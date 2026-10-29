@@ -43,7 +43,9 @@ object Session {
     var resumePending = true
 
     fun restore(context: Context): Boolean {
-        val c = Prefs(context).loadLogin() ?: return false
+        val p = Prefs(context)
+        p.userAgent?.let { Http.userAgent = it }
+        val c = p.loadLogin() ?: return false
         source = build(c)
         return true
     }
@@ -60,6 +62,7 @@ object Session {
                 val s = XtreamSource(c.server, c.username, c.password, null)
                 val tz = s.login()
                 prefs.saveLogin(c.copy(server = s.base, timezone = tz))
+                prefs.userAgent = Http.userAgent
                 source = s
             }
             is LoginConfig.M3u -> {
