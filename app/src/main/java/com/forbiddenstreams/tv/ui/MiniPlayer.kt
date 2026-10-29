@@ -41,11 +41,13 @@ fun MiniPlayer(width: Dp, modifier: Modifier = Modifier, focusable: Boolean = tr
     val video: @Composable () -> Unit = {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             if (!PlayerHolder.fullScreen) {
-                AndroidView(
-                    factory = { ctx -> TextureView(ctx).also { PlayerHolder.player(ctx).setVideoTextureView(it) } },
-                    onRelease = { PlayerHolder.existingPlayer()?.clearVideoTextureView(it) },
-                    modifier = Modifier.fillMaxSize(),
-                )
+                androidx.compose.runtime.key(PlayerHolder.playerVersion) {
+                    AndroidView(
+                        factory = { ctx -> TextureView(ctx).also { PlayerHolder.player(ctx).setVideoTextureView(it) } },
+                        onRelease = { PlayerHolder.existingPlayer()?.clearVideoTextureView(it) },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
             PlayerHolder.error?.let {
                 Text("Stream error", color = FS.Live, fontSize = 12.sp, modifier = Modifier.align(Alignment.Center))

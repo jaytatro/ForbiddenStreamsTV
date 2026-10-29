@@ -136,6 +136,10 @@ class PlayerActivity : ComponentActivity() {
                                     }
                                 }
                             }
+                            PlayerHolder.audioInfo?.let {
+                                Text("🔊 $it", color = if (it.startsWith("No") || it.startsWith("Audio not")) FS.Live else FS.Text,
+                                    fontSize = 15.sp, modifier = Modifier.padding(end = 14.dp))
+                            }
                             QualityBadge(PlayerHolder.quality?.substringBeforeLast(" · ") ?: "Loading…")
                             Spacer(Modifier.width(18.dp))
                             Text(Fmt.time(now), color = FS.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)

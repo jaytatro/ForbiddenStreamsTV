@@ -78,6 +78,25 @@ fun MenuScreen(section: Int) {
                     }
                 }
                 2 -> CategoryEditor()
+                6 -> {
+                    Header("Audio", null)
+                    val pass = com.forbiddenstreams.tv.player.PlayerHolder.isPassthrough(context)
+                    Text("If a channel or movie has no sound, keep this on \"Decode on the box\".", color = FS.TextDim, fontSize = 16.sp)
+                    Spacer(Modifier.height(14.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Pill("Decode on the box (recommended)", selected = !pass, onClick = {
+                            com.forbiddenstreams.tv.player.PlayerHolder.setPassthrough(context, false)
+                            toast(context, "Audio: decoded on the box")
+                        })
+                        Pill("Passthrough to TV / receiver", selected = pass, onClick = {
+                            com.forbiddenstreams.tv.player.PlayerHolder.setPassthrough(context, true)
+                            toast(context, "Audio: Dolby/DTS sent to your TV or receiver")
+                        })
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text("Passthrough only works if your TV, soundbar or receiver can play Dolby Digital / DTS. " +
+                        "Otherwise those channels are silent.", color = FS.TextDim, fontSize = 14.sp)
+                }
                 1 -> {
                     val rems = remember(tick) { Reminders.prune(context); Reminders.all(context) }
                     Header("Reminders", "Hold OK = delete")

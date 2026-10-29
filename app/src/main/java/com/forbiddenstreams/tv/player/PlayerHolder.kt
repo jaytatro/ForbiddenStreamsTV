@@ -86,17 +86,27 @@ object PlayerHolder {
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(30_000)
         val app = context.applicationContext
+        val passthrough = passthrough(app)
         val renderers = object : androidx.media3.exoplayer.DefaultRenderersFactory(app) {
+            @Suppress("DEPRECATION")
             override fun buildAudioSink(
                 context: Context,
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean,
             ): androidx.media3.exoplayer.audio.AudioSink =
-                androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
-                    .setAudioCapabilities(androidx.media3.exoplayer.audio.AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES)
-                    .setEnableFloatOutput(enableFloatOutput)
-                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                    .build()
+                if (passthrough) {
+                    // Send Dolby/DTS as-is over HDMI (for AV receivers / soundbars that decode it).
+                    super.buildAudioSink(context, enableFloatOutput, enableAudioTrackPlaybackParams)!!
+                } else {
+                    // Decode everything on the box to plain stereo/PCM. NOTE: the Builder(context)
+                    // version ignores setAudioCapabilities and still passes Dolby through HDMI —
+                    // which is why there was no sound. The no-context Builder honours it.
+                    androidx.media3.exoplayer.audio.DefaultAudioSink.Builder()
+                        .setAudioCapabilities(androidx.media3.exoplayer.audio.AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES)
+                        .setEnableFloatOutput(false)
+                        .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                        .build()
+                }
         }
             .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             .setEnableDecoderFallback(true)
@@ -105,8 +115,13 @@ object PlayerHolder {
             .build()
     }
 
+    /** Bumped whenever a new player is built, so preview windows re-attach. */
+    var playerVersion by mutableIntStateOf(0)
+        private set
+
     fun player(context: Context): ExoPlayer {
         exo?.let { return it }
+        playerVersion++
         val app = context.applicationContext
         appContext = app
         val p = createPlayer(app)
@@ -132,8 +147,53 @@ object PlayerHolder {
         val f: Format? = p.videoFormat
         val w = if (p.videoSize.width > 0) p.videoSize.width else f?.width ?: 0
         val h = if (p.videoSize.height > 0) p.videoSize.height else f?.height ?: 0
-        if (w <= 0 || h <= 0) { quality = null; return }
+        if (w <= 0 || h <= 0) { quality = null; audioInfo = null; return }
         quality = describe(w, h, f)
+        audioInfo = describeAudio(p)
+    }
+
+    /** e.g. "AC-3 5.1" or "No audio track"; shown in the player's bottom bar. */
+    var audioInfo by mutableStateOf<String?>(null)
+        private set
+
+    private fun describeAudio(p: ExoPlayer): String {
+        val a = p.audioFormat
+        val hasAudioTrack = p.currentTracks.groups.any { it.type == androidx.media3.common.C.TRACK_TYPE_AUDIO }
+        if (a == null) return if (hasAudioTrack) "Audio not supported on this box" else "No audio in this stream"
+        val codec = when (val m = (a.sampleMimeType ?: "").lowercase(Locale.US)) {
+            "audio/mp4a-latm" -> "AAC"
+            "audio/ac3" -> "AC-3"
+            "audio/eac3", "audio/eac3-joc" -> "E-AC-3"
+            "audio/true-hd" -> "TrueHD"
+            "audio/vnd.dts", "audio/vnd.dts.hd" -> "DTS"
+            "audio/mpeg", "audio/mpeg-l2" -> "MP3/MP2"
+            "audio/opus" -> "Opus"
+            else -> m.substringAfter("audio/").uppercase(Locale.US)
+        }
+        val ch = when (a.channelCount) { 1 -> "mono"; 2 -> "stereo"; 6 -> "5.1"; 8 -> "7.1"; Format.NO_VALUE -> ""; else -> "${a.channelCount}ch" }
+        return "$codec $ch".trim()
+    }
+
+    // ---- Audio output setting ----
+    private fun passthrough(context: Context) =
+        context.applicationContext.getSharedPreferences("forbidden_streams", Context.MODE_PRIVATE).getBoolean("audio_passthrough", false)
+
+    var passthroughSetting by mutableStateOf<Boolean?>(null)
+        private set
+
+    fun isPassthrough(context: Context): Boolean = passthroughSetting ?: passthrough(context).also { passthroughSetting = it }
+
+    /** Switches audio output and rebuilds the player (the playing channel restarts). */
+    fun setPassthrough(context: Context, on: Boolean) {
+        context.applicationContext.getSharedPreferences("forbidden_streams", Context.MODE_PRIVATE)
+            .edit().putBoolean("audio_passthrough", on).apply()
+        passthroughSetting = on
+        val playing = current
+        val list = items
+        val i = index
+        exo?.release()
+        exo = null
+        if (playing != null && list.isNotEmpty()) { items = list; index = i; load(context) }
     }
 
     fun describe(w: Int, h: Int, f: Format?): String {
@@ -229,6 +289,7 @@ object PlayerHolder {
         error = null
         quality = null
         current = item
+        p.volume = 1f // never stay muted from Multi-View
         val start = item.startMs
         if (start != null && start > 0) p.setMediaItem(MediaItem.fromUri(item.url), start)
         else p.setMediaItem(MediaItem.fromUri(item.url))

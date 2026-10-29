@@ -77,7 +77,7 @@ private val railIcon = mapOf(
 )
 
 /** Settings box: MenuScreen section number to label (Recordings moved to its own rail icon). */
-val SETTINGS_SECTIONS = listOf(1 to "⏰  Reminders", 2 to "🗂  Categories", 3 to "⟳  Refresh content", 4 to "👤  Account", 5 to "⎋  Log out")
+val SETTINGS_SECTIONS = listOf(1 to "⏰  Reminders", 2 to "🗂  Categories", 6 to "🔊  Audio", 3 to "⟳  Refresh content", 4 to "👤  Account", 5 to "⎋  Log out")
 
 /**
  * Left rail (logo, line icons for Channels, Movies, TV Shows, Sports, Settings, clock).
