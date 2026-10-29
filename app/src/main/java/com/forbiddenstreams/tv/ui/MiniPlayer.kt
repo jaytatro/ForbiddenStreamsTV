@@ -33,7 +33,7 @@ import com.forbiddenstreams.tv.player.PlayerHolder
  * When [focusable] is true: OK = full screen, hold OK = stop.
  */
 @Composable
-fun MiniPlayer(width: Dp, modifier: Modifier = Modifier, focusable: Boolean = true) {
+fun MiniPlayer(width: Dp, modifier: Modifier = Modifier, focusable: Boolean = true, cardModifier: Modifier = Modifier) {
     val item = PlayerHolder.current ?: return
     if (!item.live || PlayerHolder.previewHidden) return
     val context = LocalContext.current
@@ -60,7 +60,7 @@ fun MiniPlayer(width: Dp, modifier: Modifier = Modifier, focusable: Boolean = tr
                 shape = shape,
                 container = Color.Black,
                 focusedScale = 1f,
-                modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+                modifier = cardModifier.fillMaxWidth().aspectRatio(16f / 9f),
             ) { Box(Modifier.padding(3.dp).clip(shape)) { video() } }
         } else {
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).border(2.dp, FS.GreenDeep, shape).padding(2.dp).clip(shape)) { video() }

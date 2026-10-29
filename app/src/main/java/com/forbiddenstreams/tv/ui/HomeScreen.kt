@@ -158,7 +158,7 @@ fun HomeScreen(onLogout: () -> Unit) {
             ) {
                 Image(painterResource(R.drawable.logo), null, Modifier.size(52.dp))
                 Spacer(Modifier.height(28.dp))
-                for (s in listOf(Sec.CHANNELS, Sec.MOVIES, Sec.SHOWS, Sec.SPORTS, Sec.SPLIT, Sec.RECORDINGS)) {
+                for (s in listOf(Sec.CHANNELS, Sec.MOVIES, Sec.SHOWS, Sec.SPORTS, Sec.RECORDINGS)) {
                     RailButton(s, selected = section == s, req = iconReq.getValue(s), flyEntry = flyEntry,
                         onY = { iconY[s] = it },
                         onFocus = { hover = s },
@@ -229,7 +229,10 @@ fun HomeScreen(onLogout: () -> Unit) {
                             groupsFor(CategoryPrefs.visible(context, Session.liveCats.orEmpty()))
                         }
                         if (groups.size <= 4) FlyMessage("Loading channels…", flyEntry, back)
-                        else FlyList("CHANNELS", groups.map { it.key to it.title }, chGroup, flyEntry, back, onPick = { k ->
+                        else FlyList("CHANNELS", groups.map { it.key to it.title }, chGroup, flyEntry, back,
+                            // ▶ = into the screen (the live preview on start-up, or the guide); the box closes.
+                            onRight = { section = Sec.CHANNELS; toContent() },
+                            onPick = { k ->
                             chGroup = k
                             if (k != Group.Search.key) prefs.lastGroup = k
                             section = Sec.CHANNELS
@@ -369,6 +372,7 @@ private fun FlyList(
     entry: FocusRequester,
     back: FocusRequester,
     onFocusItem: ((String) -> Unit)? = null,
+    onRight: (() -> Unit)? = null,
     onPick: (String) -> Unit,
 ) {
     // Providers sometimes list a category twice; a repeated key would crash the list while scrolling.
@@ -392,6 +396,10 @@ private fun FlyList(
                         .then(if (i == selIndex) Modifier.focusRequester(entry) else Modifier)
                         .then(if (i == 0) Modifier.focusRequester(top) else Modifier)
                         .focusProperties { left = back }
+                        .onPreviewKeyEvent { ev ->
+                            if (onRight != null && ev.type == KeyEventType.KeyDown &&
+                                ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) { onRight(); true } else false
+                        }
                         .then(
                             if (i == items.size - 1) Modifier.onPreviewKeyEvent { ev ->
                                 if (ev.type == KeyEventType.KeyDown && ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN) {

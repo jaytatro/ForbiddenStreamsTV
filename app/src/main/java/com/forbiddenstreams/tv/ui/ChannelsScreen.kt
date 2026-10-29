@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -356,6 +357,8 @@ fun GuideView(
     val listState = rememberLazyListState()
     val focus = remember { FocusRequester() }
     val topMenu = LocalTopMenuFocus.current
+    val previewReq = remember { FocusRequester() }
+    var previewFocused by remember { mutableStateOf(false) }
 
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var dayOffset by remember { mutableIntStateOf(0) }
@@ -485,11 +488,20 @@ fun GuideView(
             .onPreviewKeyEvent { ev ->
                 val ne = ev.nativeKeyEvent
                 val down = ev.type == KeyEventType.KeyDown
+                if (previewFocused) {
+                    // The preview has the cursor: ▼ goes back to the guide; OK etc. go to the preview.
+                    if (ne.keyCode == AKeyEvent.KEYCODE_DPAD_DOWN) {
+                        if (down) try { focus.requestFocus() } catch (e: Exception) { }
+                        return@onPreviewKeyEvent true
+                    }
+                    return@onPreviewKeyEvent false
+                }
                 when (ne.keyCode) {
                     AKeyEvent.KEYCODE_DPAD_UP -> {
-                        // Held ▲ = jump up to the top menu (CHANNELS / VOD / SPORTS).
-                        if (down && ne.repeatCount >= 2 && topMenu != null) {
-                            try { topMenu.requestFocus() } catch (e: Exception) { }
+                        // Held ▲ = go to the live preview (OK there = full screen); without a preview, to the rail.
+                        if (down && ne.repeatCount >= 2) {
+                            val target = if (PlayerHolder.isMiniActive && !overlay) previewReq else topMenu
+                            try { target?.requestFocus() } catch (e: Exception) { }
                             return@onPreviewKeyEvent true
                         }
                         if (row == 0) return@onPreviewKeyEvent false // lets focus go up to the search box / menu
@@ -535,7 +547,7 @@ fun GuideView(
             }
             .focusable(),
     ) {
-        if (!overlay) GuideInfoPanel(curCh, curProg)
+        if (!overlay) GuideInfoPanel(curCh, curProg, previewReq) { previewFocused = it }
         // Day strip (moves by itself when you hold ◀ ▶ past midnight)
         if (!overlay) Row(
             Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
@@ -611,7 +623,7 @@ fun GuideView(
 }
 
 @Composable
-private fun GuideInfoPanel(ch: LiveChannel?, p: Program?) {
+private fun GuideInfoPanel(ch: LiveChannel?, p: Program?, previewReq: FocusRequester, onPreviewFocus: (Boolean) -> Unit) {
     Row(
         Modifier.fillMaxWidth().height(150.dp).padding(horizontal = 24.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -634,7 +646,10 @@ private fun GuideInfoPanel(ch: LiveChannel?, p: Program?) {
             }
         }
         // Live preview, top-right.
-        MiniPlayer(210.dp, focusable = false)
+        MiniPlayer(
+            210.dp, focusable = true,
+            cardModifier = Modifier.focusRequester(previewReq).onFocusChanged { onPreviewFocus(it.isFocused) },
+        )
     }
 }
 

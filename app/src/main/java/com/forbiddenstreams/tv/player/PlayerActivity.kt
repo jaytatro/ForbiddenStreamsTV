@@ -165,11 +165,12 @@ class PlayerActivity : ComponentActivity() {
                                 onClick = { actionsVisible = false; recordNow(prog) },
                             )
                             com.forbiddenstreams.tv.ui.Pill(
-                                "⊞  Split Screen", selected = false, fontSize = 18.sp,
+                                "⊞  Multi-View", selected = false, fontSize = 18.sp,
                                 onClick = {
                                     actionsVisible = false
                                     infoVisible = false
                                     view.player = null // the split-screen tiles draw the video now
+                                    com.forbiddenstreams.tv.ui.MultiView.start(this@PlayerActivity)
                                     multiVisible = true
                                 },
                             )
