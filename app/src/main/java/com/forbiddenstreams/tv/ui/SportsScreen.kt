@@ -153,13 +153,21 @@ fun SportsScreen(league: League) {
                     ?: w.orEmpty().keys.filter { it > day }.minOrNull()?.let { "Next game: ${dayLabel(it)}" },
             )
             else -> {
-                val sorted = games.sortedWith(compareBy({ if (it.isLive) 0 else if (it.isFinal) 2 else 1 }, { it.start }))
+                // Favorite teams' games first (⭐), then live, upcoming, final.
+                val favV = com.forbiddenstreams.tv.sports.FavTeams.version
+                val sorted = remember(games, favV) {
+                    games.sortedWith(compareBy(
+                        { if (com.forbiddenstreams.tv.sports.FavTeams.inGame(context, league, it)) 0 else 1 },
+                        { if (it.isLive) 0 else if (it.isFinal) 2 else 1 }, { it.start },
+                    ))
+                }
                 LazyColumn(
                     Modifier.fillMaxSize().padding(horizontal = 40.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     items(sorted, key = { it.id }) { g ->
-                        GameRow(g, matches[g.id], groupMissing, teamChannels == null) { picker = g }
+                        GameRow(g, matches[g.id], groupMissing, teamChannels == null,
+                            fav = remember(favV, g.id) { com.forbiddenstreams.tv.sports.FavTeams.inGame(context, league, g) }) { picker = g }
                     }
                     item { Spacer(Modifier.height(24.dp)) }
                 }
@@ -242,7 +250,7 @@ private fun dayLabel(key: String): String = try {
 } catch (e: Exception) { key }
 
 @Composable
-private fun GameRow(game: Game, channels: GameChannels?, groupMissing: Boolean, loadingChannels: Boolean, onClick: () -> Unit) {
+private fun GameRow(game: Game, channels: GameChannels?, groupMissing: Boolean, loadingChannels: Boolean, fav: Boolean = false, onClick: () -> Unit) {
     FocusCard(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().height(150.dp),
@@ -258,6 +266,7 @@ private fun GameRow(game: Game, channels: GameChannels?, groupMissing: Boolean, 
                 val size = when { len <= 30 -> 28.sp; len <= 38 -> 24.sp; else -> 21.sp }
                 Text(
                     buildAnnotatedString {
+                        if (fav) append("⭐ ")
                         append(game.away.displayName)
                         withStyle(SpanStyle(fontSize = 18.sp, color = FS.TextDim)) { append("  vs.  ") }
                         append(game.home.displayName)

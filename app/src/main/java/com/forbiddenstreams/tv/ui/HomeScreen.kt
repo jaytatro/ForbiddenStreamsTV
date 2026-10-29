@@ -69,14 +69,15 @@ import com.forbiddenstreams.tv.data.Prefs
 import com.forbiddenstreams.tv.data.Session
 import kotlinx.coroutines.launch
 
-enum class Sec { CHANNELS, MOVIES, SHOWS, SPORTS, SETTINGS }
+enum class Sec { CHANNELS, MOVIES, SHOWS, SPORTS, RECORDINGS, SETTINGS }
 
 private val railIcon = mapOf(
     Sec.CHANNELS to RailIcon.CHANNELS, Sec.MOVIES to RailIcon.MOVIES, Sec.SHOWS to RailIcon.SHOWS,
-    Sec.SPORTS to RailIcon.SPORTS, Sec.SETTINGS to RailIcon.SETTINGS,
+    Sec.SPORTS to RailIcon.SPORTS, Sec.RECORDINGS to RailIcon.RECORDINGS, Sec.SETTINGS to RailIcon.SETTINGS,
 )
 
-val SETTINGS_SECTIONS = listOf("⏺  Recordings", "⏰  Reminders", "🗂  Categories", "⟳  Refresh content", "👤  Account", "⎋  Log out")
+/** Settings box: MenuScreen section number to label (Recordings moved to its own rail icon). */
+val SETTINGS_SECTIONS = listOf(1 to "⏰  Reminders", 2 to "🗂  Categories", 3 to "⟳  Refresh content", 4 to "👤  Account", 5 to "⎋  Log out")
 
 /**
  * Left rail (logo, line icons for Channels, Movies, TV Shows, Sports, Settings, clock).
@@ -105,7 +106,8 @@ fun HomeScreen(onLogout: () -> Unit) {
     var movieCat by rememberSaveable { mutableStateOf<String?>(null) }
     var showCat by rememberSaveable { mutableStateOf<String?>(null) }
     var league by rememberSaveable { mutableStateOf(League.NFL) }
-    var setSec by rememberSaveable { mutableIntStateOf(0) }
+    var favTeams by rememberSaveable { mutableStateOf(false) }        // Sports › Favorite Teams
+    var setSec by rememberSaveable { mutableIntStateOf(1) }
     var confirmLogout by remember { mutableStateOf(false) }
 
     val iconReq = remember { Sec.entries.associateWith { FocusRequester() } }
@@ -116,7 +118,10 @@ fun HomeScreen(onLogout: () -> Unit) {
 
     LaunchedEffect(Unit) { delay(200); try { iconReq.getValue(Sec.CHANNELS).requestFocus() } catch (e: Exception) { } }
     // Movies, TV Shows and Sports don't show the live preview: opening them stops it.
-    LaunchedEffect(section) { if (section in setOf(Sec.MOVIES, Sec.SHOWS, Sec.SPORTS) && PlayerHolder.isMiniActive) PlayerHolder.stop() }
+    // Also when coming back from full screen to one of them (e.g. BACK after watching a game).
+    LaunchedEffect(section, PlayerHolder.fullScreen) {
+        if (!PlayerHolder.fullScreen && section in setOf(Sec.MOVIES, Sec.SHOWS, Sec.SPORTS) && PlayerHolder.isMiniActive) PlayerHolder.stop()
+    }
 
     fun toContent() {
         scope.launch {
@@ -152,11 +157,15 @@ fun HomeScreen(onLogout: () -> Unit) {
             ) {
                 Image(painterResource(R.drawable.logo), null, Modifier.size(58.dp))
                 Spacer(Modifier.height(40.dp))
-                for (s in listOf(Sec.CHANNELS, Sec.MOVIES, Sec.SHOWS, Sec.SPORTS)) {
+                for (s in listOf(Sec.CHANNELS, Sec.MOVIES, Sec.SHOWS, Sec.SPORTS, Sec.RECORDINGS)) {
                     RailButton(s, selected = section == s, req = iconReq.getValue(s), flyEntry = flyEntry,
                         onY = { iconY[s] = it },
                         onFocus = { hover = s },
-                        onClick = { hover = s; try { flyEntry.requestFocus() } catch (e: Exception) { } })
+                        onClick = {
+                            hover = s
+                            if (s == Sec.RECORDINGS) { section = Sec.RECORDINGS; toContent() } // no box: opens straight away
+                            else try { flyEntry.requestFocus() } catch (e: Exception) { }
+                        })
                     Spacer(Modifier.height(30.dp))
                 }
                 Spacer(Modifier.weight(1f))
@@ -181,7 +190,8 @@ fun HomeScreen(onLogout: () -> Unit) {
                         Sec.CHANNELS -> ChannelsScreen(chGroup, onGroup = { chGroup = it })
                         Sec.MOVIES -> MoviesScreen(movieCat, onSelect = { movieCat = it })
                         Sec.SHOWS -> SeriesScreen(showCat, onSelect = { showCat = it })
-                        Sec.SPORTS -> SportsScreen(league)
+                        Sec.SPORTS -> if (favTeams) FavoriteTeamsScreen() else SportsScreen(league)
+                        Sec.RECORDINGS -> MenuScreen(0)
                         Sec.SETTINGS -> MenuScreen(setSec)
                     }
                 }
@@ -190,17 +200,21 @@ fun HomeScreen(onLogout: () -> Unit) {
 
         // ---- Box next to the highlighted icon ----
         val open = hover
-        if (open != null && (railFocus || flyFocus)) {
+        if (open != null && open != Sec.RECORDINGS && (railFocus || flyFocus)) {
             val y = with(density) { (iconY[open] ?: 0f).toDp() }
+            val full = open == Sec.CHANNELS || open == Sec.MOVIES || open == Sec.SHOWS
             val box = Modifier
-                .padding(start = RAIL_W + 10.dp)
+                .padding(start = RAIL_W + 1.dp)
                 .onFocusChanged { flyFocus = it.hasFocus }
-                .background(Color.Black, RoundedCornerShape(14.dp))
-                .border(1.dp, FS.GreenDeep, RoundedCornerShape(14.dp))
-                .padding(10.dp)
+                .background(Color.Black.copy(alpha = 0.6f), if (full) RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp) else RoundedCornerShape(14.dp))
+                .border(1.dp, FS.GreenDeep, if (full) RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp) else RoundedCornerShape(14.dp))
+                .padding(8.dp)
             val back = iconReq.getValue(open)
-            val placed = if (open == Sec.SETTINGS) Modifier.align(Alignment.BottomStart).padding(bottom = 60.dp)
-                else Modifier.align(Alignment.TopStart).padding(top = (y - 8.dp).coerceAtLeast(8.dp), bottom = 16.dp)
+            val placed = when {
+                full -> Modifier.align(Alignment.TopStart).fillMaxHeight()   // full height, from the top
+                open == Sec.SETTINGS -> Modifier.align(Alignment.BottomStart).padding(bottom = 60.dp)
+                else -> Modifier.align(Alignment.TopStart).padding(top = (y - 8.dp).coerceAtLeast(8.dp), bottom = 16.dp)
+            }
             Box(placed.then(box)) {
                 when (open) {
                     Sec.CHANNELS -> {
@@ -226,6 +240,12 @@ fun HomeScreen(onLogout: () -> Unit) {
                             if (movies) "MOVIES" else "TV SHOWS",
                             listOf(VOD_SEARCH to "🔍  Search", VOD_RECENT to "🕘  Recently Watched") + c.map { it.id to it.name },
                             if (movies) movieCat else showCat, flyEntry, back,
+                            // Highlighting a category shows its movies / shows on the right.
+                            onFocusItem = { k ->
+                                if (k != VOD_SEARCH) {
+                                    if (movies) { movieCat = k; section = Sec.MOVIES } else { showCat = k; section = Sec.SHOWS }
+                                }
+                            },
                             onPick = { k ->
                                 if (movies) { movieCat = k; section = Sec.MOVIES } else { showCat = k; section = Sec.SHOWS }
                                 toContent()
@@ -233,12 +253,20 @@ fun HomeScreen(onLogout: () -> Unit) {
                         )
                     }
                     Sec.SPORTS -> FlyList(
-                        "SPORTS", League.entries.map { it.name to "${it.icon}  ${it.label}" }, league.name, flyEntry, back,
-                        onFocusItem = { k -> league = League.valueOf(k); section = Sec.SPORTS },
-                        onPick = { k -> league = League.valueOf(k); section = Sec.SPORTS; toContent() },
+                        "SPORTS", League.entries.map { it.name to "${it.icon}  ${it.label}" } + ("FAV" to "⭐  Favorite Teams"),
+                        if (favTeams) "FAV" else league.name, flyEntry, back,
+                        onFocusItem = { k ->
+                            if (k == "FAV") favTeams = true else { favTeams = false; league = League.valueOf(k) }
+                            section = Sec.SPORTS
+                        },
+                        onPick = { k ->
+                            if (k == "FAV") favTeams = true else { favTeams = false; league = League.valueOf(k) }
+                            section = Sec.SPORTS
+                            toContent()
+                        },
                     )
                     Sec.SETTINGS -> FlyList(
-                        "SETTINGS", SETTINGS_SECTIONS.mapIndexed { i, t -> "$i" to t }, "$setSec", flyEntry, back,
+                        "SETTINGS", SETTINGS_SECTIONS.map { (i, t) -> "$i" to t }, "$setSec", flyEntry, back,
                         onPick = { k ->
                             when (val i = k.toInt()) {
                                 3 -> { Session.refresh(context); toast(context, "Updating channels, movies and shows…") }
@@ -332,7 +360,7 @@ private fun FlyList(
     val selIndex = items.indexOfFirst { it.first == selectedKey }.let { if (it < 0) 0 else it }
     val state = rememberLazyListState(selIndex)
     val longest = items.maxOfOrNull { it.second.length } ?: 10
-    val w = (longest * 11 + 70).coerceIn(200, 400).dp
+    val w = (longest * 9 + 44).coerceIn(150, 340).dp
     Column(Modifier.width(w)) {
         Text(title, color = FS.Green, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp,
             modifier = Modifier.padding(start = 14.dp, bottom = 6.dp))

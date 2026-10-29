@@ -1,0 +1,62 @@
+package com.forbiddenstreams.tv.sports
+
+import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
+import com.forbiddenstreams.tv.data.Http
+import com.forbiddenstreams.tv.data.jsonObject
+import com.forbiddenstreams.tv.data.str
+
+data class TeamInfo(val league: League, val id: String, val name: String, val abbreviation: String, val logo: String?)
+
+/** Every team in a league, from ESPN (cached for the session). */
+object TeamList {
+    private val cache = HashMap<League, List<TeamInfo>>()
+
+    suspend fun teams(league: League): List<TeamInfo> {
+        cache[league]?.let { return it }
+        val j = jsonObject(Http.get("https://site.api.espn.com/apis/site/v2/sports/${league.espnPath}/teams?limit=200"))
+        val arr = j?.optJSONArray("sports")?.optJSONObject(0)?.optJSONArray("leagues")?.optJSONObject(0)?.optJSONArray("teams")
+        val out = ArrayList<TeamInfo>()
+        if (arr != null) for (i in 0 until arr.length()) {
+            val t = arr.optJSONObject(i)?.optJSONObject("team") ?: continue
+            val logo = t.optJSONArray("logos")?.optJSONObject(0)?.str("href")
+            out += TeamInfo(league, t.str("id") ?: continue, t.str("displayName") ?: continue, t.str("abbreviation") ?: "", logo)
+        }
+        val sorted = out.sortedBy { it.name }
+        if (sorted.isNotEmpty()) cache[league] = sorted
+        return sorted
+    }
+}
+
+/** The user's favorite teams ("NBA:BOS"). Their games are listed first with a ⭐. */
+object FavTeams {
+    var version by mutableIntStateOf(0)
+        private set
+
+    private fun sp(context: Context) =
+        context.applicationContext.getSharedPreferences("forbidden_streams", Context.MODE_PRIVATE)
+
+    private fun key(league: League, abbreviation: String) = "${league.name}:${abbreviation.uppercase()}"
+
+    fun all(context: Context): Set<String> = sp(context).getStringSet("fav_teams", emptySet())?.toSet() ?: emptySet()
+
+    fun isFav(context: Context, league: League, abbreviation: String) = key(league, abbreviation) in all(context)
+
+    /** Returns true if the team is now a favorite. */
+    fun toggle(context: Context, league: League, abbreviation: String): Boolean {
+        val s = all(context).toMutableSet()
+        val k = key(league, abbreviation)
+        val added = s.add(k)
+        if (!added) s.remove(k)
+        sp(context).edit().putStringSet("fav_teams", s).apply()
+        version++
+        return added
+    }
+
+    fun inGame(context: Context, league: League, game: Game): Boolean {
+        val f = all(context)
+        return key(league, game.home.abbreviation) in f || key(league, game.away.abbreviation) in f
+    }
+}

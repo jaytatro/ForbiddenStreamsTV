@@ -99,6 +99,8 @@ private fun <T> PosterBrowser(
         return
     }
     val catItems by produceState<List<T>?>(null, catId) {
+        value = null
+        delay(250) // the cursor may still be moving through the categories
         value = if (catId == null) emptyList() else try { loadItems(catId) } catch (e: Exception) { emptyList() }
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 8.dp)) {
