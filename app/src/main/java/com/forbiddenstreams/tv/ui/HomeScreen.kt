@@ -265,6 +265,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                             toContent()
                         },
                     )
+                    Sec.RECORDINGS -> Unit // no box
                     Sec.SETTINGS -> FlyList(
                         "SETTINGS", SETTINGS_SECTIONS.map { (i, t) -> "$i" to t }, "$setSec", flyEntry, back,
                         onPick = { k ->
