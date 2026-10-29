@@ -74,29 +74,62 @@ object PlayerHolder {
 
     val isMiniActive: Boolean get() = current?.live == true
 
-    /** Builds a player exactly like the builds that had sound (plain ExoPlayer, default audio). */
-    fun createPlayer(context: Context): ExoPlayer {
+    /**
+     * Live TV: the plain player (the setup that always had sound on channels).
+     * Movies/episodes ([vod] = true): adds the FFmpeg decoder so Dolby/DTS audio in
+     * 4K and Dolby Vision files plays even when the box can't decode it itself.
+     */
+    fun createPlayer(context: Context, vod: Boolean = false): ExoPlayer {
         val http = DefaultHttpDataSource.Factory()
             .setUserAgent(Http.USER_AGENT)
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(30_000)
         val app = context.applicationContext
-        return ExoPlayer.Builder(app)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(app, http)))
-            .build()
+        val sources = DefaultMediaSourceFactory(DefaultDataSource.Factory(app, http))
+        if (!vod) return ExoPlayer.Builder(app).setMediaSourceFactory(sources).build()
+        val renderers = object : androidx.media3.exoplayer.DefaultRenderersFactory(app) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean,
+            ): androidx.media3.exoplayer.audio.AudioSink =
+                androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                    .setAudioCapabilities(androidx.media3.exoplayer.audio.AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .build()
+        }
+            .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            .setEnableDecoderFallback(true)
+        return ExoPlayer.Builder(app, renderers).setMediaSourceFactory(sources).build()
     }
 
     /** Bumped whenever a new player is built, so preview windows re-attach. */
     var playerVersion by mutableIntStateOf(0)
         private set
 
+    /** Whether the shared player is the movie/episode (FFmpeg) kind. */
+    private var exoVod = false
+
+    /** Swaps the shared player when going between live TV and movies/episodes. */
+    private fun ensureKind(context: Context, vod: Boolean) {
+        val p = exo ?: run { nextVod = vod; return }
+        if (exoVod == vod) return
+        p.release()
+        exo = null
+        nextVod = vod
+        player(context)
+    }
+    private var nextVod = false
+
     fun player(context: Context): ExoPlayer {
         exo?.let { return it }
         playerVersion++
         val app = context.applicationContext
         appContext = app
-        val p = createPlayer(app)
+        exoVod = nextVod
+        val p = createPlayer(app, exoVod)
         p.addListener(object : Player.Listener {
             override fun onPlayerError(e: PlaybackException) {
                 error = "This stream won't play right now (${e.errorCodeName})."
@@ -236,6 +269,7 @@ object PlayerHolder {
     private fun load(context: Context) {
         saveProgress()
         val item = items[index]
+        ensureKind(context, vod = !item.live)
         val p = player(context)
         error = null
         quality = null
