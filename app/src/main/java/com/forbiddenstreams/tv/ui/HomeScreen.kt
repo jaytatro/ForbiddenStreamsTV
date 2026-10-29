@@ -364,13 +364,15 @@ private fun RailButton(
 @Composable
 private fun FlyList(
     title: String,
-    items: List<Pair<String, String>>,
+    allItems: List<Pair<String, String>>,
     selectedKey: String?,
     entry: FocusRequester,
     back: FocusRequester,
     onFocusItem: ((String) -> Unit)? = null,
     onPick: (String) -> Unit,
 ) {
+    // Providers sometimes list a category twice; a repeated key would crash the list while scrolling.
+    val items = remember(allItems) { allItems.distinctBy { it.first } }
     val scope = rememberCoroutineScope()
     val top = remember { FocusRequester() }
     val selIndex = items.indexOfFirst { it.first == selectedKey }.let { if (it < 0) 0 else it }
