@@ -16,11 +16,27 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-enum class League(val label: String, val icon: String, val espnPath: String, val groupName: String) {
-    NFL("NFL", "🏈", "football/nfl", "USA | NFL Teams"),
-    NBA("NBA", "🏀", "basketball/nba", "USA | NBA Teams"),
-    NHL("NHL", "🏒", "hockey/nhl", "USA | NHL Teams"),
-    MLB("MLB", "⚾", "baseball/mlb", "USA | MLB Teams"),
+/**
+ * Leagues on the Sports tab, in the order shown. [groupName] is the provider's team-channel
+ * group; [keywords] find a similarly named group when the exact one isn't there.
+ * [query] is added to ESPN requests (college: all Division I games, not just the top 25).
+ */
+enum class League(
+    val label: String,
+    val icon: String,
+    val espnPath: String,
+    val groupName: String,
+    val keywords: List<String>,
+    val query: String = "",
+) {
+    NFL("NFL", "🏈", "football/nfl", "USA | NFL Teams", listOf("nfl")),
+    NBA("NBA", "🏀", "basketball/nba", "USA | NBA Teams", listOf("nba")),
+    WNBA("WNBA", "🏀", "basketball/wnba", "USA | WNBA Teams", listOf("wnba")),
+    NHL("NHL", "🏒", "hockey/nhl", "USA | NHL Teams", listOf("nhl")),
+    MLB("MLB", "⚾", "baseball/mlb", "USA | MLB Teams", listOf("mlb")),
+    MLS("MLS", "⚽", "soccer/usa.1", "USA | MLS Teams", listOf("mls")),
+    NCAAF("NCAAF", "🏈", "football/college-football", "USA | NCAAF Teams", listOf("ncaaf", "college football", "ncaa football"), "groups=80"),
+    NCAAB("NCAAB", "🏀", "basketball/mens-college-basketball", "USA | NCAAB Teams", listOf("ncaab", "college basketball", "ncaa basketball"), "groups=50"),
 }
 
 data class Team(
@@ -91,8 +107,10 @@ object Espn {
         return best
     }
 
-    private fun url(league: League, query: String) =
-        "https://site.api.espn.com/apis/site/v2/sports/${league.espnPath}/scoreboard" + if (query.isEmpty()) "" else "?$query"
+    private fun url(league: League, query: String): String {
+        val q = listOf(query, league.query).filter { it.isNotEmpty() }.joinToString("&")
+        return "https://site.api.espn.com/apis/site/v2/sports/${league.espnPath}/scoreboard" + if (q.isEmpty()) "" else "?$q&limit=300"
+    }
 
     private suspend fun fetch(league: League, query: String): List<Game> = withContext(Dispatchers.Default) { fetchNow(league, query) }
 

@@ -16,7 +16,7 @@ object TeamList {
 
     suspend fun teams(league: League): List<TeamInfo> {
         cache[league]?.let { return it }
-        val j = jsonObject(Http.get("https://site.api.espn.com/apis/site/v2/sports/${league.espnPath}/teams?limit=200"))
+        val j = jsonObject(Http.get("https://site.api.espn.com/apis/site/v2/sports/${league.espnPath}/teams?limit=1000"))
         val arr = j?.optJSONArray("sports")?.optJSONObject(0)?.optJSONArray("leagues")?.optJSONObject(0)?.optJSONArray("teams")
         val out = ArrayList<TeamInfo>()
         if (arr != null) for (i in 0 until arr.length()) {

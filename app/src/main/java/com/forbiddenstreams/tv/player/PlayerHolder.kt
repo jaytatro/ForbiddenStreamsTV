@@ -430,6 +430,11 @@ object PlayerHolder {
         handler.removeCallbacksAndMessages(null)
     }
 
+    /** Set when ◀◀ in the live player asks for the side bar; the home screen opens the Channels list. */
+    var sideBarRequest by mutableIntStateOf(0)
+        private set
+    fun requestSideBar() { sideBarRequest++ }
+
     fun existingPlayer(): ExoPlayer? = exo
 
     fun pause() { saveProgress(); exo?.pause() }

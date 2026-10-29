@@ -283,7 +283,8 @@ private fun GameRow(game: Game, channels: GameChannels?, groupMissing: Boolean, 
                 )
                 game.venue?.let { Text(it, color = FS.Green, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 val chText = when {
-                    groupMissing -> "Team channels group not found on your provider"
+                    groupMissing -> if (game.networks.isNotEmpty()) "📡 " + game.networks.joinToString(" · ") + " · OK for channels"
+                        else "No team channels on your provider · OK for channels"
                     channels == null -> if (loadingChannels) "Finding team channels…" else ""
                     channels.options.isEmpty() -> channels.note ?: "No team channel found"
                     else -> "📺 " + channels.options.joinToString("   |   ") { it.name }

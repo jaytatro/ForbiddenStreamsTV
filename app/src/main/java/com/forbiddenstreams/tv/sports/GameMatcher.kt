@@ -25,7 +25,12 @@ object GameMatcher {
 
     fun findGroup(categories: List<Category>, league: League): Category? {
         val want = groupKey(league.groupName)
-        return categories.firstOrNull { groupKey(it.name) == want }
+        categories.firstOrNull { groupKey(it.name) == want }?.let { return it }
+        // Otherwise a "<league> Teams" group with a slightly different name (not "NBA" for "WNBA").
+        return categories.firstOrNull { c ->
+            val n = " " + c.name.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim() + " "
+            n.contains(" team") && league.keywords.any { k -> n.contains(" $k ") }
+        }
     }
 
     private val nonWord = Regex("[^a-z0-9]+")

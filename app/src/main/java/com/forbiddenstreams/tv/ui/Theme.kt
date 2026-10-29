@@ -168,6 +168,7 @@ fun SideItem(
     modifier: Modifier = Modifier,
     onFocus: (() -> Unit)? = null,
     textColor: Color? = null,
+    icon: RailIcon? = null,
 ) {
     val shape = RoundedCornerShape(50)
     Surface(
@@ -182,14 +183,22 @@ fun SideItem(
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
     ) {
-        Text(
-            text,
-            fontSize = 20.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-        )
+        androidx.compose.foundation.layout.Row(
+            Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            if (icon != null) {
+                LineIcon(icon, 22.dp, androidx.tv.material3.LocalContentColor.current)
+                androidx.compose.foundation.layout.Spacer(Modifier.padding(start = 10.dp))
+            }
+            Text(
+                text,
+                fontSize = 20.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

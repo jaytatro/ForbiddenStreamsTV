@@ -74,6 +74,8 @@ class PlayerActivity : ComponentActivity() {
     private var seekFlash by mutableStateOf<String?>(null)
     private var seekJob: Job? = null
     private var okDown = false
+    private var lastKeyAt = 0L
+    private var lastLeftAt = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -118,13 +120,16 @@ class PlayerActivity : ComponentActivity() {
                 val prog = epg?.firstOrNull { it.isLive(now) }
                 Box(Modifier.fillMaxSize().background(Color.Black)) {
                     AndroidView(factory = { view }, modifier = Modifier.fillMaxSize())
-                    if (infoVisible && item != null && !guideVisible) {
-                        // Bottom bar: where the time and settings buttons are.
+                    if ((infoVisible || actionsVisible) && item != null && !guideVisible) {
+                      // Bottom bar: channel info, and under it (after OK) Last Channel · Record · Multi-View.
+                      Column(
+                          Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                              .padding(start = 32.dp, end = 32.dp, bottom = if (item.live) 28.dp else 96.dp)
+                              .background(Color(0xD9050805), RoundedCornerShape(12.dp))
+                              .padding(horizontal = 22.dp, vertical = 12.dp),
+                      ) {
                         Row(
-                            Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                                .padding(start = 32.dp, end = 32.dp, bottom = if (item.live) 28.dp else 96.dp)
-                                .background(Color(0xD9050805), RoundedCornerShape(12.dp))
-                                .padding(horizontal = 22.dp, vertical = 12.dp),
+                            Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
@@ -151,17 +156,22 @@ class PlayerActivity : ComponentActivity() {
                             Spacer(Modifier.width(18.dp))
                             Text(Fmt.time(now), color = FS.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         }
-                    }
-                    if (actionsVisible && item != null) {
-                        BackHandler { actionsVisible = false }
-                        val first = remember { androidx.compose.ui.focus.FocusRequester() }
-                        LaunchedEffect(Unit) { delay(80); try { first.requestFocus() } catch (e: Exception) { } }
-                        Row(
-                            Modifier.align(Alignment.BottomCenter).padding(bottom = 30.dp)
-                                .background(Color(0xE6050805), RoundedCornerShape(50))
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
-                        ) {
+                        if (actionsVisible) {
+                            BackHandler { actionsVisible = false }
+                            val first = remember { androidx.compose.ui.focus.FocusRequester() }
+                            LaunchedEffect(Unit) { delay(80); try { first.requestFocus() } catch (e: Exception) { } }
+                            // Nothing picked for 5 seconds: the buttons close by themselves.
+                            LaunchedEffect(Unit) {
+                                lastKeyAt = android.os.SystemClock.uptimeMillis()
+                                while (true) {
+                                    delay(500)
+                                    if (android.os.SystemClock.uptimeMillis() - lastKeyAt > 5_000) { actionsVisible = false; break }
+                                }
+                            }
+                            Row(
+                                Modifier.padding(top = 10.dp),
+                                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
+                            ) {
                             com.forbiddenstreams.tv.ui.Pill(
                                 "⏮  Last Channel", selected = false, fontSize = 18.sp,
                                 modifier = Modifier.focusRequester(first),
@@ -191,7 +201,9 @@ class PlayerActivity : ComponentActivity() {
                                     multiVisible = true
                                 },
                             )
+                            }
                         }
+                      }
                     }
                     if (panelVisible) {
                         com.forbiddenstreams.tv.ui.LiveCategoryPanel(
@@ -339,6 +351,22 @@ class PlayerActivity : ComponentActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        lastKeyAt = android.os.SystemClock.uptimeMillis()
+        // Live TV: ◀ twice quickly = back to the side bar (Channels list), the channel keeps playing in the preview.
+        if (::view.isInitialized && PlayerHolder.current?.live == true && !guideVisible && !multiVisible &&
+            event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0
+        ) {
+            val t = android.os.SystemClock.uptimeMillis()
+            if (t - lastLeftAt < 700) {
+                lastLeftAt = 0L
+                panelVisible = false
+                actionsVisible = false
+                PlayerHolder.requestSideBar()
+                close()
+                return true
+            }
+            lastLeftAt = t
+        }
         if (!::view.isInitialized || guideVisible || actionsVisible || multiVisible || panelVisible) return super.dispatchKeyEvent(event)
         val live = PlayerHolder.current?.live == true
         val down = event.action == KeyEvent.ACTION_DOWN

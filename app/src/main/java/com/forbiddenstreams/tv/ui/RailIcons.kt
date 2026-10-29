@@ -18,6 +18,7 @@ enum class RailIcon(val d: String) {
     CHANNELS("M5 6h14a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-8a2 2 0 0 1 2 -2z M8 21h8 M9 2l3 4l3 -4"),
     MOVIES("M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2z M7 3v18 M17 3v18 M3 8h4 M3 12h4 M3 16h4 M17 8h4 M17 12h4 M17 16h4"),
     SHOWS("M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2z M10 8.5v5l4.5 -2.5z M7 21h10"),
+    REMOTE("M9 2h6a2 2 0 0 1 2 2v16a2 2 0 0 1 -2 2h-6a2 2 0 0 1 -2 -2v-16a2 2 0 0 1 2 -2z M12 5a2.3 2.3 0 1 1 0 4.6a2.3 2.3 0 1 1 0 -4.6z M10 13h.01 M14 13h.01 M10 16.5h.01 M14 16.5h.01 M11 19.5h2"),
     SPLIT("M4 4h6v6h-6z M14 4h6v6h-6z M4 14h6v6h-6z M14 14h6v6h-6z"),
     RECORDINGS("M12 3a9 9 0 1 1 0 18a9 9 0 1 1 0 -18z M12 8.5a3.5 3.5 0 1 1 0 7a3.5 3.5 0 1 1 0 -7z"),
     SPORTS("M7 4h10v5a5 5 0 0 1 -10 0z M7 6h-3a3 3 0 0 0 3 4 M17 6h3a3 3 0 0 1 -3 4 M12 14v4 M8 21h8 M10 18h4"),
@@ -33,7 +34,7 @@ fun LineIcon(icon: RailIcon, size: Dp, color: Color, modifier: Modifier = Modifi
     Canvas(modifier.size(size)) {
         val k = this.size.minDimension / 24f
         scale(k, pivot = androidx.compose.ui.geometry.Offset.Zero) {
-            drawPath(path, color, style = Stroke(width = 1.6f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            drawPath(path, color, style = Stroke(width = if (icon == RailIcon.REMOTE) 1.8f else 1.6f, cap = StrokeCap.Round, join = StrokeJoin.Round))
         }
     }
 }

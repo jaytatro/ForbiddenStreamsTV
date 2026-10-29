@@ -78,7 +78,7 @@ private val railIcon = mapOf(
 
 /** Settings box: MenuScreen section number to label (Recordings moved to its own rail icon). */
 val SETTINGS_SECTIONS = listOf(
-    1 to "⏰  Reminders", 2 to "🗂  Categories", 6 to "⭐  Favorite Teams", 7 to "🎮  Buttons",
+    1 to "⏰  Reminders", 2 to "🗂  Categories", 6 to "⭐  Favorite Teams", 7 to "Buttons",
     3 to "⟳  Refresh content", 4 to "👤  Account", 5 to "⎋  Log out",
 )
 
@@ -156,6 +156,13 @@ fun HomeScreen(onLogout: () -> Unit) {
             delay(60)
             try { flyEntry.requestFocus() } catch (e: Exception) { }
         }
+    }
+    // ◀◀ in the live player: back here with the Channels list open.
+    LaunchedEffect(PlayerHolder.sideBarRequest) {
+        if (PlayerHolder.sideBarRequest == 0) return@LaunchedEffect
+        delay(300)
+        section = Sec.CHANNELS
+        openList()
     }
     // When ◀ takes the cursor out of a screen onto the side bar, go to the category list instead.
     var contentLeftAt by remember { mutableLongStateOf(0L) }
@@ -256,6 +263,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                 Sec.RECORDINGS, Sec.SPLIT -> Unit // no box
                 Sec.SETTINGS -> FlyList(
                     "SETTINGS", SETTINGS_SECTIONS.map { (i, t) -> "$i" to t }, "$setSec", flyEntry, back,
+                    icons = mapOf("7" to RailIcon.REMOTE), // TV remote drawn as a line icon
                     onPick = { k ->
                         when (val i = k.toInt()) {
                             3 -> { Session.refresh(context); toast(context, "Updating channels, movies and shows…") }
@@ -432,6 +440,7 @@ private fun FlyList(
     back: FocusRequester,
     onFocusItem: ((String) -> Unit)? = null,
     onRight: (() -> Unit)? = null,
+    icons: Map<String, RailIcon> = emptyMap(),
     onPick: (String) -> Unit,
 ) {
     // Providers sometimes list a category twice; a repeated key would crash the list while scrolling.
@@ -440,8 +449,11 @@ private fun FlyList(
     val top = remember { FocusRequester() }
     val selIndex = items.indexOfFirst { it.first == selectedKey }.let { if (it < 0) 0 else it }
     val state = rememberLazyListState(selIndex)
-    val longest = items.maxOfOrNull { it.second.length } ?: 10
-    val w = (longest * 9 + 44).coerceIn(200, 320).dp
+    // Wide enough for every word of the longest entry (emoji count double, icons add room).
+    val longest = items.maxOfOrNull { (k, label) ->
+        label.sumOf { c -> if (c.isSurrogate()) 1 else if (c.code > 0x2000) 2 else 1 } + if (k in icons) 3 else 0
+    } ?: 10
+    val w = (longest * 12 + 64).coerceIn(210, 420).dp
     Column(Modifier.width(w)) {
         Text(title, color = FS.GreenMid, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp,
             modifier = Modifier.padding(start = 14.dp, bottom = 6.dp))
@@ -451,6 +463,7 @@ private fun FlyList(
                     label, selected = key == selectedKey, onClick = { onPick(key) },
                     onFocus = { onFocusItem?.invoke(key) },
                     textColor = FS.Green,
+                    icon = icons[key],
                     modifier = Modifier.fillMaxWidth()
                         .then(if (i == selIndex) Modifier.focusRequester(entry) else Modifier)
                         .then(if (i == 0) Modifier.focusRequester(top) else Modifier)

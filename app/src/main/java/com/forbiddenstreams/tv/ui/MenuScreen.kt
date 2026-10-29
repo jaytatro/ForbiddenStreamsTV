@@ -138,7 +138,7 @@ private fun Header(title: String, hint: String?) {
 private fun InfoLine(label: String, value: String) {
     Row(Modifier.padding(vertical = 6.dp)) {
         Text(label, color = FS.TextDim, fontSize = 19.sp, modifier = Modifier.width(220.dp))
-        Text(value, color = FS.Text, fontSize = 19.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(value, color = FS.Text, fontSize = 19.sp, softWrap = true)
     }
 }
 
@@ -146,8 +146,8 @@ private fun InfoLine(label: String, value: String) {
 private fun ListCard(title: String, sub: String, onClick: () -> Unit, onLongClick: () -> Unit) {
     FocusCard(onClick = onClick, onLongClick = onLongClick, modifier = Modifier.fillMaxWidth(), focusedScale = 1.01f) {
         Column(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
-            Text(title, fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(sub, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(sub, fontSize = 15.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -195,7 +195,7 @@ private fun CategoryEditor() {
                     Text(
                         c.name, color = if (off || lock) FS.TextDim else FS.Text, fontSize = 19.sp,
                         fontWeight = if (off || lock) FontWeight.Normal else FontWeight.Bold,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                        maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
                     )
                     if (lock) Text("🔒 locked", color = FS.Live, fontSize = 14.sp, modifier = Modifier.padding(end = 12.dp))
                     else if (off) Text("hidden", color = FS.Live, fontSize = 14.sp, modifier = Modifier.padding(end = 12.dp))
