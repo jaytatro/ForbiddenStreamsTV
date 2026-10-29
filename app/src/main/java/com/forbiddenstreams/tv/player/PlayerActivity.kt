@@ -244,7 +244,14 @@ class PlayerActivity : ComponentActivity() {
                 }
             }
         }
-        showInfo()
+        if (intent.getBooleanExtra("split", false)) {
+            // Opened from the rail's Split Screen button.
+            view.player = null
+            infoVisible = false
+            multiVisible = true
+        } else {
+            showInfo()
+        }
     }
 
     /** Records what's on now (or the next hour if there's no guide info). */

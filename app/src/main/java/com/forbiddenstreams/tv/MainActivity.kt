@@ -36,6 +36,18 @@ class App : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         Alarms.createChannels(this)
+        // Keep the last crash on the box so it can be read in Settings › Account.
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            try {
+                val sw = java.io.StringWriter()
+                e.printStackTrace(java.io.PrintWriter(sw))
+                java.io.File(filesDir, "last_crash.txt").writeText(
+                    java.text.SimpleDateFormat("EEE M/d h:mm a", java.util.Locale.US).format(java.util.Date()) + "\n" + sw.toString().take(6000),
+                )
+            } catch (_: Exception) { }
+            previous?.uncaughtException(t, e)
+        }
         PlayerHolder.onChannelWatched = { id -> Prefs(this).addHistory(id) }
         // Pause when the whole app goes to the background (HOME), resume when it comes back.
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {

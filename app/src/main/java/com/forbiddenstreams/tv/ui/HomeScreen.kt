@@ -69,11 +69,11 @@ import com.forbiddenstreams.tv.data.Prefs
 import com.forbiddenstreams.tv.data.Session
 import kotlinx.coroutines.launch
 
-enum class Sec { CHANNELS, MOVIES, SHOWS, SPORTS, RECORDINGS, SETTINGS }
+enum class Sec { CHANNELS, MOVIES, SHOWS, SPORTS, SPLIT, RECORDINGS, SETTINGS }
 
 private val railIcon = mapOf(
     Sec.CHANNELS to RailIcon.CHANNELS, Sec.MOVIES to RailIcon.MOVIES, Sec.SHOWS to RailIcon.SHOWS,
-    Sec.SPORTS to RailIcon.SPORTS, Sec.RECORDINGS to RailIcon.RECORDINGS, Sec.SETTINGS to RailIcon.SETTINGS,
+    Sec.SPORTS to RailIcon.SPORTS, Sec.SPLIT to RailIcon.SPLIT, Sec.RECORDINGS to RailIcon.RECORDINGS, Sec.SETTINGS to RailIcon.SETTINGS,
 )
 
 /** Settings box: MenuScreen section number to label (Recordings moved to its own rail icon). */
@@ -107,6 +107,7 @@ fun HomeScreen(onLogout: () -> Unit) {
     var showCat by rememberSaveable { mutableStateOf<String?>(null) }
     var league by rememberSaveable { mutableStateOf(League.NFL) }
     var favTeams by rememberSaveable { mutableStateOf(false) }        // Sports › Favorite Teams
+    var openGame by remember { mutableStateOf<String?>(null) }         // from the favorite-team alert
     var setSec by rememberSaveable { mutableIntStateOf(1) }
     var confirmLogout by remember { mutableStateOf(false) }
 
@@ -155,18 +156,23 @@ fun HomeScreen(onLogout: () -> Unit) {
                     .padding(vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Image(painterResource(R.drawable.logo), null, Modifier.size(58.dp))
-                Spacer(Modifier.height(40.dp))
-                for (s in listOf(Sec.CHANNELS, Sec.MOVIES, Sec.SHOWS, Sec.SPORTS, Sec.RECORDINGS)) {
+                Image(painterResource(R.drawable.logo), null, Modifier.size(52.dp))
+                Spacer(Modifier.height(28.dp))
+                for (s in listOf(Sec.CHANNELS, Sec.MOVIES, Sec.SHOWS, Sec.SPORTS, Sec.SPLIT, Sec.RECORDINGS)) {
                     RailButton(s, selected = section == s, req = iconReq.getValue(s), flyEntry = flyEntry,
                         onY = { iconY[s] = it },
                         onFocus = { hover = s },
                         onClick = {
                             hover = s
-                            if (s == Sec.RECORDINGS) { section = Sec.RECORDINGS; toContent() } // no box: opens straight away
-                            else try { flyEntry.requestFocus() } catch (e: Exception) { }
+                            when (s) {
+                                Sec.RECORDINGS -> { section = Sec.RECORDINGS; toContent() } // no box: opens straight away
+                                Sec.SPLIT -> {
+                                    if (!PlayerHolder.openSplitScreen(context)) toast(context, "Start a channel first, then press Split Screen")
+                                }
+                                else -> try { flyEntry.requestFocus() } catch (e: Exception) { }
+                            }
                         })
-                    Spacer(Modifier.height(30.dp))
+                    Spacer(Modifier.height(22.dp))
                 }
                 Spacer(Modifier.weight(1f))
                 RailButton(Sec.SETTINGS, selected = section == Sec.SETTINGS, req = iconReq.getValue(Sec.SETTINGS), flyEntry = flyEntry,
@@ -190,7 +196,8 @@ fun HomeScreen(onLogout: () -> Unit) {
                         Sec.CHANNELS -> ChannelsScreen(chGroup, onGroup = { chGroup = it })
                         Sec.MOVIES -> MoviesScreen(movieCat, onSelect = { movieCat = it })
                         Sec.SHOWS -> SeriesScreen(showCat, onSelect = { showCat = it })
-                        Sec.SPORTS -> if (favTeams) FavoriteTeamsScreen() else SportsScreen(league)
+                        Sec.SPORTS -> if (favTeams) FavoriteTeamsScreen() else SportsScreen(league, openGame, onOpened = { openGame = null })
+                        Sec.SPLIT -> ChannelsScreen(chGroup, onGroup = { chGroup = it })
                         Sec.RECORDINGS -> MenuScreen(0)
                         Sec.SETTINGS -> MenuScreen(setSec)
                     }
@@ -200,7 +207,7 @@ fun HomeScreen(onLogout: () -> Unit) {
 
         // ---- Box next to the highlighted icon ----
         val open = hover
-        if (open != null && open != Sec.RECORDINGS && (railFocus || flyFocus)) {
+        if (open != null && open != Sec.RECORDINGS && open != Sec.SPLIT && (railFocus || flyFocus)) {
             val y = with(density) { (iconY[open] ?: 0f).toDp() }
             val full = open == Sec.CHANNELS || open == Sec.MOVIES || open == Sec.SHOWS
             val box = Modifier
@@ -265,7 +272,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                             toContent()
                         },
                     )
-                    Sec.RECORDINGS -> Unit // no box
+                    Sec.RECORDINGS, Sec.SPLIT -> Unit // no box
                     Sec.SETTINGS -> FlyList(
                         "SETTINGS", SETTINGS_SECTIONS.map { (i, t) -> "$i" to t }, "$setSec", flyEntry, back,
                         onPick = { k ->
@@ -279,6 +286,14 @@ fun HomeScreen(onLogout: () -> Unit) {
                 }
             }
         }
+
+        FavoriteGameAlert(onWatch = { lg, id ->
+            favTeams = false
+            league = lg
+            openGame = id
+            section = Sec.SPORTS
+            toContent()
+        })
 
         if (exitHint) {
             Text(
@@ -304,7 +319,7 @@ fun HomeScreen(onLogout: () -> Unit) {
     ReminderWatcher()
 }
 
-private val RAIL_W = 92.dp
+private val RAIL_W = 80.dp
 const val VOD_SEARCH = "__search__"
 const val VOD_RECENT = "__recent__"
 
@@ -321,7 +336,7 @@ private fun RailButton(
     val shape = RoundedCornerShape(14.dp)
     androidx.tv.material3.Surface(
         onClick = onClick,
-        modifier = Modifier.size(60.dp)
+        modifier = Modifier.size(50.dp)
             .focusRequester(req)
             .focusProperties { right = flyEntry }
             .onGloballyPositioned { onY(it.positionInRoot().y) }
@@ -340,7 +355,7 @@ private fun RailButton(
         scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            LineIcon(railIcon.getValue(sec), 34.dp, FS.Green)
+            LineIcon(railIcon.getValue(sec), 28.dp, FS.Green)
         }
     }
 }
@@ -476,4 +491,53 @@ fun ChoiceDialog(
         }
     }
     LaunchedEffect(Unit) { delay(100); try { first.requestFocus() } catch (e: Exception) { } }
+}
+
+
+/**
+ * 1 minute before a favorite team's game: a banner at the bottom of the screen.
+ * OK on it opens the channel list for that game; BACK dismisses it. Hides after 3 minutes.
+ */
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.FavoriteGameAlert(onWatch: (League, String) -> Unit) {
+    val context = LocalContext.current
+    var alert by remember { mutableStateOf<Pair<League, com.forbiddenstreams.tv.sports.Game>?>(null) }
+    val shown = remember { mutableSetOf<String>() }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val favs = com.forbiddenstreams.tv.sports.FavTeams.all(context)
+            if (favs.isNotEmpty() && alert == null) {
+                val leagues = League.entries.filter { l -> favs.any { it.startsWith(l.name + ":") } }
+                val now = System.currentTimeMillis()
+                for (l in leagues) {
+                    val games = try { com.forbiddenstreams.tv.sports.Espn.week(l, 0, 0).values.flatten() } catch (e: Exception) { emptyList() }
+                    val g = games.firstOrNull { g ->
+                        g.id !in shown && g.start - now in 0..90_000 &&
+                            com.forbiddenstreams.tv.sports.FavTeams.inGame(context, l, g)
+                    }
+                    if (g != null) { shown += g.id; alert = l to g; break }
+                }
+            }
+            delay(30_000)
+        }
+    }
+    val a = alert ?: return
+    val (l, g) = a
+    val req = remember { FocusRequester() }
+    LaunchedEffect(a) { delay(150); try { req.requestFocus() } catch (e: Exception) { } }
+    LaunchedEffect(a) { delay(180_000); alert = null }
+    BackHandler { alert = null }
+    FocusCard(
+        onClick = { alert = null; onWatch(l, g.id) },
+        shape = RoundedCornerShape(50),
+        container = Color(0xE6050805),
+        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 36.dp).focusRequester(req),
+    ) {
+        Row(Modifier.padding(horizontal = 26.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("⭐ ${g.away.displayName} vs. ${g.home.displayName} starts in 1 minute", color = FS.Green,
+                fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(18.dp))
+            Text("OK = pick a channel · BACK = dismiss", color = FS.Text, fontSize = 15.sp)
+        }
+    }
 }

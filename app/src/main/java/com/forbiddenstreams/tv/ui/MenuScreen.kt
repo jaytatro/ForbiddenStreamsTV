@@ -112,6 +112,13 @@ fun MenuScreen(section: Int) {
                     }
                     Spacer(Modifier.height(16.dp))
                     Text("Forbidden Streams TV · plug in the revolution", color = FS.TextDim, fontSize = 15.sp)
+                    // Last crash (if any), so it can be photographed and sent for fixing.
+                    val crash = remember { java.io.File(context.filesDir, "last_crash.txt").takeIf { it.exists() }?.readText() }
+                    if (crash != null) {
+                        Spacer(Modifier.height(16.dp))
+                        Text("Last crash", color = FS.Live, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text(crash.lines().take(14).joinToString("\n"), color = FS.TextDim, fontSize = 12.sp)
+                    }
                 }
             }
         }

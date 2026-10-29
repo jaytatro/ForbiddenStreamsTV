@@ -203,6 +203,15 @@ object PlayerHolder {
         context.startActivity(Intent(context, PlayerActivity::class.java))
     }
 
+    /** Opens the full-screen player straight into split screen (needs a live channel playing). */
+    fun openSplitScreen(context: Context): Boolean {
+        if (current?.live != true) return false
+        previewHidden = false
+        fullScreen = true
+        context.startActivity(Intent(context, PlayerActivity::class.java).putExtra("split", true))
+        return true
+    }
+
     fun zap(context: Context, step: Int): Boolean {
         val n = items.size
         if (n < 2) return false

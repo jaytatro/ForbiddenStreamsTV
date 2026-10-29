@@ -53,7 +53,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 @Composable
-fun SportsScreen(league: League) {
+fun SportsScreen(league: League, openGameId: String? = null, onOpened: () -> Unit = {}) {
     if (Session.source == null) return
     val context = LocalContext.current
     val todayKey = remember { Espn.dayKey(System.currentTimeMillis()) }
@@ -66,6 +66,13 @@ fun SportsScreen(league: League) {
     var groupMissing by remember(league) { mutableStateOf(false) }
     var matches by remember(league) { mutableStateOf(SportsCache.matches[league].orEmpty()) }
     var picker by remember { mutableStateOf<Game?>(null) }
+    LaunchedEffect(openGameId, week) {
+        val id = openGameId ?: return@LaunchedEffect
+        val g = week?.values?.flatten()?.firstOrNull { it.id == id } ?: return@LaunchedEffect
+        day = Espn.dayKey(g.start)
+        picker = g
+        onOpened()
+    }
     val epgCache = remember(league) { HashMap<String, List<Program>>() }
 
     // Team channel group (only the agreed "USA | <League> Teams" group is used).
@@ -116,12 +123,11 @@ fun SportsScreen(league: League) {
         val w = week
         val days = remember(w) { ((w?.keys ?: emptySet()) + todayKey).sorted() }
         Row(Modifier.fillMaxWidth().padding(end = 24.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        LazyRow(
-            Modifier.weight(1f).padding(horizontal = 32.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(28.dp),
-        ) {
-            items(days) { key ->
+        // Dates spread evenly across the full width.
+        Row(Modifier.weight(1f).padding(horizontal = 24.dp, vertical = 12.dp)) {
+            for (key in days) {
                 val count = w?.get(key)?.size ?: 0
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 Box {
                     Pill(
                         if (key == todayKey) "TODAY" else dayLabel(key),
@@ -139,6 +145,7 @@ fun SportsScreen(league: League) {
                                 .padding(horizontal = 6.dp, vertical = 1.dp),
                         )
                     }
+                }
                 }
             }
         }

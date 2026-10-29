@@ -241,7 +241,7 @@ class XtreamSource(
                 )
             }
         }
-        return out.sortedWith(compareBy({ it.season }, { it.episodeNum }))
+        return out.distinctBy { it.id }.sortedWith(compareBy({ it.season }, { it.episodeNum }))
     }
 
     override fun episodeUrl(episode: Episode): String =

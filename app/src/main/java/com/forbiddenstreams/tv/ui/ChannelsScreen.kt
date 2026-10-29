@@ -91,9 +91,11 @@ sealed class Group(val key: String, val title: String) {
 }
 
 fun groupsFor(cats: List<Category>): List<Group> =
-    listOf<Group>(Group.Search, Group.All, Group.History, Group.Favorites) + cats.map { Group.Cat(it) }
+    listOf<Group>(Group.Search, Group.All, Group.History, Group.Favorites) + cats.distinctBy { it.id }.map { Group.Cat(it) }
 
-fun channelsOf(prefs: Prefs, g: Group): List<LiveChannel> {
+fun channelsOf(prefs: Prefs, g: Group): List<LiveChannel> = channelsOfRaw(prefs, g).distinctBy { it.id }
+
+private fun channelsOfRaw(prefs: Prefs, g: Group): List<LiveChannel> {
     // Channels in hidden categories are left out of All and Search too.
     val hidden = CategoryPrefs.excluded(prefs.context)
     val all = Session.liveAll.orEmpty().let { l -> if (hidden.isEmpty()) l else l.filter { it.categoryId !in hidden } }
@@ -539,22 +541,20 @@ fun GuideView(
             Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                "▲▼ channels   hold ◀ ▶ scroll time   BACK categories   OK watch   hold OK options",
-                color = FS.TextDim, fontSize = 13.sp, modifier = Modifier.weight(1f),
-            )
-            Text("DATE", color = FS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(end = 8.dp))
+            Text("DATE", color = FS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(end = 12.dp))
+            // The 7 days spread evenly across the full width.
             for (d in -3..3) {
                 val sel = d == dayOffset
-                Text(
-                    if (d == 0) "TODAY" else Fmt.day(dayStart(d)).substringBefore(','),
-                    color = if (sel) FS.Green else FS.TextDim,
-                    fontSize = 13.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
-                    modifier = Modifier
-                        .padding(horizontal = 3.dp)
-                        .then(if (sel) Modifier.border(2.dp, FS.Green, RoundedCornerShape(50)) else Modifier)
-                        .padding(horizontal = 10.dp, vertical = 3.dp),
-                )
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Text(
+                        if (d == 0) "TODAY" else Fmt.day(dayStart(d)),
+                        color = if (sel) FS.Green else FS.TextDim,
+                        fontSize = 14.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
+                        modifier = Modifier
+                            .then(if (sel) Modifier.border(2.dp, FS.Green, RoundedCornerShape(50)) else Modifier)
+                            .padding(horizontal = 14.dp, vertical = 3.dp),
+                    )
+                }
             }
         }
         Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)) {

@@ -24,7 +24,7 @@ object Session {
         private set
 
     private val epgCache = ConcurrentHashMap<String, Pair<Long, List<Program>>>()
-    private val epgLimiter = Semaphore(6)
+    private val epgLimiter = Semaphore(8)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // ---- Live channel list: saved on the box so the app opens instantly,
@@ -88,8 +88,14 @@ object Session {
     /** Called when the app opens: show the saved list right away, then update it quietly. */
     fun onAppOpened(context: Context) {
         val app = context.applicationContext
-        if (liveAll == null) loadSaved(app)
-        refreshInBackground(app)
+        scope.launch {
+            if (liveAll == null) {
+                // Reading the saved list can take a moment on big playlists: do it off the screen thread.
+                val saved = withContext(Dispatchers.IO) { readSaved(app) }
+                if (saved != null && liveAll == null) { liveCats = saved.first; liveAll = saved.second }
+            }
+            refreshInBackground(app)
+        }
     }
 
     fun refreshInBackground(context: Context) {
@@ -98,9 +104,11 @@ object Session {
         refreshJob = scope.launch {
             refreshing = true
             try {
-                src.clearCache()
-                val cats = src.liveCategories()
-                val all = src.allLiveChannels()
+                val (cats, all) = withContext(Dispatchers.Default) {
+                    src.clearCache()
+                    // A channel listed twice breaks the lists (crash while scrolling): keep the first.
+                    src.liveCategories().distinctBy { it.id } to src.allLiveChannels().distinctBy { it.id }
+                }
                 liveCats = cats
                 liveAll = all
                 liveError = null
@@ -120,17 +128,17 @@ object Session {
 
     private fun cacheFile(context: Context) = File(context.filesDir, "live_cache.json")
 
-    private fun loadSaved(context: Context) {
-        try {
+    private fun readSaved(context: Context): Pair<List<Category>, List<LiveChannel>>? {
+        return try {
             val f = cacheFile(context)
-            if (!f.exists()) return
+            if (!f.exists()) return null
             val j = JSONObject(f.readText())
             val ca = j.getJSONArray("cats")
-            liveCats = (0 until ca.length()).map { i ->
+            val cats = (0 until ca.length()).map { i ->
                 val o = ca.getJSONObject(i); Category(o.getString("id"), o.getString("name"))
-            }
+            }.distinctBy { it.id }
             val ch = j.getJSONArray("ch")
-            liveAll = (0 until ch.length()).map { i ->
+            val all = (0 until ch.length()).map { i ->
                 val o = ch.getJSONObject(i)
                 LiveChannel(
                     id = o.getString("id"), num = o.optInt("num"), name = o.getString("name"),
@@ -138,10 +146,10 @@ object Session {
                     epgId = o.optString("epg").ifEmpty { null }, hasArchive = o.optBoolean("arc"),
                     archiveDays = o.optInt("days"), url = o.getString("url"),
                 )
-            }
+            }.distinctBy { it.id }
+            cats to all
         } catch (e: Exception) {
-            liveCats = null
-            liveAll = null
+            null
         }
     }
 
@@ -171,7 +179,8 @@ object Session {
         epgCache[channel.id]?.let { (time, list) -> if (now - time < 15 * 60_000) return list }
         val src = source ?: return emptyList()
         val list = try {
-            epgLimiter.withPermit { src.epg(channel) }
+            // Download and decode the guide off the screen thread so scrolling stays smooth.
+            epgLimiter.withPermit { withContext(Dispatchers.Default) { src.epg(channel) } }
         } catch (e: Exception) {
             emptyList()
         }

@@ -6,6 +6,8 @@ import com.forbiddenstreams.tv.data.str
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlinx.coroutines.async
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import java.text.SimpleDateFormat
@@ -92,7 +94,9 @@ object Espn {
     private fun url(league: League, query: String) =
         "https://site.api.espn.com/apis/site/v2/sports/${league.espnPath}/scoreboard" + if (query.isEmpty()) "" else "?$query"
 
-    private suspend fun fetch(league: League, query: String): List<Game> {
+    private suspend fun fetch(league: League, query: String): List<Game> = withContext(Dispatchers.Default) { fetchNow(league, query) }
+
+    private suspend fun fetchNow(league: League, query: String): List<Game> {
         val j = jsonObject(Http.get(url(league, query))) ?: return emptyList()
         val events = j.optJSONArray("events") ?: return emptyList()
         val out = ArrayList<Game>()

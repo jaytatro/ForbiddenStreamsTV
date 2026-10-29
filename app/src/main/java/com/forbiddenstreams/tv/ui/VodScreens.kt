@@ -81,7 +81,7 @@ private fun <T> PosterBrowser(
     var error by remember { mutableStateOf<String?>(null) }
     var reload by remember { mutableIntStateOf(0) }
     LaunchedEffect(reload) {
-        try { cats = loadCats(); error = null } catch (e: Exception) { error = e.message ?: "Network error" }
+        try { cats = withContext(kotlinx.coroutines.Dispatchers.Default) { loadCats().distinctBy { it.id } }; error = null } catch (e: Exception) { error = e.message ?: "Network error" }
     }
     val c = cats
     if (c == null) {
@@ -101,7 +101,7 @@ private fun <T> PosterBrowser(
     val catItems by produceState<List<T>?>(null, catId) {
         value = null
         delay(250) // the cursor may still be moving through the categories
-        value = if (catId == null) emptyList() else try { loadItems(catId) } catch (e: Exception) { emptyList() }
+        value = if (catId == null) emptyList() else try { withContext(kotlinx.coroutines.Dispatchers.Default) { loadItems(catId) } } catch (e: Exception) { emptyList() }
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 8.dp)) {
         Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -222,7 +222,7 @@ private fun <T> SearchScreen(
 ) {
     BackHandler { onClose() }
     var query by rememberSaveable { mutableStateOf("") }
-    val library by produceState<List<T>?>(null) { value = try { loadAll() } catch (e: Exception) { emptyList() } }
+    val library by produceState<List<T>?>(null) { value = try { withContext(kotlinx.coroutines.Dispatchers.Default) { loadAll() } } catch (e: Exception) { emptyList() } }
     val box = remember { FocusRequester() }
     LaunchedEffect(Unit) { delay(150); try { box.requestFocus() } catch (e: Exception) { } }
     var shown by remember { mutableStateOf<List<T>>(emptyList()) }
