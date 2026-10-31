@@ -161,7 +161,14 @@ fun HomeScreen(onLogout: () -> Unit) {
         }
     }
     // Start in the Channels list with the small side bar (it opens wide only when ◀ is pressed).
-    LaunchedEffect(Unit) { delay(200); section = Sec.CHANNELS; openList() }
+    LaunchedEffect(Unit) {
+        // Always open on Channels, showing the guide of the last category used.
+        section = Sec.CHANNELS
+        hover = Sec.CHANNELS
+        if (chGroup == null) prefs.lastGroup.takeIf { it.isNotEmpty() && it != Group.Search.key }?.let { chGroup = it }
+        delay(200)
+        openList()
+    }
     // ◀◀ in the live player: back here with the Channels list open.
     LaunchedEffect(PlayerHolder.sideBarRequest) {
         if (PlayerHolder.sideBarRequest == 0) return@LaunchedEffect
@@ -223,7 +230,8 @@ fun HomeScreen(onLogout: () -> Unit) {
                         },
                         // Highlighting a category shows its guide next to the list (like the photo).
                         // On start-up the first highlight is skipped so the live preview stays.
-                        // Nothing shows on the right until a category is picked with OK.
+                        // Highlighting a channel category shows its TV guide on the right.
+                        onFocusItem = { k -> pendingGroup = k },
                         onPick = { k ->
                         pendingGroup = null
                         chGroup = k
@@ -324,7 +332,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                     RailButton(s, selected = section == s, req = iconReq.getValue(s), flyEntry = flyEntry, expanded = wide,
                         onY = { iconY[s] = it },
                         onFocus = {
-                            hover = s
+                            // Moving over the icons doesn't switch the list next to it; OK does.
                             val fromScreen = android.os.SystemClock.uptimeMillis() - contentLeftAt < 400
                             if (fromScreen && !backToRail) { contentLeftAt = 0L; openList() }
                             backToRail = false
@@ -332,11 +340,11 @@ fun HomeScreen(onLogout: () -> Unit) {
                         onClick = {
                             hover = s
                             when (s) {
-                                Sec.RECORDINGS -> try { flyEntry.requestFocus() } catch (e: Exception) { }
+                                Sec.RECORDINGS -> scope.launch { delay(80); try { flyEntry.requestFocus() } catch (e: Exception) { } }
                                 Sec.SPLIT -> {
                                     if (!PlayerHolder.openSplitScreen(context)) toast(context, "Start a channel first, then press Split Screen")
                                 }
-                                else -> try { flyEntry.requestFocus() } catch (e: Exception) { }
+                                else -> scope.launch { delay(80); try { flyEntry.requestFocus() } catch (e: Exception) { } }
                             }
                         })
                     Spacer(Modifier.height(if (wide) 8.dp else 16.dp))
@@ -345,12 +353,11 @@ fun HomeScreen(onLogout: () -> Unit) {
                 RailButton(Sec.SETTINGS, selected = section == Sec.SETTINGS, req = iconReq.getValue(Sec.SETTINGS), flyEntry = flyEntry, expanded = wide,
                     onY = { iconY[Sec.SETTINGS] = it },
                     onFocus = {
-                        hover = Sec.SETTINGS
                         val fromScreen = android.os.SystemClock.uptimeMillis() - contentLeftAt < 400
                         if (fromScreen && !backToRail) { contentLeftAt = 0L; openList() }
                         backToRail = false
                     },
-                    onClick = { hover = Sec.SETTINGS; try { flyEntry.requestFocus() } catch (e: Exception) { } })
+                    onClick = { hover = Sec.SETTINGS; scope.launch { delay(80); try { flyEntry.requestFocus() } catch (e: Exception) { } } })
                 Spacer(Modifier.height(14.dp))
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(Fmt.time(now).substringBefore(' '), color = FS.Green, fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -388,7 +395,8 @@ fun HomeScreen(onLogout: () -> Unit) {
                 }
                 // While the side bar or a list has the cursor, nothing shows on the right until a
                 // category is picked (OK). Start-up: the live preview of the last channel stays.
-                val blank = (railFocus || flyFocus) && !(section == Sec.CHANNELS && chGroup == null)
+                // (Channels is the exception: its guide shows while you move through its categories.)
+                val blank = (railFocus || flyFocus) && !(section == Sec.CHANNELS && hover == Sec.CHANNELS)
                 if (blank) Box(Modifier.matchParentSize().background(FS.Bg))
             }
         }
