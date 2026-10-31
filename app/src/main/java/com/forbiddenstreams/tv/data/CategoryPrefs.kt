@@ -69,6 +69,19 @@ object CategoryPrefs {
         version++
     }
 
+    /** Moves a category one place up/down among the categories you can see (hidden ones are skipped). */
+    fun moveVisible(context: Context, cats: List<Category>, id: String, step: Int) {
+        val all = ordered(context, cats).map { it.id }.toMutableList()
+        val vis = visible(context, cats).map { it.id }
+        val vi = vis.indexOf(id)
+        val target = vis.getOrNull(vi + step) ?: return
+        all.remove(id)
+        val ti = all.indexOf(target)
+        all.add(if (step > 0) ti + 1 else ti, id)
+        sp(context).edit().putString("cat_order", all.joinToString("\u0001")).apply()
+        version++
+    }
+
     fun toggleHidden(context: Context, id: String) {
         val h = hidden(context).toMutableSet()
         if (!h.add(id)) h.remove(id)

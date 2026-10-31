@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,7 +55,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 @Composable
-fun SportsScreen(league: League, openGameId: String? = null, onOpened: () -> Unit = {}) {
+fun SportsScreen(league: League, openGameId: String? = null, onOpened: () -> Unit = {}, onLeft: () -> Unit = {}) {
     if (Session.source == null) return
     val context = LocalContext.current
     val todayKey = remember { Espn.dayKey(System.currentTimeMillis()) }
@@ -174,7 +176,14 @@ fun SportsScreen(league: League, openGameId: String? = null, onOpened: () -> Uni
                     ))
                 }
                 LazyColumn(
-                    Modifier.fillMaxSize().padding(horizontal = 40.dp),
+                    Modifier.fillMaxSize()
+                        // ◀ on a game = back to the Sports list in the side bar.
+                        .onPreviewKeyEvent { ev ->
+                            if (ev.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
+                                ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT
+                            ) { if (ev.nativeKeyEvent.repeatCount == 0) onLeft(); true } else false
+                        }
+                        .padding(horizontal = 40.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     items(sorted, key = { it.id }) { g ->

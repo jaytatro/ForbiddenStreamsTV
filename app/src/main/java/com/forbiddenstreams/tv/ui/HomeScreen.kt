@@ -215,6 +215,11 @@ fun HomeScreen(onLogout: () -> Unit) {
                     else FlyList("CHANNELS", groups.map { it.key to it.title }, chGroup, flyEntry, back,
                         // ▶ = into the screen (the live preview on start-up, or the guide); the box closes.
                         onRight = { section = Sec.CHANNELS; toContent() },
+                        // Hold OK on a category = move it with ▲ ▼; OK again stops (no pop-up).
+                        canMove = { k -> k.startsWith("c_") },
+                        onMove = { k, dir ->
+                            CategoryPrefs.moveVisible(context, Session.liveCats.orEmpty(), k.removePrefix("c_"), dir)
+                        },
                         // Highlighting a category shows its guide next to the list (like the photo).
                         // On start-up the first highlight is skipped so the live preview stays.
                         onFocusItem = { k ->
@@ -369,7 +374,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                             onCategories = { openList() })
                         Sec.MOVIES -> MoviesScreen(movieCat, onSelect = { movieCat = it })
                         Sec.SHOWS -> SeriesScreen(showCat, onSelect = { showCat = it })
-                        Sec.SPORTS -> if (favTeams) FavoriteTeamsScreen() else SportsScreen(league, openGame, onOpened = { openGame = null })
+                        Sec.SPORTS -> if (favTeams) FavoriteTeamsScreen() else SportsScreen(league, openGame, onOpened = { openGame = null }, onLeft = { openList() })
                         Sec.SPLIT -> ChannelsScreen(chGroup, onGroup = { chGroup = it })
                         Sec.RECORDINGS -> MenuScreen(0)
                         Sec.SETTINGS -> when (setSec) {
@@ -383,12 +388,17 @@ fun HomeScreen(onLogout: () -> Unit) {
                 // The screen stays loaded underneath so it comes back as it was.
                 val logoOnly = (railFocus || (flyFocus && hover != section)) &&
                     !(section == Sec.CHANNELS && chGroup == null) // start-up: keep the live preview
-                if (logoOnly) {
-                    Box(Modifier.matchParentSize().background(FS.Bg), contentAlignment = Alignment.Center) {
-                        Image(painterResource(R.drawable.logo), null, Modifier.size(420.dp))
-                    }
-                }
+                if (logoOnly) Box(Modifier.matchParentSize().background(FS.Bg))
             }
+        }
+        // The logo sits in one fixed spot on the screen (not centered in the area next to the
+        // list, which changes width from list to list and made the logo jump around).
+        val logoShown = (railFocus || (flyFocus && hover != section)) && !(section == Sec.CHANNELS && chGroup == null)
+        if (logoShown) {
+            Image(
+                painterResource(R.drawable.logo), null,
+                Modifier.align(Alignment.CenterEnd).padding(end = 110.dp).size(400.dp),
+            )
         }
 
         FavoriteGameAlert(onWatch = { lg, id ->
@@ -479,11 +489,19 @@ private fun FlyList(
     onRight: (() -> Unit)? = null,
     icons: Map<String, RailIcon> = emptyMap(),
     onLongPick: ((String) -> Unit)? = null,
+    /** Hold OK on an entry this allows = start moving it; ▲ ▼ move it ([onMove]), OK again stops. */
+    canMove: ((String) -> Boolean)? = null,
+    onMove: ((String, Int) -> Unit)? = null,
     onPick: (String) -> Unit,
 ) {
     // Providers sometimes list a category twice; a repeated key would crash the list while scrolling.
     val items = remember(allItems) { allItems.distinctBy { it.first } }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var moving by remember { mutableStateOf<String?>(null) }
+    val slotReq = remember { HashMap<Int, FocusRequester>() }
+    fun slot(i: Int) = slotReq.getOrPut(i) { FocusRequester() }
+    BackHandler(enabled = moving != null) { moving = null }
     val top = remember { FocusRequester() }
     val selIndex = items.indexOfFirst { it.first == selectedKey }.let { if (it < 0) 0 else it }
     val state = rememberLazyListState(selIndex)
@@ -498,14 +516,42 @@ private fun FlyList(
         Text(title, color = FS.GreenMid, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp,
             modifier = Modifier.padding(start = 14.dp, bottom = 6.dp))
         LazyColumn(state = state, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            itemsIndexed(items, key = { _, it -> it.first }) { i, (key, label) ->
+            // Movable lists use row positions as keys: rows stay put and only labels swap while
+            // moving, so the cursor never gets lost (that closed the list before).
+            itemsIndexed(items, key = { i, it -> if (onMove != null) i else it.first }) { i, (key, label) ->
+                val isMoving = moving == key
                 SideItem(
-                    label, selected = key == selectedKey, onClick = { onPick(key) },
-                    onFocus = { onFocusItem?.invoke(key) },
+                    if (isMoving) "⇅  $label" else label, selected = key == selectedKey || isMoving,
+                    onClick = { if (moving != null) moving = null else onPick(key) },
+                    onFocus = { if (moving == null) onFocusItem?.invoke(key) },
                     textColor = FS.Green,
                     icon = icons[key],
-                    onLongClick = onLongPick?.let { f -> { f(key) } },
+                    onLongClick = when {
+                        onMove != null && canMove?.invoke(key) == true -> {
+                            { moving = key; toast(context, "▲ ▼ to move · OK when done") }
+                        }
+                        onMove != null -> null
+                        else -> onLongPick?.let { f -> { f(key) } }
+                    },
                     modifier = Modifier.fillMaxWidth()
+                        .then(if (isMoving) Modifier.border(2.dp, FS.Green, RoundedCornerShape(50)) else Modifier)
+                        .then(if (onMove != null) Modifier.focusRequester(slot(i)) else Modifier)
+                        .onPreviewKeyEvent { ev ->
+                            if (!isMoving || ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                            val dir = when (ev.nativeKeyEvent.keyCode) {
+                                android.view.KeyEvent.KEYCODE_DPAD_UP -> -1
+                                android.view.KeyEvent.KEYCODE_DPAD_DOWN -> 1
+                                android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> 0
+                                else -> return@onPreviewKeyEvent false
+                            }
+                            val to = i + dir
+                            if (dir != 0 && to in items.indices && canMove?.invoke(items[to].first) == true) {
+                                // Cursor first (that row already exists), then swap the entries.
+                                try { slot(to).requestFocus() } catch (e: Exception) { }
+                                onMove?.invoke(key, dir)
+                            }
+                            true
+                        }
                         .then(if (i == selIndex) Modifier.focusRequester(entry) else Modifier)
                         .then(if (i == 0) Modifier.focusRequester(top) else Modifier)
                         .focusProperties { left = back }
