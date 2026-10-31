@@ -120,7 +120,6 @@ fun HomeScreen(onLogout: () -> Unit) {
     val iconY = remember { mutableStateMapOf<Sec, Float>() }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) { delay(200); try { iconReq.getValue(Sec.CHANNELS).requestFocus() } catch (e: Exception) { } }
     remember { ButtonPrefs.load(context); true }
     // First start after install: walk through the buttons.
     var showTour by remember { mutableStateOf(!ButtonPrefs.tourSeen(context)) }
@@ -161,6 +160,8 @@ fun HomeScreen(onLogout: () -> Unit) {
             try { flyEntry.requestFocus() } catch (e: Exception) { }
         }
     }
+    // Start in the Channels list with the small side bar (it opens wide only when ◀ is pressed).
+    LaunchedEffect(Unit) { delay(200); section = Sec.CHANNELS; openList() }
     // ◀◀ in the live player: back here with the Channels list open.
     LaunchedEffect(PlayerHolder.sideBarRequest) {
         if (PlayerHolder.sideBarRequest == 0) return@LaunchedEffect
@@ -222,9 +223,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                         },
                         // Highlighting a category shows its guide next to the list (like the photo).
                         // On start-up the first highlight is skipped so the live preview stays.
-                        onFocusItem = { k ->
-                            if (!(chGroup == null && k == Group.Search.key)) pendingGroup = k
-                        },
+                        // Nothing shows on the right until a category is picked with OK.
                         onPick = { k ->
                         pendingGroup = null
                         chGroup = k
@@ -245,11 +244,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                         listOf(VOD_SEARCH to "🔍  Search", VOD_RECENT to "🕘  Recently Watched") + c.map { it.id to it.name },
                         if (movies) movieCat else showCat, flyEntry, back,
                         // Highlighting a category shows its movies / shows on the right.
-                        onFocusItem = { k ->
-                            if (k != VOD_SEARCH) {
-                                if (movies) { movieCat = k; section = Sec.MOVIES } else { showCat = k; section = Sec.SHOWS }
-                            }
-                        },
+
                         onPick = { k ->
                             if (movies) { movieCat = k; section = Sec.MOVIES } else { showCat = k; section = Sec.SHOWS }
                             toContent()
@@ -258,7 +253,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                 }
                 Sec.SPORTS -> SportsDockList(
                     sportsList, league, flyEntry, back,
-                    onFocusLeague = { lg -> favTeams = false; league = lg; section = Sec.SPORTS },
+                    onFocusLeague = { },
                     onPick = { lg ->
                         favTeams = false; league = lg
                         section = Sec.SPORTS
@@ -312,16 +307,21 @@ fun HomeScreen(onLogout: () -> Unit) {
     Box(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxSize()) {
             // ---- Rail ----
+            // Small (icons only) until ◀ is pressed from a list; then it opens wide with the logo
+            // and the names, like the photo of the other app (TiviMate style).
+            val wide = railFocus
             Column(
-                Modifier.width(RAIL_W).fillMaxHeight().background(RAIL_BG)
+                Modifier.width(if (wide) RAIL_WIDE else RAIL_W).fillMaxHeight().background(RAIL_BG)
                     .onFocusChanged { railFocus = it.hasFocus }
-                    .padding(vertical = 14.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    .padding(vertical = 14.dp, horizontal = if (wide) 18.dp else 0.dp),
+                horizontalAlignment = if (wide) Alignment.Start else Alignment.CenterHorizontally,
             ) {
-                Image(painterResource(R.drawable.logo), null, Modifier.size(40.dp))
+                if (wide) {
+                    Image(painterResource(R.drawable.logo), null, Modifier.align(Alignment.CenterHorizontally).size(120.dp))
+                }
                 Spacer(Modifier.weight(1f))
                 for (s in listOf(Sec.CHANNELS, Sec.MOVIES, Sec.SHOWS, Sec.SPORTS, Sec.RECORDINGS)) {
-                    RailButton(s, selected = section == s, req = iconReq.getValue(s), flyEntry = flyEntry,
+                    RailButton(s, selected = section == s, req = iconReq.getValue(s), flyEntry = flyEntry, expanded = wide,
                         onY = { iconY[s] = it },
                         onFocus = {
                             hover = s
@@ -339,10 +339,10 @@ fun HomeScreen(onLogout: () -> Unit) {
                                 else -> try { flyEntry.requestFocus() } catch (e: Exception) { }
                             }
                         })
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(if (wide) 8.dp else 16.dp))
                 }
                 Spacer(Modifier.weight(1f))
-                RailButton(Sec.SETTINGS, selected = section == Sec.SETTINGS, req = iconReq.getValue(Sec.SETTINGS), flyEntry = flyEntry,
+                RailButton(Sec.SETTINGS, selected = section == Sec.SETTINGS, req = iconReq.getValue(Sec.SETTINGS), flyEntry = flyEntry, expanded = wide,
                     onY = { iconY[Sec.SETTINGS] = it },
                     onFocus = {
                         hover = Sec.SETTINGS
@@ -352,8 +352,10 @@ fun HomeScreen(onLogout: () -> Unit) {
                     },
                     onClick = { hover = Sec.SETTINGS; try { flyEntry.requestFocus() } catch (e: Exception) { } })
                 Spacer(Modifier.height(14.dp))
-                Text(Fmt.time(now).substringBefore(' '), color = FS.Green, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Text(Fmt.time(now).substringAfter(' '), color = FS.TextDim, fontSize = 10.sp)
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(Fmt.time(now).substringBefore(' '), color = FS.Green, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text(Fmt.time(now).substringAfter(' '), color = FS.TextDim, fontSize = 10.sp)
+                }
             }
             Box(Modifier.width(1.dp).fillMaxHeight().background(Color(0xFF12301A)))
             // ---- Category list: a black column docked next to the rail (the screen moves over) ----
@@ -384,23 +386,12 @@ fun HomeScreen(onLogout: () -> Unit) {
                         }
                     }
                 }
-                // Moving through the side bar (or another icon's list): just the logo, not the old screen.
-                // The screen stays loaded underneath so it comes back as it was.
-                val logoOnly = (railFocus || (flyFocus && hover != section)) &&
-                    !(section == Sec.CHANNELS && chGroup == null) // start-up: keep the live preview
-                if (logoOnly) Box(Modifier.matchParentSize().background(FS.Bg))
+                // While the side bar or a list has the cursor, nothing shows on the right until a
+                // category is picked (OK). Start-up: the live preview of the last channel stays.
+                val blank = (railFocus || flyFocus) && !(section == Sec.CHANNELS && chGroup == null)
+                if (blank) Box(Modifier.matchParentSize().background(FS.Bg))
             }
         }
-        // The logo sits in one fixed spot on the screen (not centered in the area next to the
-        // list, which changes width from list to list and made the logo jump around).
-        val logoShown = (railFocus || (flyFocus && hover != section)) && !(section == Sec.CHANNELS && chGroup == null)
-        if (logoShown) {
-            Image(
-                painterResource(R.drawable.logo), null,
-                Modifier.align(Alignment.CenterEnd).padding(end = 110.dp).size(400.dp),
-            )
-        }
-
         FavoriteGameAlert(onWatch = { lg, id ->
             favTeams = false
             league = lg
@@ -436,6 +427,11 @@ fun HomeScreen(onLogout: () -> Unit) {
 }
 
 private val RAIL_W = 60.dp
+private val RAIL_WIDE = 250.dp
+private val railLabel = mapOf(
+    Sec.CHANNELS to "Channels", Sec.MOVIES to "Movies", Sec.SHOWS to "TV Shows", Sec.SPORTS to "Sports",
+    Sec.SPLIT to "Multi-View", Sec.RECORDINGS to "Recordings", Sec.SETTINGS to "Settings",
+)
 private val RAIL_BG = Color(0xFF0F160F)
 const val VOD_SEARCH = "__search__"
 const val VOD_RECENT = "__recent__"
@@ -446,6 +442,7 @@ private fun RailButton(
     selected: Boolean,
     req: FocusRequester,
     flyEntry: FocusRequester,
+    expanded: Boolean = false,
     onY: (Float) -> Unit,
     onFocus: () -> Unit,
     onClick: () -> Unit,
@@ -453,7 +450,7 @@ private fun RailButton(
     val shape = RoundedCornerShape(14.dp)
     androidx.tv.material3.Surface(
         onClick = onClick,
-        modifier = Modifier.size(42.dp)
+        modifier = (if (expanded) Modifier.fillMaxWidth().height(46.dp) else Modifier.size(42.dp))
             .focusRequester(req)
             .focusProperties { right = flyEntry }
             .onGloballyPositioned { onY(it.positionInRoot().y) }
@@ -461,7 +458,9 @@ private fun RailButton(
         shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(shape = shape),
         colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
             containerColor = if (selected) Color(0xFF0F2A10) else RAIL_BG,
-            focusedContainerColor = Color(0xFF0F2A10),
+            focusedContainerColor = if (expanded) FS.Green else Color(0xFF0F2A10),
+            focusedContentColor = if (expanded) Color.Black else FS.Green,
+            contentColor = FS.Green,
             pressedContainerColor = FS.GreenDeep,
         ),
         border = androidx.tv.material3.ClickableSurfaceDefaults.border(
@@ -471,8 +470,17 @@ private fun RailButton(
         ),
         scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
     ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            LineIcon(railIcon.getValue(sec), 22.dp, FS.Green)
+        if (expanded) {
+            Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                val c = androidx.tv.material3.LocalContentColor.current
+                LineIcon(railIcon.getValue(sec), 22.dp, c)
+                Spacer(Modifier.width(14.dp))
+                Text(railLabel.getValue(sec), color = c, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            }
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                LineIcon(railIcon.getValue(sec), 22.dp, FS.Green)
+            }
         }
     }
 }
