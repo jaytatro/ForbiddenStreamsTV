@@ -137,6 +137,14 @@ fun HomeScreen(onLogout: () -> Unit) {
         if (!PlayerHolder.fullScreen && section in setOf(Sec.MOVIES, Sec.SHOWS, Sec.SPORTS) && PlayerHolder.isMiniActive) PlayerHolder.stop()
     }
 
+    // Sports list order / hidden leagues (hold OK on a league in the Sports list).
+    val sportsV = com.forbiddenstreams.tv.sports.SportPrefs.version
+    val sportsList = remember(sportsV) { com.forbiddenstreams.tv.sports.SportPrefs.visible(context) }
+    val hiddenSports = remember(sportsV) { com.forbiddenstreams.tv.sports.SportPrefs.hidden(context) }
+    var sportEdit by remember { mutableStateOf<League?>(null) }
+    var showHiddenSports by remember { mutableStateOf(false) }
+    LaunchedEffect(sportsList) { if (league !in sportsList && sportsList.isNotEmpty()) league = sportsList.first() }
+
     // Category highlighted in the Channels list; shown after a short pause so scrolling stays smooth.
     var pendingGroup by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(pendingGroup) {
@@ -247,16 +255,22 @@ fun HomeScreen(onLogout: () -> Unit) {
                     )
                 }
                 Sec.SPORTS -> FlyList(
-                    "SPORTS", League.entries.sortedBy { it.label }.map { it.name to "${it.icon}  ${it.label}" }, // A to Z
+                    "SPORTS",
+                    sportsList.map { it.name to "${it.icon}  ${it.label}" } +
+                        (if (hiddenSports.isNotEmpty()) listOf("__hidden__" to "👁  Show hidden (${hiddenSports.size})") else emptyList()),
                     league.name, flyEntry, back,
                     onFocusItem = { k ->
-                        if (k == "FAV") favTeams = true else { favTeams = false; league = League.valueOf(k) }
-                        section = Sec.SPORTS
+                        if (k != "__hidden__") { favTeams = false; league = League.valueOf(k); section = Sec.SPORTS }
                     },
+                    // Hold OK on a league: move it up/down or hide it.
+                    onLongPick = { k -> if (k != "__hidden__") sportEdit = League.valueOf(k) },
                     onPick = { k ->
-                        if (k == "FAV") favTeams = true else { favTeams = false; league = League.valueOf(k) }
-                        section = Sec.SPORTS
-                        toContent()
+                        if (k == "__hidden__") { showHiddenSports = true }
+                        else {
+                            favTeams = false; league = League.valueOf(k)
+                            section = Sec.SPORTS
+                            toContent()
+                        }
                     },
                 )
                 Sec.RECORDINGS -> {
@@ -378,6 +392,15 @@ fun HomeScreen(onLogout: () -> Unit) {
                         }
                     }
                 }
+                // Moving through the side bar (or another icon's list): just the logo, not the old screen.
+                // The screen stays loaded underneath so it comes back as it was.
+                val logoOnly = (railFocus || (flyFocus && hover != section)) &&
+                    !(section == Sec.CHANNELS && chGroup == null) // start-up: keep the live preview
+                if (logoOnly) {
+                    Box(Modifier.matchParentSize().background(FS.Bg), contentAlignment = Alignment.Center) {
+                        Image(painterResource(R.drawable.logo), null, Modifier.size(420.dp))
+                    }
+                }
             }
         }
 
@@ -408,6 +431,27 @@ fun HomeScreen(onLogout: () -> Unit) {
                 "Cancel" to { confirmLogout = false },
             ),
             onDismiss = { confirmLogout = false },
+        )
+    }
+    sportEdit?.let { lg ->
+        val order = com.forbiddenstreams.tv.sports.SportPrefs.visible(context)
+        val i = order.indexOf(lg)
+        val opts = ArrayList<Pair<String, () -> Unit>>()
+        if (i > 0) opts += "▲  Move up" to { com.forbiddenstreams.tv.sports.SportPrefs.move(context, lg, -1); sportEdit = null }
+        if (i in 0 until order.size - 1) opts += "▼  Move down" to { com.forbiddenstreams.tv.sports.SportPrefs.move(context, lg, 1); sportEdit = null }
+        if (order.size > 1) opts += "🙈  Hide ${lg.label}" to { com.forbiddenstreams.tv.sports.SportPrefs.setHidden(context, lg, true); sportEdit = null }
+        opts += "↺  Reset order (A to Z, show all)" to { com.forbiddenstreams.tv.sports.SportPrefs.reset(context); sportEdit = null }
+        opts += "Cancel" to { sportEdit = null }
+        ChoiceDialog(title = "${lg.icon}  ${lg.label}", subtitle = "Arrange the Sports list", options = opts, onDismiss = { sportEdit = null })
+    }
+    if (showHiddenSports) {
+        val hidden = League.entries.filter { it.name in hiddenSports }
+        ChoiceDialog(
+            title = "Hidden leagues",
+            subtitle = "Pick one to show it again",
+            options = hidden.map { lg -> "${lg.icon}  Show ${lg.label}" to { com.forbiddenstreams.tv.sports.SportPrefs.setHidden(context, lg, false); showHiddenSports = false } } +
+                ("Cancel" to { showHiddenSports = false }),
+            onDismiss = { showHiddenSports = false },
         )
     }
     ReminderWatcher()
@@ -468,6 +512,7 @@ private fun FlyList(
     onFocusItem: ((String) -> Unit)? = null,
     onRight: (() -> Unit)? = null,
     icons: Map<String, RailIcon> = emptyMap(),
+    onLongPick: ((String) -> Unit)? = null,
     onPick: (String) -> Unit,
 ) {
     // Providers sometimes list a category twice; a repeated key would crash the list while scrolling.
@@ -493,6 +538,7 @@ private fun FlyList(
                     onFocus = { onFocusItem?.invoke(key) },
                     textColor = FS.Green,
                     icon = icons[key],
+                    onLongClick = onLongPick?.let { f -> { f(key) } },
                     modifier = Modifier.fillMaxWidth()
                         .then(if (i == selIndex) Modifier.focusRequester(entry) else Modifier)
                         .then(if (i == 0) Modifier.focusRequester(top) else Modifier)

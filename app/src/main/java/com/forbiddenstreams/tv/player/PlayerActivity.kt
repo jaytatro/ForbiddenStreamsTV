@@ -8,6 +8,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -176,7 +177,7 @@ class PlayerActivity : ComponentActivity() {
                             ) {
                             com.forbiddenstreams.tv.ui.Pill(
                                 "⏮  Last Channel", selected = false, fontSize = 18.sp,
-                                // Round robin: ◀ on Last Channel goes to Multi-View.
+                                // Round robin: ◀ on Last Channel goes to CC (the last button).
                                 modifier = Modifier.focusRequester(first).focusProperties { left = last },
                                 onClick = {
                                     actionsVisible = false
@@ -196,14 +197,25 @@ class PlayerActivity : ComponentActivity() {
                             )
                             com.forbiddenstreams.tv.ui.Pill(
                                 "⊞  Multi-View", selected = false, fontSize = 18.sp,
-                                // ▶ on Multi-View goes back to Last Channel.
-                                modifier = Modifier.focusRequester(last).focusProperties { right = first },
                                 onClick = {
                                     actionsVisible = false
                                     infoVisible = false
                                     view.player = null // the split-screen tiles draw the video now
                                     com.forbiddenstreams.tv.ui.MultiView.start(this@PlayerActivity)
                                     multiVisible = true
+                                },
+                            )
+                            // CC: closed captions on/off (boxed like the symbol on TV remotes). ▶ on it wraps to Last Channel.
+                            CcButton(
+                                on = PlayerHolder.captionsOn,
+                                modifier = Modifier.focusRequester(last).focusProperties { right = first },
+                                onClick = {
+                                    val turnOn = !PlayerHolder.captionsOn
+                                    val has = PlayerHolder.setCaptions(this@PlayerActivity, turnOn)
+                                    com.forbiddenstreams.tv.ui.toast(
+                                        this@PlayerActivity,
+                                        if (!turnOn) "Captions off" else if (has) "Captions on" else "Captions on — this channel doesn't send any right now",
+                                    )
                                 },
                             )
                             }
@@ -219,6 +231,8 @@ class PlayerActivity : ComponentActivity() {
                                 showInfo()
                             },
                             onClose = { panelVisible = false },
+                            // ◀ on the categories = back to the side bar (channel keeps playing in the preview).
+                            onSideBar = { panelVisible = false; PlayerHolder.requestSideBar(); close() },
                         )
                     }
                     recStopAsk?.let { r ->
@@ -357,21 +371,6 @@ class PlayerActivity : ComponentActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         lastKeyAt = android.os.SystemClock.uptimeMillis()
-        // Live TV: ◀ twice quickly = back to the side bar (Channels list), the channel keeps playing in the preview.
-        if (::view.isInitialized && PlayerHolder.current?.live == true && !guideVisible && !multiVisible && !actionsVisible && recStopAsk == null &&
-            event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0
-        ) {
-            val t = android.os.SystemClock.uptimeMillis()
-            if (t - lastLeftAt < 1_000) {
-                lastLeftAt = 0L
-                panelVisible = false
-                actionsVisible = false
-                PlayerHolder.requestSideBar()
-                close()
-                return true
-            }
-            lastLeftAt = t
-        }
         if (!::view.isInitialized || guideVisible || actionsVisible || multiVisible || panelVisible) return super.dispatchKeyEvent(event)
         val live = PlayerHolder.current?.live == true
         val down = event.action == KeyEvent.ACTION_DOWN
@@ -413,6 +412,33 @@ class PlayerActivity : ComponentActivity() {
         if (::view.isInitialized) view.player = null
         PlayerHolder.fullScreen = false
         super.onDestroy()
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun CcButton(on: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(50)
+    androidx.tv.material3.Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(shape = shape),
+        colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
+            containerColor = Color.Transparent, contentColor = FS.Text,
+            focusedContainerColor = FS.Green, focusedContentColor = Color.Black,
+        ),
+        scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+    ) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            val c = androidx.tv.material3.LocalContentColor.current
+            Text(
+                "CC", color = if (on) Color.Black else c, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .then(if (on) Modifier.background(FS.Green, RoundedCornerShape(3.dp)) else Modifier)
+                    .border(2.dp, if (on) FS.Green else c, RoundedCornerShape(3.dp))
+                    .padding(horizontal = 6.dp, vertical = 1.dp),
+            )
+            Text(if (on) "  On" else "  Off", fontSize = 16.sp)
+        }
     }
 }
 

@@ -60,3 +60,44 @@ object FavTeams {
         return key(league, game.home.abbreviation) in f || key(league, game.away.abbreviation) in f
     }
 }
+
+/** Sports list order and hidden leagues (Sports › hold OK on a league). Default: A to Z, all shown. */
+object SportPrefs {
+    var version by mutableIntStateOf(0)
+        private set
+
+    private fun sp(context: Context) =
+        context.applicationContext.getSharedPreferences("forbidden_streams", Context.MODE_PRIVATE)
+
+    fun order(context: Context): List<League> {
+        val saved = sp(context).getString("sport_order", null)?.split(",")?.mapNotNull { n -> League.entries.firstOrNull { it.name == n } }.orEmpty()
+        val rest = League.entries.filter { it !in saved }.sortedBy { it.label }
+        return saved + rest
+    }
+
+    fun hidden(context: Context): Set<String> = sp(context).getStringSet("sport_hidden", emptySet())?.toSet() ?: emptySet()
+
+    fun visible(context: Context): List<League> { val h = hidden(context); return order(context).filter { it.name !in h } }
+
+    fun move(context: Context, league: League, dir: Int) {
+        val list = order(context).toMutableList()
+        val i = list.indexOf(league)
+        val j = i + dir
+        if (i < 0 || j !in list.indices) return
+        list[i] = list[j]; list[j] = league
+        sp(context).edit().putString("sport_order", list.joinToString(",") { it.name }).apply()
+        version++
+    }
+
+    fun setHidden(context: Context, league: League, hide: Boolean) {
+        val h = hidden(context).toMutableSet()
+        if (hide) h += league.name else h -= league.name
+        sp(context).edit().putStringSet("sport_hidden", h).apply()
+        version++
+    }
+
+    fun reset(context: Context) {
+        sp(context).edit().remove("sport_order").remove("sport_hidden").apply()
+        version++
+    }
+}

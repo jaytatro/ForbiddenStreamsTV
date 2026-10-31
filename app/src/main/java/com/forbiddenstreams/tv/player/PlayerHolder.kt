@@ -157,6 +157,11 @@ object PlayerHolder {
         appContext = app
         exoVod = nextVod
         val p = createPlayer(app, exoVod)
+        if (!ccLoaded) {
+            ccLoaded = true
+            captionsOn = app.getSharedPreferences("forbidden_streams", Context.MODE_PRIVATE).getBoolean("cc_on", false)
+        }
+        applyCaptions(p)
         p.addListener(object : Player.Listener {
             override fun onPlayerError(e: PlaybackException) {
                 // Streams drop now and then: reconnect by itself before showing an error.
@@ -434,6 +439,28 @@ object PlayerHolder {
     var sideBarRequest by mutableIntStateOf(0)
         private set
     fun requestSideBar() { sideBarRequest++ }
+
+    /** Closed captions (CC) on/off; remembered on the box. */
+    var captionsOn by mutableStateOf(false)
+        private set
+    private var ccLoaded = false
+
+    private fun applyCaptions(p: ExoPlayer) {
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, !captionsOn)
+            .setSelectUndeterminedTextLanguage(captionsOn)
+            .setPreferredTextLanguage(if (captionsOn) Locale.getDefault().language else null)
+            .build()
+    }
+
+    /** Turns captions on/off. Returns false when the stream has no caption track. */
+    fun setCaptions(context: Context, on: Boolean): Boolean {
+        captionsOn = on
+        context.applicationContext.getSharedPreferences("forbidden_streams", Context.MODE_PRIVATE).edit().putBoolean("cc_on", on).apply()
+        val p = exo ?: return true
+        applyCaptions(p)
+        return !on || p.currentTracks.groups.any { it.type == androidx.media3.common.C.TRACK_TYPE_TEXT }
+    }
 
     fun existingPlayer(): ExoPlayer? = exo
 

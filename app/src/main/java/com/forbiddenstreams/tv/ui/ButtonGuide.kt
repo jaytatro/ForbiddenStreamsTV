@@ -121,8 +121,9 @@ fun guidePages(): List<GuidePage> {
             listOf(
                 "OK" to "Last Channel · Record (again = stop/cancel) · Multi-View",
                 "▲ ▼ / CH ±" to "Change channel",
-                "◀" to "Category and channel list (on the playing channel)",
-                "◀ ◀" to "Back to the side bar",
+                "◀" to "This category's channels (on the playing channel)",
+                "◀ again" to "Categories (on the current one)",
+                "◀ on the categories" to "Back to the side bar",
                 "BACK" to "Keeps playing in the preview window",
             ),
         ),

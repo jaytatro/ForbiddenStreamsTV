@@ -169,10 +169,12 @@ fun SideItem(
     onFocus: (() -> Unit)? = null,
     textColor: Color? = null,
     icon: RailIcon? = null,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(50)
     Surface(
         onClick = onClick,
+        onLongClick = onLongClick,
         modifier = modifier.onFocusChanged { if (it.isFocused) onFocus?.invoke() },
         shape = ClickableSurfaceDefaults.shape(shape = shape),
         colors = ClickableSurfaceDefaults.colors(

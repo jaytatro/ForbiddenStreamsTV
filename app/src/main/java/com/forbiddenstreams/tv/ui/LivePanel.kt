@@ -43,6 +43,11 @@ import com.forbiddenstreams.tv.data.LiveChannel
 import com.forbiddenstreams.tv.data.Prefs
 import com.forbiddenstreams.tv.data.Session
 import kotlinx.coroutines.delay
+import androidx.compose.ui.focus.onFocusChanged
+import kotlinx.coroutines.launch
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.KeyEventType
 
 private val shadow = TextStyle(shadow = Shadow(Color.Black, Offset(2f, 2f), 6f))
 
@@ -52,7 +57,12 @@ private val shadow = TextStyle(shadow = Shadow(Color.Black, Offset(2f, 2f), 6f))
  * BACK closes it.
  */
 @Composable
-fun LiveCategoryPanel(currentChannelId: String?, onPlay: (List<LiveChannel>, Int) -> Unit, onClose: () -> Unit) {
+fun LiveCategoryPanel(
+    currentChannelId: String?,
+    onPlay: (List<LiveChannel>, Int) -> Unit,
+    onClose: () -> Unit,
+    onSideBar: () -> Unit = {},
+) {
     val context = LocalContext.current
     val prefs = remember { Prefs(context) }
     val groups = remember(Session.liveCats, CategoryPrefs.version) {
@@ -65,17 +75,46 @@ fun LiveCategoryPanel(currentChannelId: String?, onPlay: (List<LiveChannel>, Int
     }
     var group by remember { mutableStateOf(startGroup) }
     val channels = remember(group.key, Session.liveAll) { channelsOf(prefs, group) }
-    BackHandler { onClose() }
+    // ◀ #1 (from the player) = this channel list only; ◀ #2 = categories on the left
+    // (cursor on the current category); ◀ #3 = the side bar.
+    var showCats by remember { mutableStateOf(false) }
+    var catsHadFocus by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(showCats) { if (!showCats) catsHadFocus = false }
+    val entryReq = remember { androidx.compose.ui.focus.FocusRequester() }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    BackHandler { if (showCats) showCats = false else onClose() }
 
-    Row(Modifier.fillMaxSize().background(Color(0x1A000000))) { // 10% background: the video shows through
-        Column(Modifier.width(360.dp).fillMaxHeight().padding(start = 20.dp, top = 20.dp, bottom = 20.dp)) {
-            Text("Categories", color = FS.Green, fontSize = 22.sp, fontWeight = FontWeight.Bold, style = shadow,
+    Row(
+        Modifier.fillMaxSize().background(Color(0x1A000000)) // 10% background: the video shows through
+            .onPreviewKeyEvent { ev ->
+                if (!showCats && ev.type == KeyEventType.KeyDown &&
+                    ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT && ev.nativeKeyEvent.repeatCount == 0
+                ) { showCats = true; true } else false
+            },
+    ) {
+        if (showCats) Column(
+            Modifier.width(380.dp).fillMaxHeight()
+                .background(Color(0xCC000000)) // black, 20% see-through
+                .onFocusChanged { if (catsHadFocus && !it.hasFocus) showCats = false; catsHadFocus = it.hasFocus }
+                .onPreviewKeyEvent { ev ->
+                    if (ev.type == KeyEventType.KeyDown && ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) {
+                        if (ev.nativeKeyEvent.repeatCount == 0) onSideBar()
+                        true
+                    } else false
+                }
+                .padding(start = 20.dp, top = 20.dp, bottom = 20.dp, end = 8.dp),
+        ) {
+            Text("Categories", color = FS.Green, fontSize = 22.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(start = 16.dp, bottom = 6.dp))
             GroupList(
                 groups, group, Modifier.weight(1f),
                 onFocus = { group = it },
-                textColor = Color.White,
-                onPick = { group = it },
+                textColor = FS.Green,
+                onPick = {
+                    group = it
+                    showCats = false
+                    scope.launch { delay(150); try { entryReq.requestFocus() } catch (e: Exception) { } }
+                },
             )
         }
         Column(Modifier.width(620.dp).fillMaxHeight().padding(start = 16.dp, top = 20.dp, bottom = 20.dp)) {
@@ -85,11 +124,11 @@ fun LiveCategoryPanel(currentChannelId: String?, onPlay: (List<LiveChannel>, Int
                 Text("No channels", color = Color.White, fontSize = 18.sp, style = shadow, modifier = Modifier.padding(8.dp))
             } else {
                 val state = rememberLazyListState()
-                val playingReq = remember { androidx.compose.ui.focus.FocusRequester() }
-                val playingIndex = channels.indexOfFirst { it.id == currentChannelId }
+                val playingReq = entryReq
+                val playingIndex = channels.indexOfFirst { it.id == currentChannelId }.let { if (it < 0) 0 else it }
                 var opened by remember { mutableStateOf(false) }
                 LaunchedEffect(group.key) {
-                    if (!opened && playingIndex >= 0) {
+                    if (!opened && channels.getOrNull(playingIndex)?.id == currentChannelId) {
                         // Panel just opened: the channel that's playing, in the middle, with the cursor on it.
                         opened = true
                         state.scrollToItem(playingIndex)
