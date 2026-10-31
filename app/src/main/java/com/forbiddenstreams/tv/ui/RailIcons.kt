@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.Dp
 
 /** Single-line (outline) icons for the left rail, drawn on a 24×24 grid. */
 enum class RailIcon(val d: String) {
+    HOME("M3 11l9 -7l9 7v9a1 1 0 0 1 -1 1h-5v-6h-6v6h-5a1 1 0 0 1 -1 -1z"),
     CHANNELS("M5 6h14a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-8a2 2 0 0 1 2 -2z M8 21h8 M9 2l3 4l3 -4"),
     MOVIES("M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2z M7 3v18 M17 3v18 M3 8h4 M3 12h4 M3 16h4 M17 8h4 M17 12h4 M17 16h4"),
     SHOWS("M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2z M10 8.5v5l4.5 -2.5z M7 21h10"),

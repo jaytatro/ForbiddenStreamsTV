@@ -71,10 +71,10 @@ import com.forbiddenstreams.tv.data.Prefs
 import com.forbiddenstreams.tv.data.Session
 import kotlinx.coroutines.launch
 
-enum class Sec { CHANNELS, MOVIES, SHOWS, SPORTS, SPLIT, RECORDINGS, SETTINGS }
+enum class Sec { HOME, CHANNELS, MOVIES, SHOWS, SPORTS, SPLIT, RECORDINGS, SETTINGS }
 
 private val railIcon = mapOf(
-    Sec.CHANNELS to RailIcon.CHANNELS, Sec.MOVIES to RailIcon.MOVIES, Sec.SHOWS to RailIcon.SHOWS,
+    Sec.HOME to RailIcon.HOME, Sec.CHANNELS to RailIcon.CHANNELS, Sec.MOVIES to RailIcon.MOVIES, Sec.SHOWS to RailIcon.SHOWS,
     Sec.SPORTS to RailIcon.SPORTS, Sec.SPLIT to RailIcon.SPLIT, Sec.RECORDINGS to RailIcon.RECORDINGS, Sec.SETTINGS to RailIcon.SETTINGS,
 )
 
@@ -219,7 +219,7 @@ fun HomeScreen(onLogout: () -> Unit) {
     @Composable
     fun CategoryColumn() {
     val open = hover
-    val showList = open != null && open != Sec.SPLIT && (railFocus || flyFocus) && !listHidden
+    val showList = open != null && open != Sec.SPLIT && open != Sec.HOME && (railFocus || flyFocus) && !listHidden
     // Slides in/out smoothly instead of popping.
     androidx.compose.animation.AnimatedVisibility(
         visible = showList,
@@ -336,7 +336,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                         },
                     )
                 }
-                Sec.SPLIT -> Unit // no box
+                Sec.SPLIT, Sec.HOME -> Unit // no box
                 Sec.SETTINGS -> FlyList(
                     "SETTINGS", SETTINGS_SECTIONS.map { (i, t) -> "$i" to t }, "$setSec", flyEntry, back,
                     onFocusItem = { k -> k.toInt().let { i -> if (i !in setOf(3, 5, 8)) { setSec = i; section = Sec.SETTINGS } } },
@@ -376,7 +376,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                     Image(painterResource(R.drawable.logo), null, Modifier.align(Alignment.CenterHorizontally).size(120.dp))
                 }
                 Spacer(Modifier.weight(1f))
-                for (s in listOf(Sec.CHANNELS, Sec.MOVIES, Sec.SHOWS, Sec.SPORTS, Sec.RECORDINGS)) {
+                for (s in listOf(Sec.HOME, Sec.CHANNELS, Sec.MOVIES, Sec.SHOWS, Sec.SPORTS, Sec.RECORDINGS)) {
                     RailButton(s, selected = section == s, req = iconReq.getValue(s), flyEntry = flyEntry, expanded = wide,
                         onY = { iconY[s] = it },
                         onFocus = {
@@ -389,6 +389,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                         onClick = {
                             hover = s
                             when (s) {
+                                Sec.HOME -> { section = Sec.HOME; toContent() } // no list: straight to Home
                                 Sec.RECORDINGS -> scope.launch { delay(80); try { flyEntry.requestFocus() } catch (e: Exception) { } }
                                 Sec.SPLIT -> {
                                     if (!PlayerHolder.openSplitScreen(context)) toast(context, "Start a channel first, then press Split Screen")
@@ -436,6 +437,15 @@ fun HomeScreen(onLogout: () -> Unit) {
                       translationX = (1f - slide.value) * 80.dp.toPx()
                   }) {
                     when (section) {
+                        Sec.HOME -> HomeDashboard(
+                            onGuide = {
+                                if (chGroup == null) chGroup = prefs.lastGroup.takeIf { it.isNotEmpty() && it != Group.Search.key } ?: Group.All.key
+                                hover = Sec.CHANNELS
+                                section = Sec.CHANNELS
+                                toContent()
+                            },
+                            onLeft = { openList() },
+                        )
                         Sec.CHANNELS -> ChannelsScreen(chGroup, onGroup = { chGroup = it }, active = !(railFocus || flyFocus),
                             onCategories = { openList() })
                         Sec.MOVIES -> MoviesScreen(movieCat, onSelect = { movieCat = it })
@@ -502,7 +512,7 @@ fun HomeScreen(onLogout: () -> Unit) {
 private val RAIL_W = 60.dp
 private val RAIL_WIDE = 250.dp
 private val railLabel = mapOf(
-    Sec.CHANNELS to "Channels", Sec.MOVIES to "Movies", Sec.SHOWS to "TV Shows", Sec.SPORTS to "Sports",
+    Sec.HOME to "Home", Sec.CHANNELS to "Channels", Sec.MOVIES to "Movies", Sec.SHOWS to "TV Shows", Sec.SPORTS to "Sports",
     Sec.SPLIT to "Multi-View", Sec.RECORDINGS to "Recordings", Sec.SETTINGS to "Settings",
 )
 private val RAIL_BG = Color(0xFF0F160F)
