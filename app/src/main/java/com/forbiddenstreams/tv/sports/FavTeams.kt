@@ -75,7 +75,8 @@ object SportPrefs {
         return saved + rest
     }
 
-    fun hidden(context: Context): Set<String> = sp(context).getStringSet("sport_hidden", emptySet())?.toSet() ?: emptySet()
+    /** Hiding leagues was removed (Oct 31): nothing is hidden. */
+    fun hidden(context: Context): Set<String> = emptySet()
 
     fun visible(context: Context): List<League> { val h = hidden(context); return order(context).filter { it.name !in h } }
 

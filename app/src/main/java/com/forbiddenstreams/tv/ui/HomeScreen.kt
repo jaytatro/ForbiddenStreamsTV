@@ -139,10 +139,7 @@ fun HomeScreen(onLogout: () -> Unit) {
 
     // Sports list order / hidden leagues (hold OK on a league in the Sports list).
     val sportsV = com.forbiddenstreams.tv.sports.SportPrefs.version
-    val sportsList = remember(sportsV) { com.forbiddenstreams.tv.sports.SportPrefs.visible(context) }
-    val hiddenSports = remember(sportsV) { com.forbiddenstreams.tv.sports.SportPrefs.hidden(context) }
-    var sportEdit by remember { mutableStateOf<League?>(null) }
-    var showHiddenSports by remember { mutableStateOf(false) }
+    val sportsList = remember(sportsV) { com.forbiddenstreams.tv.sports.SportPrefs.order(context) }
     LaunchedEffect(sportsList) { if (league !in sportsList && sportsList.isNotEmpty()) league = sportsList.first() }
 
     // Category highlighted in the Channels list; shown after a short pause so scrolling stays smooth.
@@ -254,23 +251,13 @@ fun HomeScreen(onLogout: () -> Unit) {
                         },
                     )
                 }
-                Sec.SPORTS -> FlyList(
-                    "SPORTS",
-                    sportsList.map { it.name to "${it.icon}  ${it.label}" } +
-                        (if (hiddenSports.isNotEmpty()) listOf("__hidden__" to "👁  Show hidden (${hiddenSports.size})") else emptyList()),
-                    league.name, flyEntry, back,
-                    onFocusItem = { k ->
-                        if (k != "__hidden__") { favTeams = false; league = League.valueOf(k); section = Sec.SPORTS }
-                    },
-                    // Hold OK on a league: move it up/down or hide it.
-                    onLongPick = { k -> if (k != "__hidden__") sportEdit = League.valueOf(k) },
-                    onPick = { k ->
-                        if (k == "__hidden__") { showHiddenSports = true }
-                        else {
-                            favTeams = false; league = League.valueOf(k)
-                            section = Sec.SPORTS
-                            toContent()
-                        }
+                Sec.SPORTS -> SportsDockList(
+                    sportsList, league, flyEntry, back,
+                    onFocusLeague = { lg -> favTeams = false; league = lg; section = Sec.SPORTS },
+                    onPick = { lg ->
+                        favTeams = false; league = lg
+                        section = Sec.SPORTS
+                        toContent()
                     },
                 )
                 Sec.RECORDINGS -> {
@@ -431,27 +418,6 @@ fun HomeScreen(onLogout: () -> Unit) {
                 "Cancel" to { confirmLogout = false },
             ),
             onDismiss = { confirmLogout = false },
-        )
-    }
-    sportEdit?.let { lg ->
-        val order = com.forbiddenstreams.tv.sports.SportPrefs.visible(context)
-        val i = order.indexOf(lg)
-        val opts = ArrayList<Pair<String, () -> Unit>>()
-        if (i > 0) opts += "▲  Move up" to { com.forbiddenstreams.tv.sports.SportPrefs.move(context, lg, -1); sportEdit = null }
-        if (i in 0 until order.size - 1) opts += "▼  Move down" to { com.forbiddenstreams.tv.sports.SportPrefs.move(context, lg, 1); sportEdit = null }
-        if (order.size > 1) opts += "🙈  Hide ${lg.label}" to { com.forbiddenstreams.tv.sports.SportPrefs.setHidden(context, lg, true); sportEdit = null }
-        opts += "↺  Reset order (A to Z, show all)" to { com.forbiddenstreams.tv.sports.SportPrefs.reset(context); sportEdit = null }
-        opts += "Cancel" to { sportEdit = null }
-        ChoiceDialog(title = "${lg.icon}  ${lg.label}", subtitle = "Arrange the Sports list", options = opts, onDismiss = { sportEdit = null })
-    }
-    if (showHiddenSports) {
-        val hidden = League.entries.filter { it.name in hiddenSports }
-        ChoiceDialog(
-            title = "Hidden leagues",
-            subtitle = "Pick one to show it again",
-            options = hidden.map { lg -> "${lg.icon}  Show ${lg.label}" to { com.forbiddenstreams.tv.sports.SportPrefs.setHidden(context, lg, false); showHiddenSports = false } } +
-                ("Cancel" to { showHiddenSports = false }),
-            onDismiss = { showHiddenSports = false },
         )
     }
     ReminderWatcher()
@@ -695,6 +661,89 @@ private fun androidx.compose.foundation.layout.BoxScope.FavoriteGameAlert(onWatc
                 fontSize = 19.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(18.dp))
             Text("OK = pick a channel · BACK = dismiss", color = FS.Text, fontSize = 15.sp)
+        }
+    }
+}
+
+
+/**
+ * Sports list in the side bar. Each league has a small ⇅ button next to it (▶ to reach it):
+ * OK on ⇅ starts moving that league, ▲ ▼ move it, OK again (or BACK) ends the moving.
+ */
+@Composable
+private fun SportsDockList(
+    leagues: List<League>,
+    selected: League,
+    entry: FocusRequester,
+    back: FocusRequester,
+    onFocusLeague: (League) -> Unit,
+    onPick: (League) -> Unit,
+) {
+    val context = LocalContext.current
+    var moving by remember { mutableStateOf<League?>(null) }
+    val arrowReq = remember { League.entries.associateWith { FocusRequester() } }
+    val scope = rememberCoroutineScope()
+    BackHandler(enabled = moving != null) { moving = null }
+    Column(Modifier.width(250.dp)) {
+        Text("SPORTS", color = FS.GreenMid, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp,
+            modifier = Modifier.padding(start = 14.dp, bottom = 6.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            leagues.forEach { lg ->
+                androidx.compose.runtime.key(lg) {
+                    val isMoving = moving == lg
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .then(if (isMoving) Modifier.border(2.dp, FS.Green, RoundedCornerShape(50)) else Modifier),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        SideItem(
+                            "${lg.icon}  ${lg.label}", selected = lg == selected,
+                            onClick = { onPick(lg) },
+                            onFocus = { if (moving == null) onFocusLeague(lg) },
+                            textColor = FS.Green,
+                            modifier = Modifier.weight(1f)
+                                .then(if (lg == selected) Modifier.focusRequester(entry) else Modifier)
+                                .focusProperties { left = back; canFocus = moving == null },
+                        )
+                        // ⇅ move button
+                        val shape = RoundedCornerShape(8.dp)
+                        androidx.tv.material3.Surface(
+                            onClick = {
+                                moving = if (isMoving) null else lg
+                                if (!isMoving) toast(context, "▲ ▼ to move ${lg.label} · OK when done")
+                            },
+                            modifier = Modifier.padding(start = 4.dp).size(34.dp)
+                                .focusRequester(arrowReq.getValue(lg))
+                                .focusProperties { canFocus = moving == null || isMoving }
+                                .onPreviewKeyEvent { ev ->
+                                    if (!isMoving || ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                                    val dir = when (ev.nativeKeyEvent.keyCode) {
+                                        android.view.KeyEvent.KEYCODE_DPAD_UP -> -1
+                                        android.view.KeyEvent.KEYCODE_DPAD_DOWN -> 1
+                                        android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> 0
+                                        else -> return@onPreviewKeyEvent false
+                                    }
+                                    if (dir != 0) {
+                                        com.forbiddenstreams.tv.sports.SportPrefs.move(context, lg, dir)
+                                        scope.launch { delay(50); try { arrowReq.getValue(lg).requestFocus() } catch (e: Exception) { } }
+                                    }
+                                    true
+                                },
+                            shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(shape = shape),
+                            colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
+                                containerColor = if (isMoving) FS.Green else Color.Transparent,
+                                contentColor = if (isMoving) Color.Black else FS.GreenMid,
+                                focusedContainerColor = FS.Green, focusedContentColor = Color.Black,
+                            ),
+                            scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
+                        ) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("⇅", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
