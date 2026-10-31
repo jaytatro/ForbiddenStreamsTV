@@ -23,6 +23,7 @@ import com.forbiddenstreams.tv.ui.playChannels
 import com.forbiddenstreams.tv.ui.MultiViewScreen
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -159,6 +160,7 @@ class PlayerActivity : ComponentActivity() {
                         if (actionsVisible) {
                             BackHandler { actionsVisible = false }
                             val first = remember { androidx.compose.ui.focus.FocusRequester() }
+                            val last = remember { androidx.compose.ui.focus.FocusRequester() }
                             LaunchedEffect(Unit) { delay(80); try { first.requestFocus() } catch (e: Exception) { } }
                             // Nothing picked for 5 seconds: the buttons close by themselves.
                             LaunchedEffect(Unit) {
@@ -174,7 +176,8 @@ class PlayerActivity : ComponentActivity() {
                             ) {
                             com.forbiddenstreams.tv.ui.Pill(
                                 "⏮  Last Channel", selected = false, fontSize = 18.sp,
-                                modifier = Modifier.focusRequester(first),
+                                // Round robin: ◀ on Last Channel goes to Multi-View.
+                                modifier = Modifier.focusRequester(first).focusProperties { left = last },
                                 onClick = {
                                     actionsVisible = false
                                     if (PlayerHolder.playLast(this@PlayerActivity)) showInfo()
@@ -193,6 +196,8 @@ class PlayerActivity : ComponentActivity() {
                             )
                             com.forbiddenstreams.tv.ui.Pill(
                                 "⊞  Multi-View", selected = false, fontSize = 18.sp,
+                                // ▶ on Multi-View goes back to Last Channel.
+                                modifier = Modifier.focusRequester(last).focusProperties { right = first },
                                 onClick = {
                                     actionsVisible = false
                                     infoVisible = false
@@ -353,7 +358,7 @@ class PlayerActivity : ComponentActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         lastKeyAt = android.os.SystemClock.uptimeMillis()
         // Live TV: ◀ twice quickly = back to the side bar (Channels list), the channel keeps playing in the preview.
-        if (::view.isInitialized && PlayerHolder.current?.live == true && !guideVisible && !multiVisible &&
+        if (::view.isInitialized && PlayerHolder.current?.live == true && !guideVisible && !multiVisible && !actionsVisible && recStopAsk == null &&
             event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0
         ) {
             val t = android.os.SystemClock.uptimeMillis()
