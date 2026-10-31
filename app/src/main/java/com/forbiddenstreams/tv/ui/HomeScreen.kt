@@ -681,15 +681,18 @@ private fun SportsDockList(
 ) {
     val context = LocalContext.current
     var moving by remember { mutableStateOf<League?>(null) }
-    val arrowReq = remember { League.entries.associateWith { FocusRequester() } }
+    // One focus target per row position. Rows are NOT keyed by league on purpose: when a league
+    // moves, the rows stay put and only their labels swap, so the cursor never gets lost
+    // (a lost cursor closed the whole Sports list in build 47).
+    val arrowReq = remember { List(League.entries.size) { FocusRequester() } }
     val scope = rememberCoroutineScope()
     BackHandler(enabled = moving != null) { moving = null }
     Column(Modifier.width(250.dp)) {
         Text("SPORTS", color = FS.GreenMid, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp,
             modifier = Modifier.padding(start = 14.dp, bottom = 6.dp))
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            leagues.forEach { lg ->
-                androidx.compose.runtime.key(lg) {
+            leagues.forEachIndexed { index, lg ->
+                run {
                     val isMoving = moving == lg
                     Row(
                         Modifier.fillMaxWidth()
@@ -713,8 +716,9 @@ private fun SportsDockList(
                                 if (!isMoving) toast(context, "▲ ▼ to move ${lg.label} · OK when done")
                             },
                             modifier = Modifier.padding(start = 4.dp).size(34.dp)
-                                .focusRequester(arrowReq.getValue(lg))
-                                .focusProperties { canFocus = moving == null || isMoving }
+                                .focusRequester(arrowReq[index])
+                                // ▶ from the league reaches it; while moving, ▲ ▼ ◀ ▶ are taken by the moving row.
+                                .focusProperties { canFocus = true; left = back.takeIf { false } ?: androidx.compose.ui.focus.FocusRequester.Default }
                                 .onPreviewKeyEvent { ev ->
                                     if (!isMoving || ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                                     val dir = when (ev.nativeKeyEvent.keyCode) {
@@ -723,9 +727,11 @@ private fun SportsDockList(
                                         android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> 0
                                         else -> return@onPreviewKeyEvent false
                                     }
-                                    if (dir != 0) {
+                                    val to = index + dir
+                                    if (dir != 0 && to in leagues.indices) {
+                                        // Cursor first (that row already exists), then swap the leagues.
+                                        try { arrowReq[to].requestFocus() } catch (e: Exception) { }
                                         com.forbiddenstreams.tv.sports.SportPrefs.move(context, lg, dir)
-                                        scope.launch { delay(50); try { arrowReq.getValue(lg).requestFocus() } catch (e: Exception) { } }
                                     }
                                     true
                                 },
