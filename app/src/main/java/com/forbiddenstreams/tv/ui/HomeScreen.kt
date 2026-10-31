@@ -26,6 +26,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.focus.onFocusChanged
@@ -141,6 +142,9 @@ fun HomeScreen(onLogout: () -> Unit) {
     val sportsList = remember(sportsV) { com.forbiddenstreams.tv.sports.SportPrefs.order(context) }
     LaunchedEffect(sportsList) { if (league !in sportsList && sportsList.isNotEmpty()) league = sportsList.first() }
 
+    /** True right after a pick: the list slides away even before the screen has the cursor. */
+    var listHidden by remember { mutableStateOf(false) }
+
     // Category highlighted in the Channels list; shown after a short pause so scrolling stays smooth.
     var pendingGroup by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(pendingGroup) {
@@ -153,6 +157,7 @@ fun HomeScreen(onLogout: () -> Unit) {
 
     /** Opens the current screen's category list with the cursor on the category in use. */
     fun openList() {
+        listHidden = false
         hover = section
         scope.launch {
             try { iconReq.getValue(section).requestFocus() } catch (e: Exception) { }
@@ -180,10 +185,15 @@ fun HomeScreen(onLogout: () -> Unit) {
     var contentLeftAt by remember { mutableLongStateOf(0L) }
     var backToRail by remember { mutableStateOf(false) }
 
+    /** Picked something: hide the list right away and put the cursor in the screen. */
     fun toContent() {
+        listHidden = true
         scope.launch {
-            delay(80)
-            try { contentReq.requestFocus() } catch (e: Exception) { }
+            repeat(6) {
+                delay(80)
+                if (contentFocus) return@launch
+                try { contentReq.requestFocus() } catch (e: Exception) { }
+            }
         }
     }
 
@@ -207,7 +217,16 @@ fun HomeScreen(onLogout: () -> Unit) {
     @Composable
     fun CategoryColumn() {
     val open = hover
-    if (open != null && open != Sec.SPLIT && (railFocus || flyFocus)) {
+    val showList = open != null && open != Sec.SPLIT && (railFocus || flyFocus) && !listHidden
+    // Slides in/out smoothly instead of popping.
+    androidx.compose.animation.AnimatedVisibility(
+        visible = showList,
+        enter = androidx.compose.animation.expandHorizontally(androidx.compose.animation.core.tween(220)) +
+            androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220)),
+        exit = androidx.compose.animation.shrinkHorizontally(androidx.compose.animation.core.tween(200)) +
+            androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160)),
+    ) {
+    if (open != null) {
         val back = iconReq.getValue(open)
         Box(
             Modifier.fillMaxHeight().background(Color.Black)
@@ -251,8 +270,12 @@ fun HomeScreen(onLogout: () -> Unit) {
                         if (movies) "MOVIES" else "TV SHOWS",
                         listOf(VOD_SEARCH to "🔍  Search", VOD_RECENT to "🕘  Recently Watched") + c.map { it.id to it.name },
                         if (movies) movieCat else showCat, flyEntry, back,
-                        // Highlighting a category shows its movies / shows on the right.
-
+                        // Highlighting a category shows it on the right (posters load after a short pause).
+                        onFocusItem = { k ->
+                            if (k != VOD_SEARCH) {
+                                if (movies) { movieCat = k; section = Sec.MOVIES } else { showCat = k; section = Sec.SHOWS }
+                            }
+                        },
                         onPick = { k ->
                             if (movies) { movieCat = k; section = Sec.MOVIES } else { showCat = k; section = Sec.SHOWS }
                             toContent()
@@ -261,7 +284,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                 }
                 Sec.SPORTS -> SportsDockList(
                     sportsList, league, flyEntry, back,
-                    onFocusLeague = { },
+                    onFocusLeague = { lg -> favTeams = false; league = lg; section = Sec.SPORTS },
                     onPick = { lg ->
                         favTeams = false; league = lg
                         section = Sec.SPORTS
@@ -278,6 +301,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                                 "${r.title} · ${Fmt.day(r.start)} ${Fmt.time(r.start)}")
                         } + (if (recs.isEmpty()) listOf("__none__" to "No recordings yet") else emptyList()),
                         null, flyEntry, back,
+                        onFocusItem = { section = Sec.RECORDINGS },
                         onPick = { k ->
                             when (k) {
                                 "__all__", "__none__" -> { section = Sec.RECORDINGS; toContent() }
@@ -297,6 +321,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                 Sec.SPLIT -> Unit // no box
                 Sec.SETTINGS -> FlyList(
                     "SETTINGS", SETTINGS_SECTIONS.map { (i, t) -> "$i" to t }, "$setSec", flyEntry, back,
+                    onFocusItem = { k -> k.toInt().let { i -> if (i !in setOf(3, 5, 8)) { setSec = i; section = Sec.SETTINGS } } },
                     icons = mapOf("7" to RailIcon.REMOTE), // TV remote drawn as a line icon
                     onPick = { k ->
                         when (val i = k.toInt()) {
@@ -311,6 +336,7 @@ fun HomeScreen(onLogout: () -> Unit) {
         }
     }
     }
+    }
 
     Box(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxSize()) {
@@ -319,7 +345,11 @@ fun HomeScreen(onLogout: () -> Unit) {
             // and the names, like the photo of the other app (TiviMate style).
             val wide = railFocus
             Column(
-                Modifier.width(if (wide) RAIL_WIDE else RAIL_W).fillMaxHeight().background(RAIL_BG)
+                Modifier.width(
+                    androidx.compose.animation.core.animateDpAsState(
+                        if (wide) RAIL_WIDE else RAIL_W, androidx.compose.animation.core.tween(220), label = "rail",
+                    ).value,
+                ).fillMaxHeight().background(RAIL_BG)
                     .onFocusChanged { railFocus = it.hasFocus }
                     .padding(vertical = 14.dp, horizontal = if (wide) 18.dp else 0.dp),
                 horizontalAlignment = if (wide) Alignment.Start else Alignment.CenterHorizontally,
@@ -332,6 +362,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                     RailButton(s, selected = section == s, req = iconReq.getValue(s), flyEntry = flyEntry, expanded = wide,
                         onY = { iconY[s] = it },
                         onFocus = {
+                            listHidden = false
                             // Moving over the icons doesn't switch the list next to it; OK does.
                             val fromScreen = android.os.SystemClock.uptimeMillis() - contentLeftAt < 400
                             if (fromScreen && !backToRail) { contentLeftAt = 0L; openList() }
@@ -353,6 +384,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                 RailButton(Sec.SETTINGS, selected = section == Sec.SETTINGS, req = iconReq.getValue(Sec.SETTINGS), flyEntry = flyEntry, expanded = wide,
                     onY = { iconY[Sec.SETTINGS] = it },
                     onFocus = {
+                        listHidden = false
                         val fromScreen = android.os.SystemClock.uptimeMillis() - contentLeftAt < 400
                         if (fromScreen && !backToRail) { contentLeftAt = 0L; openList() }
                         backToRail = false
@@ -378,6 +410,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                     .focusGroup(),
             ) {
                 CompositionLocalProvider(LocalTopMenuFocus provides iconReq.getValue(section)) {
+                  androidx.compose.animation.Crossfade(section, animationSpec = androidx.compose.animation.core.tween(250), label = "screen") { section ->
                     when (section) {
                         Sec.CHANNELS -> ChannelsScreen(chGroup, onGroup = { chGroup = it }, active = !(railFocus || flyFocus),
                             onCategories = { openList() })
@@ -392,12 +425,16 @@ fun HomeScreen(onLogout: () -> Unit) {
                             else -> MenuScreen(setSec)
                         }
                     }
+                  }
                 }
                 // While the side bar or a list has the cursor, nothing shows on the right until a
                 // category is picked (OK). Start-up: the live preview of the last channel stays.
                 // (Channels is the exception: its guide shows while you move through its categories.)
-                val blank = (railFocus || flyFocus) && !(section == Sec.CHANNELS && hover == Sec.CHANNELS)
-                if (blank) Box(Modifier.matchParentSize().background(FS.Bg))
+                val blank = railFocus || (flyFocus && hover != section)
+                val blankAlpha by androidx.compose.animation.core.animateFloatAsState(
+                    if (blank) 1f else 0f, androidx.compose.animation.core.tween(220), label = "blank",
+                )
+                if (blankAlpha > 0f) Box(Modifier.matchParentSize().alpha(blankAlpha).background(FS.Bg))
             }
         }
         FavoriteGameAlert(onWatch = { lg, id ->
