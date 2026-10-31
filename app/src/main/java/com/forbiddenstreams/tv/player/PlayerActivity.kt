@@ -76,6 +76,32 @@ class PlayerActivity : ComponentActivity() {
     private var seekFlash by mutableStateOf<String?>(null)
     private var seekJob: Job? = null
     private var okDown = false
+    /** Movie/episode settings menu: null, "main", "audio" or "speed". */
+    private var vodMenu by mutableStateOf<String?>(null)
+
+    /** Movie player buttons (play, seek, settings…): green background with a black icon when highlighted. */
+    private fun greenFocus(root: android.view.View) {
+        if (root is android.view.ViewGroup) {
+            for (i in 0 until root.childCount) greenFocus(root.getChildAt(i))
+            return
+        }
+        if (root !is android.widget.ImageView || !root.isFocusable) return
+        val d = resources.displayMetrics.density
+        fun bg(color: Int) = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setColor(color)
+        }
+        root.background = android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_pressed), bg(0xFF3FBF1F.toInt()))
+            addState(intArrayOf(android.R.attr.state_focused), bg(0xFF7CFF3A.toInt()))
+            addState(intArrayOf(), bg(0x00000000))
+        }
+        root.imageTintList = android.content.res.ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_focused), intArrayOf()),
+            intArrayOf(0xFF000000.toInt(), 0xFFFFFFFF.toInt()),
+        )
+        root.setPadding((8 * d).toInt(), (8 * d).toInt(), (8 * d).toInt(), (8 * d).toInt())
+    }
     private var lastKeyAt = 0L
     private var lastLeftAt = 0L
 
@@ -99,7 +125,17 @@ class PlayerActivity : ComponentActivity() {
             })
         }
 
-        view.findViewById<androidx.media3.ui.DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress)?.setKeyTimeIncrement(10_000)
+        view.findViewById<androidx.media3.ui.DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress)?.apply {
+            setKeyTimeIncrement(10_000)
+            // Green seek bar.
+            setPlayedColor(0xFF7CFF3A.toInt())
+            setScrubberColor(0xFF7CFF3A.toInt())
+            setBufferedColor(0x667CFF3A)
+            setUnplayedColor(0x33FFFFFF)
+        }
+        greenFocus(view)
+        // Our own settings menu (with Closed captions) instead of the built-in one.
+        view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_settings)?.setOnClickListener { vodMenu = "main" }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -235,6 +271,7 @@ class PlayerActivity : ComponentActivity() {
                             onSideBar = { panelVisible = false; PlayerHolder.requestSideBar(); close() },
                         )
                     }
+                    vodMenu?.let { m -> VodSettings(m) }
                     recStopAsk?.let { r ->
                         com.forbiddenstreams.tv.ui.ChoiceDialog(
                             title = "Recording ${r.title}",
@@ -327,6 +364,61 @@ class PlayerActivity : ComponentActivity() {
             multiVisible = true
         } else {
             showInfo()
+        }
+    }
+
+    /** Settings menu for movies/episodes: Closed captions, Audio track, Speed. */
+    @androidx.compose.runtime.Composable
+    private fun VodSettings(m: String) {
+        val p = PlayerHolder.existingPlayer() ?: run { vodMenu = null; return }
+        val close = { vodMenu = null }
+        when (m) {
+            "audio" -> {
+                val opts = ArrayList<Pair<String, () -> Unit>>()
+                p.currentTracks.groups.filter { it.type == androidx.media3.common.C.TRACK_TYPE_AUDIO }.forEach { g ->
+                    for (i in 0 until g.length) {
+                        val f = g.getTrackFormat(i)
+                        val name = listOfNotNull(
+                            f.label, f.language?.let { java.util.Locale(it).displayLanguage },
+                            when (f.channelCount) { 1 -> "mono"; 2 -> "stereo"; 6 -> "5.1"; 8 -> "7.1"; else -> null },
+                        ).joinToString(" · ").ifEmpty { "Track ${i + 1}" }
+                        opts += ((if (g.isTrackSelected(i)) "✓  " else "     ") + name) to {
+                            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                                .setOverrideForType(androidx.media3.common.TrackSelectionOverride(g.mediaTrackGroup, i))
+                                .build()
+                            close()
+                        }
+                    }
+                }
+                if (opts.isEmpty()) opts += "No other audio tracks" to close
+                com.forbiddenstreams.tv.ui.ChoiceDialog("🔊  Audio track", null, opts + ("Back" to { vodMenu = "main" }), onDismiss = close)
+            }
+            "speed" -> {
+                val cur = p.playbackParameters.speed
+                val opts = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f).map { sp ->
+                    ((if (kotlin.math.abs(sp - cur) < 0.01f) "✓  " else "     ") + (if (sp == 1f) "Normal" else "${sp}x")) to { p.setPlaybackSpeed(sp); close() }
+                }
+                com.forbiddenstreams.tv.ui.ChoiceDialog("⏩  Speed", null, opts + ("Back" to { vodMenu = "main" }), onDismiss = close)
+            }
+            else -> {
+                val cc = PlayerHolder.captionsOn
+                val speed = p.playbackParameters.speed
+                com.forbiddenstreams.tv.ui.ChoiceDialog(
+                    title = "Settings",
+                    subtitle = null,
+                    options = listOf(
+                        "CC  Closed captions: ${if (cc) "On" else "Off"}" to {
+                            val has = PlayerHolder.setCaptions(this, !cc)
+                            com.forbiddenstreams.tv.ui.toast(this, if (cc) "Captions off" else if (has) "Captions on" else "Captions on — this video has none")
+                            close()
+                        },
+                        "🔊  Audio track" to { vodMenu = "audio" },
+                        "⏩  Speed: ${if (speed == 1f) "Normal" else "${speed}x"}" to { vodMenu = "speed" },
+                        "Close" to close,
+                    ),
+                    onDismiss = close,
+                )
+            }
         }
     }
 
