@@ -47,6 +47,12 @@ import com.forbiddenstreams.tv.sports.GameChannels
 import com.forbiddenstreams.tv.sports.GameMatcher
 import com.forbiddenstreams.tv.sports.League
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.foundation.border
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.forbiddenstreams.tv.player.PlayItem
@@ -175,23 +181,13 @@ fun SportsScreen(league: League, openGameId: String? = null, onOpened: () -> Uni
                         { if (it.isLive) 0 else if (it.isFinal) 2 else 1 }, { it.start },
                     ))
                 }
-                LazyColumn(
-                    Modifier.fillMaxSize()
-                        // ◀ on a game = back to the Sports list in the side bar.
-                        .onPreviewKeyEvent { ev ->
-                            if (ev.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
-                                ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT
-                            ) { if (ev.nativeKeyEvent.repeatCount == 0) onLeft(); true } else false
-                        }
-                        .padding(horizontal = 40.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    items(sorted, key = { it.id }) { g ->
-                        GameRow(g, matches[g.id], groupMissing, teamChannels == null,
-                            fav = remember(favV, g.id) { com.forbiddenstreams.tv.sports.FavTeams.inGame(context, league, g) }) { picker = g }
-                    }
-                    item { Spacer(Modifier.height(24.dp)) }
-                }
+                GameBoard(
+                    games = sorted.map { league to it },
+                    matchFor = { _, g -> matches[g.id] },
+                    teamFor = { teamChannels.orEmpty() },
+                    favFor = { l, g -> com.forbiddenstreams.tv.sports.FavTeams.inGame(context, l, g) },
+                    onLeft = onLeft,
+                )
             }
         }
     }
@@ -256,6 +252,18 @@ private fun gameOptions(
             }
         }
     } else {
+        if (g.isLive) {
+            val src = Session.source
+            for ((label, c, _) in feeds) {
+                if (!c.hasArchive || src == null) continue
+                val prog = Program("${g.away.displayName} vs. ${g.home.displayName}", "", g.start - 5 * 60_000, g.start + gameLengthMs(g), true)
+                val url = src.catchupUrl(c, prog) ?: continue
+                out += "⟲ From kickoff · $label" to {
+                    Playback.one(context, PlayItem("${g.away.displayName} vs. ${g.home.displayName}", url, live = false, subtitle = "From kickoff · ${c.name}"))
+                }
+                break
+            }
+        }
         for ((label, c, list) in feeds) {
             // Picture quality: what the player saw last time on this channel, or a guess from its name ("?").
             val q = com.forbiddenstreams.tv.player.StreamQuality.label(context, c.id, c.name)
@@ -336,6 +344,212 @@ private fun GameRow(game: Game, channels: GameChannels?, groupMissing: Boolean, 
                     else -> Text(Fmt.time(game.start), fontSize = 26.sp, fontWeight = FontWeight.Bold)
                 }
             }
+        }
+    }
+}
+
+
+// ------------------------------------------------------------ v2 Game Center
+
+/**
+ * Game cards in two columns; where to watch the highlighted game is shown in the panel on the
+ * right (no pop-up). OK on a card moves into that panel. ◀ on the left column = the Sports list.
+ */
+@Composable
+private fun GameBoard(
+    games: List<Pair<League, Game>>,
+    matchFor: (League, Game) -> GameChannels?,
+    teamFor: (League) -> List<LiveChannel>,
+    favFor: (League, Game) -> Boolean,
+    onLeft: () -> Unit,
+) {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var sel by remember { mutableStateOf<Pair<League, Game>?>(null) }
+    val panelReq = remember { androidx.compose.ui.focus.FocusRequester() }
+    // Keep the highlighted game's latest score/clock.
+    val current = sel?.let { (l, g) -> games.firstOrNull { it.first == l && it.second.id == g.id } ?: sel }
+    Row(Modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, bottom = 12.dp)) {
+        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+            columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(2),
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            items(games.size, key = { i -> games[i].first.name + ":" + games[i].second.id }) { i ->
+                val (l, g) = games[i]
+                GameCard(
+                    l, g, fav = favFor(l, g), selected = current?.second?.id == g.id,
+                    modifier = Modifier
+                        .onFocusChanged { if (it.isFocused) sel = l to g }
+                        .onPreviewKeyEvent { ev ->
+                            if (i % 2 == 0 && ev.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
+                                ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT
+                            ) { if (ev.nativeKeyEvent.repeatCount == 0) onLeft(); true } else false
+                        },
+                    onClick = {
+                        sel = l to g
+                        scope.launch { delay(80); try { panelReq.requestFocus() } catch (e: Exception) { } }
+                    },
+                )
+            }
+            item { Spacer(Modifier.height(16.dp)) }
+        }
+        Spacer(Modifier.width(18.dp))
+        WatchPanel(current, matchFor, teamFor, panelReq, Modifier.width(340.dp).fillMaxHeight())
+    }
+}
+
+@Composable
+private fun GameCard(league: League, g: Game, fav: Boolean, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    FocusCard(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth().height(148.dp),
+        container = if (selected) FS.GreenDim else FS.Panel,
+        shape = RoundedCornerShape(14.dp),
+        focusedScale = 1.02f,
+    ) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val state = when {
+                    g.isLive -> "● LIVE · ${g.detail}"
+                    g.isFinal -> g.detail.ifEmpty { "Final" }
+                    else -> "${Fmt.day(g.start)} ${Fmt.time(g.start)}"
+                }
+                Text(state, color = if (g.isLive) Color(0xFFFF6B61) else FS.TextDim, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text((if (fav) "⭐ " else "") + league.label + (g.networks.firstOrNull()?.let { " · $it" } ?: ""),
+                    color = FS.TextDim, fontSize = 13.sp, maxLines = 1)
+            }
+            for (t in listOf(g.away, g.home)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) { NetImage(t.logo, Modifier.fillMaxSize()) }
+                    Spacer(Modifier.width(12.dp))
+                    Text(t.displayName, fontSize = 18.sp, fontWeight = if (t.winner) FontWeight.Bold else FontWeight.SemiBold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    if (g.isLive || g.isFinal) Text(t.score ?: "0", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WatchPanel(
+    sel: Pair<League, Game>?,
+    matchFor: (League, Game) -> GameChannels?,
+    teamFor: (League) -> List<LiveChannel>,
+    firstReq: androidx.compose.ui.focus.FocusRequester,
+    modifier: Modifier,
+) {
+    val context = LocalContext.current
+    Column(
+        modifier.background(Color(0xFF0A120B), RoundedCornerShape(16.dp))
+            .border(1.dp, FS.GreenDeep, RoundedCornerShape(16.dp)).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(if (sel?.second?.isFinal == true) "REPLAY THIS GAME" else "WATCH THIS GAME", color = FS.TextDim, fontSize = 12.sp,
+            fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+        if (sel == null) {
+            Text("Highlight a game to see where to watch it.", color = FS.Text, fontSize = 16.sp)
+            return@Column
+        }
+        val (l, g) = sel
+        Text("${g.away.displayName} at ${g.home.displayName}", color = FS.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 2)
+        g.venue?.let { Text(it, color = FS.Green, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        val m = matchFor(l, g)
+        val team = teamFor(l)
+        val options = remember(g.id, g.state, m, team, Session.liveAll) { gameOptions(context, g, m, team) }
+        if (options.isEmpty()) {
+            Text(
+                when {
+                    g.isFinal -> "None of this game's channels have catch-up (⟲), so it can't be replayed."
+                    m == null -> "Finding channels…"
+                    else -> m.note ?: "No channel found for this game."
+                },
+                color = FS.TextDim, fontSize = 15.sp,
+            )
+        }
+        androidx.compose.foundation.lazy.LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(options.size) { i ->
+                val (label, action) = options[i]
+                FocusCard(
+                    onClick = action,
+                    modifier = Modifier.fillMaxWidth().then(if (i == 0) Modifier.focusRequester(firstReq) else Modifier),
+                    focusedScale = 1.02f,
+                ) {
+                    Text(label, fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * "● Live now" (games in progress in every league) or "⭐ My teams" (your favorite teams'
+ * games today and this week), in the same board as a league.
+ */
+@Composable
+fun LiveGamesScreen(mine: Boolean, onLeft: () -> Unit = {}) {
+    val context = LocalContext.current
+    var games by remember(mine) { mutableStateOf<List<Pair<League, Game>>?>(null) }
+    LaunchedEffect(mine) {
+        while (true) {
+            val favs = com.forbiddenstreams.tv.sports.FavTeams.all(context)
+            val leagues = if (mine) League.entries.filter { l -> favs.any { it.startsWith(l.name + ":") } } else League.entries
+            val found = withContext(Dispatchers.Default) {
+                kotlinx.coroutines.coroutineScope {
+                    leagues.map { l ->
+                        async {
+                            val w = try { if (mine) Espn.week(l, 0, 6) else Espn.week(l, 0, 0) } catch (e: Exception) { emptyMap() }
+                            w.values.flatten().filter { g ->
+                                if (mine) com.forbiddenstreams.tv.sports.FavTeams.inGame(context, l, g) && !g.isFinal else g.isLive
+                            }.map { l to it }
+                        }
+                    }.awaitAll().flatten()
+                }
+            }
+            games = found.distinctBy { it.first.name + it.second.id }
+                .sortedWith(compareBy({ if (it.second.isLive) 0 else 1 }, { it.second.start }))
+            delay(30_000)
+        }
+    }
+    // Team channels and channel matching per league.
+    val matches = remember { androidx.compose.runtime.mutableStateMapOf<String, GameChannels>() }
+    val teams = remember(Session.liveCats, Session.liveAll) {
+        val cats = Session.liveCats.orEmpty()
+        League.entries.associateWith { l -> GameMatcher.findGroup(cats, l)?.let { Session.channelsIn(it.id) }.orEmpty() }
+    }
+    LaunchedEffect(games, teams) {
+        val list = games ?: return@LaunchedEffect
+        for ((l, g) in list) {
+            val key = l.name + ":" + g.id
+            if (matches.containsKey(key)) continue
+            matches[key] = withContext(Dispatchers.Default) {
+                GameMatcher.match(g, l, teams[l].orEmpty()) { c -> Session.cachedEpg(c).orEmpty() }
+            }
+        }
+    }
+    Column(Modifier.fillMaxSize()) {
+        Text(
+            if (mine) "⭐  My teams" else "●  Live now",
+            color = if (mine) FS.Green else Color(0xFFFF6B61), fontSize = 26.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 28.dp, top = 16.dp, bottom = 12.dp),
+        )
+        val list = games
+        when {
+            list == null -> LoadingBox(if (mine) "Finding your teams' games" else "Finding live games")
+            list.isEmpty() -> MessageBox(
+                if (mine) "No upcoming games for your teams" else "No games live right now",
+                if (mine) "Pick your teams in Settings › Favorite Teams." else "Check back at game time, or pick a league.",
+            )
+            else -> GameBoard(
+                games = list,
+                matchFor = { l, g -> matches[l.name + ":" + g.id] },
+                teamFor = { l -> teams[l].orEmpty() },
+                favFor = { l, g -> com.forbiddenstreams.tv.sports.FavTeams.inGame(context, l, g) },
+                onLeft = onLeft,
+            )
         }
     }
 }

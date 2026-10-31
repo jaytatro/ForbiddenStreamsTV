@@ -112,6 +112,7 @@ fun HomeScreen(onLogout: () -> Unit) {
     var showCat by rememberSaveable { mutableStateOf<String?>(null) }
     var league by rememberSaveable { mutableStateOf(League.NFL) }
     var favTeams by rememberSaveable { mutableStateOf(false) }        // Sports › Favorite Teams
+    var sportsMode by rememberSaveable { mutableStateOf<String?>(null) } // "live" | "mine" | null = a league
     var openGame by remember { mutableStateOf<String?>(null) }         // from the favorite-team alert
     var setSec by rememberSaveable { mutableIntStateOf(1) }
     var confirmLogout by remember { mutableStateOf(false) }
@@ -283,15 +284,31 @@ fun HomeScreen(onLogout: () -> Unit) {
                         },
                     )
                 }
-                Sec.SPORTS -> SportsDockList(
-                    sportsList, league, flyEntry, back,
-                    onFocusLeague = { lg -> favTeams = false; league = lg; section = Sec.SPORTS },
-                    onPick = { lg ->
-                        favTeams = false; league = lg
-                        section = Sec.SPORTS
-                        toContent()
-                    },
-                )
+                Sec.SPORTS -> Column {
+                    // v2: "● Live now" (every league) and "⭐ My teams" above the leagues.
+                    val dummy = remember { FocusRequester() }
+                    for ((mode, label) in listOf("live" to "●  Live now", "mine" to "⭐  My teams")) {
+                        SideItem(
+                            label, selected = sportsMode == mode,
+                            onClick = { favTeams = false; sportsMode = mode; section = Sec.SPORTS; toContent() },
+                            onFocus = { favTeams = false; sportsMode = mode; section = Sec.SPORTS },
+                            textColor = if (mode == "live") Color(0xFFFF6B61) else FS.Green,
+                            modifier = Modifier.width(250.dp)
+                                .then(if (sportsMode == mode) Modifier.focusRequester(flyEntry) else Modifier)
+                                .focusProperties { left = back },
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    SportsDockList(
+                        sportsList, league, if (sportsMode == null) flyEntry else dummy, back,
+                        onFocusLeague = { lg -> favTeams = false; sportsMode = null; league = lg; section = Sec.SPORTS },
+                        onPick = { lg ->
+                            favTeams = false; sportsMode = null; league = lg
+                            section = Sec.SPORTS
+                            toContent()
+                        },
+                    )
+                }
                 Sec.RECORDINGS -> {
                     // Your recordings, newest first. OK plays one; "All recordings" opens the full screen (hold OK there = delete).
                     val recs = remember(railFocus, flyFocus) { com.forbiddenstreams.tv.recording.Recordings.all(context) }
@@ -423,7 +440,11 @@ fun HomeScreen(onLogout: () -> Unit) {
                             onCategories = { openList() })
                         Sec.MOVIES -> MoviesScreen(movieCat, onSelect = { movieCat = it })
                         Sec.SHOWS -> SeriesScreen(showCat, onSelect = { showCat = it })
-                        Sec.SPORTS -> if (favTeams) FavoriteTeamsScreen() else SportsScreen(league, openGame, onOpened = { openGame = null }, onLeft = { openList() })
+                        Sec.SPORTS -> when {
+                            favTeams -> FavoriteTeamsScreen()
+                            sportsMode != null && openGame == null -> LiveGamesScreen(mine = sportsMode == "mine", onLeft = { openList() })
+                            else -> SportsScreen(league, openGame, onOpened = { openGame = null }, onLeft = { openList() })
+                        }
                         Sec.SPLIT -> ChannelsScreen(chGroup, onGroup = { chGroup = it })
                         Sec.RECORDINGS -> MenuScreen(0)
                         Sec.SETTINGS -> when (setSec) {
@@ -445,7 +466,7 @@ fun HomeScreen(onLogout: () -> Unit) {
             }
         }
         FavoriteGameAlert(onWatch = { lg, id ->
-            favTeams = false
+            favTeams = false; sportsMode = null
             league = lg
             openGame = id
             section = Sec.SPORTS
