@@ -243,6 +243,12 @@ object PlayerHolder {
         if (w <= 0 || h <= 0) { quality = null; audioInfo = null; return }
         quality = describe(w, h, f)
         audioInfo = describeAudio(p)
+        // Remember each live channel's real picture quality (shown in the sports channel menu).
+        val item = current
+        val ctx = appContext
+        if (item?.live == true && item.channelId != null && ctx != null) {
+            StreamQuality.remember(ctx, item.channelId, quality!!.substringBefore(" · "))
+        }
     }
 
     /** e.g. "AC-3 5.1" or "No audio track"; shown in the player's bottom bar. */
@@ -472,4 +478,35 @@ object PlayerHolder {
 object Playback {
     fun start(context: Context, items: List<PlayItem>, index: Int = 0) = PlayerHolder.start(context, items, index)
     fun one(context: Context, item: PlayItem) = start(context, listOf(item), 0)
+}
+
+
+/**
+ * Picture quality of a live channel: what the player actually saw last time it played,
+ * otherwise a guess from the channel name (FHD, HD, 4K, SD…).
+ */
+object StreamQuality {
+    private fun sp(context: Context) =
+        context.applicationContext.getSharedPreferences("stream_quality", Context.MODE_PRIVATE)
+
+    fun remember(context: Context, channelId: String, q: String) {
+        if (sp(context).getString(channelId, null) != q) sp(context).edit().putString(channelId, q).apply()
+    }
+
+    fun seen(context: Context, channelId: String): String? = sp(context).getString(channelId, null)
+
+    fun guess(name: String): String? {
+        val n = " " + name.uppercase(Locale.US).replace(Regex("[^A-Z0-9]+"), " ") + " "
+        return when {
+            n.contains(" 4K ") || n.contains(" UHD ") || n.contains(" 2160") -> "4K"
+            n.contains(" FHD ") || n.contains(" 1080") -> "1080p"
+            n.contains(" HD ") || n.contains(" 720") -> "720p"
+            n.contains(" SD ") || n.contains(" 480") || n.contains(" 576") -> "SD"
+            else -> null
+        }
+    }
+
+    /** e.g. "1080p" (seen) or "720p?" (from the name), or null if unknown. */
+    fun label(context: Context, channelId: String, name: String): String? =
+        seen(context, channelId) ?: guess(name)?.let { "$it?" }
 }

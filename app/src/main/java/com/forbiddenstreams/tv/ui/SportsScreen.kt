@@ -250,12 +250,17 @@ private fun gameOptions(
             val prog = Session.cachedEpg(c)?.firstOrNull { g.start >= it.start - 15 * 60_000 && g.start < it.end }
                 ?: Program("${g.away.displayName} vs. ${g.home.displayName}", "", g.start - 10 * 60_000, g.start + gameLengthMs(g), true)
             val url = src.catchupUrl(c, prog) ?: continue
-            out += "⏮ Replay · $label · ${c.name}" to {
+            val q = com.forbiddenstreams.tv.player.StreamQuality.label(context, c.id, c.name)
+            out += "⏮ Replay · $label · ${c.name}" + (q?.let { "   [$it]" } ?: "") to {
                 Playback.one(context, PlayItem("${g.away.displayName} vs. ${g.home.displayName}", url, live = false, subtitle = "Replay from ${c.name}"))
             }
         }
     } else {
-        for ((label, c, list) in feeds) out += "$label · ${c.name}" to { openChannel(context, list, c) }
+        for ((label, c, list) in feeds) {
+            // Picture quality: what the player saw last time on this channel, or a guess from its name ("?").
+            val q = com.forbiddenstreams.tv.player.StreamQuality.label(context, c.id, c.name)
+            out += "$label · ${c.name}" + (q?.let { "   [$it]" } ?: "") to { openChannel(context, list, c) }
+        }
     }
     return out
 }

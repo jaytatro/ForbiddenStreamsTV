@@ -114,19 +114,32 @@ private fun <T> PosterBrowser(
         when {
             list == null -> LoadingBox()
             list.isEmpty() -> MessageBox(if (c.isEmpty()) "No $kind on this account" else "Nothing in this group")
-            else -> PosterGrid(list, title, image, onOpen)
+            else -> PosterGrid(list, title, image, onOpen, memoryKey = "$kind:$catId")
         }
     }
 }
 
+/** Poster picked last in each category, so coming back from the player lands on it again. */
+private val lastPoster = HashMap<String, Int>()
+
 @Composable
-private fun <T> PosterGrid(list: List<T>, title: (T) -> String, image: (T) -> String?, onOpen: (T) -> Unit) {
+private fun <T> PosterGrid(list: List<T>, title: (T) -> String, image: (T) -> String?, onOpen: (T) -> Unit, memoryKey: String? = null) {
+    val start = memoryKey?.let { lastPoster[it] }?.takeIf { it in list.indices }
+    val state = androidx.compose.foundation.lazy.grid.rememberLazyGridState(start ?: 0)
+    val req = remember { FocusRequester() }
+    LaunchedEffect(start) { if (start != null) { delay(200); try { req.requestFocus() } catch (e: Exception) { } } }
     LazyVerticalGrid(
         columns = GridCells.Fixed(6),
+        state = state,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        items(list.size) { i -> val item = list[i]; Poster(title(item), image(item), onClick = { onOpen(item) }) }
+        items(list.size) { i ->
+            val item = list[i]
+            Box(if (i == start) Modifier.focusRequester(req) else Modifier) {
+                Poster(title(item), image(item), onClick = { if (memoryKey != null) lastPoster[memoryKey] = i; onOpen(item) })
+            }
+        }
     }
 }
 
@@ -272,7 +285,8 @@ fun MoviesScreen(selected: String?, onSelect: (String?) -> Unit) {
     var open by remember { mutableStateOf<VodItem?>(null) }
     val o = open
     if (o != null) {
-        MovieDetails(o, onBack = { open = null })
+        // After Play, the details close: leaving the player lands back in the category, on that movie.
+        MovieDetails(o, onBack = { open = null }, onPlayed = { open = null })
         return
     }
     PosterBrowser(
@@ -290,7 +304,7 @@ fun MoviesScreen(selected: String?, onSelect: (String?) -> Unit) {
 }
 
 @Composable
-private fun MovieDetails(item: VodItem, onBack: () -> Unit) {
+private fun MovieDetails(item: VodItem, onBack: () -> Unit, onPlayed: () -> Unit = {}) {
     BackHandler { onBack() }
     val context = LocalContext.current
     val src = Session.source ?: return
@@ -314,6 +328,7 @@ private fun MovieDetails(item: VodItem, onBack: () -> Unit) {
                 Pill("▶  Play", selected = true, fontSize = 22.sp, modifier = Modifier.focusRequester(play), onClick = {
                     Playback.one(context, PlayItem(item.name, src.vodUrl(item), live = false,
                         resumeKey = "m:${item.id}", kind = "movie", image = item.poster))
+                    onPlayed()
                 })
                 Pill("Back", selected = false, onClick = onBack)
             }
@@ -327,7 +342,7 @@ fun SeriesScreen(selected: String?, onSelect: (String?) -> Unit) {
     var open by remember { mutableStateOf<SeriesItem?>(null) }
     val o = open
     if (o != null) {
-        SeriesDetails(o, onBack = { open = null })
+        SeriesDetails(o, onBack = { open = null }, onPlayed = { open = null })
         return
     }
     PosterBrowser(
@@ -345,7 +360,7 @@ fun SeriesScreen(selected: String?, onSelect: (String?) -> Unit) {
 }
 
 @Composable
-private fun SeriesDetails(series: SeriesItem, onBack: () -> Unit) {
+private fun SeriesDetails(series: SeriesItem, onBack: () -> Unit, onPlayed: () -> Unit = {}) {
     BackHandler { onBack() }
     val context = LocalContext.current
     val src = Session.source ?: return
@@ -384,6 +399,7 @@ private fun SeriesDetails(series: SeriesItem, onBack: () -> Unit) {
                                         PlayItem("${series.name} · S${it.season}E${it.episodeNum}", src.episodeUrl(it), live = false, subtitle = it.title,
                                             resumeKey = "e:${it.id}", kind = "episode", image = series.cover ?: it.image)
                                     }, i)
+                                    onPlayed()
                                 },
                                 modifier = Modifier.fillMaxWidth().height(96.dp),
                                 focusedScale = 1.01f,

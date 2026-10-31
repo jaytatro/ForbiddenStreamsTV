@@ -468,12 +468,35 @@ class PlayerActivity : ComponentActivity() {
         val down = event.action == KeyEvent.ACTION_DOWN
         if (event.keyCode == KeyEvent.KEYCODE_INFO) { if (down) showInfo(); return true }
         if (!live) {
-            // Movies/episodes: ◀ = back 10 s, ▶ = forward 10 s (when the control bar isn't open).
-            val l = event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT
-            val r = event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
-            if ((l || r) && !view.isControllerFullyVisible) {
-                if (down) skip(if (l) -10_000 else 10_000)
+            // Movies/episodes. Bar hidden: ◀ ▶ = 10 s, OK = pause/play (and show the bar), ▲ ▼ = show the bar.
+            // Bar showing: keys go straight to the player's buttons (Compose around the video
+            // could swallow OK before, so pressing OK on a button did nothing).
+            val k = event.keyCode
+            val ok = k == KeyEvent.KEYCODE_DPAD_CENTER || k == KeyEvent.KEYCODE_ENTER || k == KeyEvent.KEYCODE_NUMPAD_ENTER
+            val l = k == KeyEvent.KEYCODE_DPAD_LEFT
+            val r = k == KeyEvent.KEYCODE_DPAD_RIGHT
+            val ud = k == KeyEvent.KEYCODE_DPAD_UP || k == KeyEvent.KEYCODE_DPAD_DOWN
+            if (k == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || k == KeyEvent.KEYCODE_MEDIA_PLAY || k == KeyEvent.KEYCODE_MEDIA_PAUSE) {
+                if (down) PlayerHolder.existingPlayer()?.let { p -> if (k == KeyEvent.KEYCODE_MEDIA_PAUSE || (k != KeyEvent.KEYCODE_MEDIA_PLAY && p.isPlaying)) p.pause() else p.play() }
                 return true
+            }
+            if (!view.isControllerFullyVisible) {
+                when {
+                    l || r -> { if (down) skip(if (l) -10_000 else 10_000); return true }
+                    ok -> {
+                        if (down && event.repeatCount == 0) {
+                            PlayerHolder.existingPlayer()?.let { p -> if (p.isPlaying) p.pause() else p.play() }
+                            view.showController()
+                        }
+                        return true
+                    }
+                    ud -> { if (down) view.showController(); return true }
+                }
+                return super.dispatchKeyEvent(event)
+            }
+            if (ok || l || r || ud) {
+                if (view.findFocus() == null) view.findViewById<android.view.View>(androidx.media3.ui.R.id.exo_play_pause)?.requestFocus()
+                return view.dispatchKeyEvent(event) || super.dispatchKeyEvent(event)
             }
             return super.dispatchKeyEvent(event)
         }
