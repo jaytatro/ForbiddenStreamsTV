@@ -695,16 +695,34 @@ private fun GuideInfoPanel(ch: LiveChannel?, p: Program?, previewReq: FocusReque
             NetImage(ch?.logo, Modifier.fillMaxSize())
         }
         Spacer(Modifier.width(18.dp))
-        Column(Modifier.weight(1f)) {
-            Text(ch?.name ?: "TV Guide", color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-            if (p != null) {
-                Row {
-                    Text("Duration: ${Fmt.range(p.start, p.end)}", color = FS.Text, fontSize = 15.sp)
-                    Spacer(Modifier.width(28.dp))
-                    Text("Program: ${p.title}", color = FS.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // v2: the show is the headline; channel, time, quality and catch-up underneath.
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                (ch?.let { "${it.num}  ·  ${it.name}" } ?: "TV Guide").uppercase(),
+                color = FS.TextDim, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(p?.title ?: ch?.name ?: "", color = FS.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (p != null) {
+                    Text(Fmt.range(p.start, p.end), color = FS.Text, fontSize = 15.sp)
+                    Spacer(Modifier.width(12.dp))
                 }
+                val context = androidx.compose.ui.platform.LocalContext.current
+                ch?.let { c -> com.forbiddenstreams.tv.player.StreamQuality.label(context, c.id, c.name) }?.let { q ->
+                    Text(q, color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.background(FS.Green, RoundedCornerShape(4.dp)).padding(horizontal = 7.dp, vertical = 1.dp))
+                    Spacer(Modifier.width(8.dp))
+                }
+                if (ch?.hasArchive == true) {
+                    Text("⟲ CATCH-UP", color = FS.Green, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.border(1.dp, FS.GreenDeep, RoundedCornerShape(4.dp)).padding(horizontal = 7.dp, vertical = 1.dp))
+                }
+            }
+            if (p != null && p.description.isNotBlank()) {
                 Text(p.description, color = FS.TextDim, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            } else if (ch != null) {
+            } else if (p == null && ch != null) {
                 Text("No program information", color = FS.TextDim, fontSize = 14.sp)
             }
         }
@@ -774,6 +792,9 @@ private fun GuideRow(
                 Text(ch.name, fontSize = 11.sp, color = FS.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (playing) Text("▶", color = FS.Green, fontSize = 14.sp)
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            val isFav = remember(ch.id) { ch.id in com.forbiddenstreams.tv.data.Prefs(ctx).favorites }
+            if (isFav) Text("★", color = FS.Green, fontSize = 14.sp)
             if (ch.hasArchive) Text("⟲", color = FS.Text, fontSize = 15.sp)
         }
         Box(Modifier.weight(1f).fillMaxHeight().horizontalScroll(hState, enabled = false)) {
