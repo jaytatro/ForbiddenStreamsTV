@@ -190,15 +190,66 @@ class XtreamSource(
     private var allVodCache: List<VodItem>? = null
     private var allSeriesCache: List<SeriesItem>? = null
 
+    // The full movie / show lists can be huge (tens of MB): read them piece by piece instead of
+    // loading the whole text into memory, which crashed the app when searching (out of memory).
     override suspend fun allVod(): List<VodItem> =
-        allVodCache ?: parseVod(Http.get(api("get_vod_streams")), "").also { allVodCache = it }
+        allVodCache ?: streamVod(api("get_vod_streams"), "").also { allVodCache = it }
 
     override suspend fun allSeries(): List<SeriesItem> =
-        allSeriesCache ?: parseSeries(Http.get(api("get_series")), "").also { allSeriesCache = it }
+        allSeriesCache ?: streamSeries(api("get_series"), "").also { allSeriesCache = it }
+
+    private suspend fun streamVod(url: String, categoryId: String): List<VodItem> =
+        streamObjects(url, setOf("stream_id", "name", "stream_icon", "rating", "category_id", "container_extension")) { o ->
+            val id = o["stream_id"] ?: return@streamObjects null
+            VodItem(
+                id = id, name = o["name"] ?: "Movie", poster = o["stream_icon"], rating = o["rating"],
+                categoryId = o["category_id"] ?: categoryId, ext = o["container_extension"] ?: "mp4",
+            )
+        }
+
+    private suspend fun streamSeries(url: String, categoryId: String): List<SeriesItem> =
+        streamObjects(url, setOf("series_id", "name", "cover", "plot", "rating", "category_id")) { o ->
+            val id = o["series_id"] ?: return@streamObjects null
+            SeriesItem(
+                id = id, name = o["name"] ?: "Show", cover = o["cover"], plot = o["plot"]?.take(400),
+                rating = o["rating"], categoryId = o["category_id"] ?: categoryId,
+            )
+        }
+
+    /** Reads a JSON array of objects one at a time, keeping only the [fields] needed. */
+    private suspend fun <T> streamObjects(url: String, fields: Set<String>, make: (Map<String, String>) -> T?): List<T> =
+        Http.stream(url) { input ->
+            val out = ArrayList<T>()
+            android.util.JsonReader(java.io.InputStreamReader(input, Charsets.UTF_8)).use { r ->
+                r.isLenient = true
+                if (r.peek() != android.util.JsonToken.BEGIN_ARRAY) return@stream out
+                r.beginArray()
+                while (r.hasNext()) {
+                    if (r.peek() != android.util.JsonToken.BEGIN_OBJECT) { r.skipValue(); continue }
+                    r.beginObject()
+                    val o = HashMap<String, String>()
+                    while (r.hasNext()) {
+                        val name = r.nextName()
+                        if (name !in fields) { r.skipValue(); continue }
+                        val v: String? = when (r.peek()) {
+                            android.util.JsonToken.STRING, android.util.JsonToken.NUMBER -> r.nextString()
+                            android.util.JsonToken.BOOLEAN -> r.nextBoolean().toString()
+                            android.util.JsonToken.NULL -> { r.nextNull(); null }
+                            else -> { r.skipValue(); null }
+                        }
+                        val t = v?.trim()
+                        if (!t.isNullOrEmpty() && t != "null") o[name] = t
+                    }
+                    r.endObject()
+                    make(o)?.let { out += it }
+                }
+            }
+            out
+        }
 
     override suspend fun vodItems(categoryId: String): List<VodItem> {
         vodByCat[categoryId]?.let { return it }
-        val out = parseVod(Http.get(api("get_vod_streams", "&category_id=${Http.enc(categoryId)}")), categoryId)
+        val out = streamVod(api("get_vod_streams", "&category_id=${Http.enc(categoryId)}"), categoryId)
         vodByCat[categoryId] = out
         return out
     }
@@ -242,7 +293,7 @@ class XtreamSource(
 
     override suspend fun seriesItems(categoryId: String): List<SeriesItem> {
         seriesByCat[categoryId]?.let { return it }
-        val out = parseSeries(Http.get(api("get_series", "&category_id=${Http.enc(categoryId)}")), categoryId)
+        val out = streamSeries(api("get_series", "&category_id=${Http.enc(categoryId)}"), categoryId)
         seriesByCat[categoryId] = out
         return out
     }

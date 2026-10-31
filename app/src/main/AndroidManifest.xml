@@ -20,6 +20,7 @@
         android:banner="@drawable/banner"
         android:theme="@style/Theme.ForbiddenStreams"
         android:usesCleartextTraffic="true"
+        android:largeHeap="true"
         android:supportsRtl="true">
 
         <activity

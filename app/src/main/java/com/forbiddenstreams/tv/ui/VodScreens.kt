@@ -126,7 +126,7 @@ private fun <T> PosterGrid(list: List<T>, title: (T) -> String, image: (T) -> St
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        items(list) { item -> Poster(title(item), image(item), onClick = { onOpen(item) }) }
+        items(list.size) { i -> val item = list[i]; Poster(title(item), image(item), onClick = { onOpen(item) }) }
     }
 }
 
@@ -222,7 +222,17 @@ private fun <T> SearchScreen(
 ) {
     BackHandler { onClose() }
     var query by rememberSaveable { mutableStateOf("") }
-    val library by produceState<List<T>?>(null) { value = try { withContext(kotlinx.coroutines.Dispatchers.Default) { loadAll() } } catch (e: Exception) { emptyList() } }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    val library by produceState<List<T>?>(null) {
+        value = try {
+            withContext(kotlinx.coroutines.Dispatchers.Default) { loadAll() }
+        } catch (e: Throwable) {
+            // Even running out of memory shouldn't close the app: say so instead.
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            loadError = if (e is OutOfMemoryError) "Your $kind list is too big to search on this box." else (e.message ?: "Couldn't load the $kind list")
+            emptyList()
+        }
+    }
     val box = remember { FocusRequester() }
     LaunchedEffect(Unit) { delay(150); try { box.requestFocus() } catch (e: Exception) { } }
     var shown by remember { mutableStateOf<List<T>>(emptyList()) }
@@ -243,6 +253,7 @@ private fun <T> SearchScreen(
         Spacer(Modifier.height(8.dp))
         Text(
             when {
+                loadError != null -> loadError!!
                 library == null -> "Loading the full $kind list…"
                 query.isBlank() -> "Start typing a title. BACK to return."
                 else -> "${shown.size} results"
