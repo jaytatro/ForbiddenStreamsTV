@@ -369,10 +369,10 @@ fun GuideView(
     var previewFocused by remember { mutableStateOf(false) }
 
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var dayOffset by remember { mutableIntStateOf(0) }
+    var dayOffset by remember(group.key) { mutableIntStateOf(0) } // a new category always opens on TODAY
     var row by remember(group.key) { mutableIntStateOf(channels.indexOfFirst { it.id == startId }.coerceAtLeast(0)) }
-    var cursor by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var followNow by remember { mutableStateOf(true) }
+    var cursor by remember(group.key) { mutableLongStateOf(System.currentTimeMillis()) }
+    var followNow by remember(group.key) { mutableStateOf(true) }
     var epgTick by remember { mutableIntStateOf(0) }
     var menu by remember { mutableStateOf<Pair<LiveChannel, Program?>?>(null) }
     var gridWidthPx by remember { mutableIntStateOf(0) }
@@ -385,7 +385,7 @@ fun GuideView(
     var lrDown by remember { mutableStateOf(false) }
     var lrDownAt by remember { mutableLongStateOf(0L) }
     // ▲ on the top channel highlights the DATE strip: ◀ ▶ then change the day.
-    var dateMode by remember { mutableStateOf(false) }
+    var dateMode by remember(group.key) { mutableStateOf(false) }
 
     fun playCh(list: List<LiveChannel>, i: Int) =
         onPlayChannel?.invoke(list, i) ?: playChannels(context, list, i)
@@ -536,26 +536,30 @@ fun GuideView(
                             return@onPreviewKeyEvent true
                         }
                         AKeyEvent.KEYCODE_DPAD_UP -> {
-                            if (down) dateMode = false
-                            return@onPreviewKeyEvent false // on up to the search box / rail
+                            // Stay in the guide; only the channel search has a box above to go to.
+                            if (group == Group.Search && down && ne.repeatCount == 0) { dateMode = false; return@onPreviewKeyEvent false }
+                            return@onPreviewKeyEvent true
                         }
                         else -> {}
                     }
                 }
                 when (ne.keyCode) {
                     AKeyEvent.KEYCODE_DPAD_UP -> {
-                        // Held ▲ = go to the live preview (OK there = full screen); without a preview, to the rail.
-                        if (down && ne.repeatCount >= 2) {
-                            val target = if (PlayerHolder.isMiniActive && !overlay) previewReq else topMenu
-                            try { target?.requestFocus() } catch (e: Exception) { }
+                        // Held ▲ scrolls up through the channels and never leaves the guide.
+                        // Still held at the top channel: the live preview (OK there = full screen), if one is playing.
+                        if (down && ne.repeatCount > 0) {
+                            if (row > 0) { row--; keepRowVisible() }
+                            else if (ne.repeatCount >= 6 && PlayerHolder.isMiniActive && !overlay) {
+                                try { previewReq.requestFocus() } catch (e: Exception) { }
+                            }
                             return@onPreviewKeyEvent true
                         }
                         if (row == 0) {
-                            if (overlay) return@onPreviewKeyEvent false
-                            if (down && ne.repeatCount == 0) dateMode = true
+                            if (overlay) return@onPreviewKeyEvent true
+                            if (down) dateMode = true
                             return@onPreviewKeyEvent true
                         }
-                        if (down && ne.repeatCount == 0) { row--; keepRowVisible() }
+                        if (down) { row--; keepRowVisible() }
                         true
                     }
                     AKeyEvent.KEYCODE_DPAD_DOWN -> {

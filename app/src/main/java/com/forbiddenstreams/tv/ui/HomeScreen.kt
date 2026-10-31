@@ -149,7 +149,6 @@ fun HomeScreen(onLogout: () -> Unit) {
 
     /** Opens the current screen's category list with the cursor on the category in use. */
     fun openList() {
-        if (section == Sec.RECORDINGS) { try { iconReq.getValue(section).requestFocus() } catch (e: Exception) { }; return }
         hover = section
         scope.launch {
             try { iconReq.getValue(section).requestFocus() } catch (e: Exception) { }
@@ -195,7 +194,7 @@ fun HomeScreen(onLogout: () -> Unit) {
     @Composable
     fun CategoryColumn() {
     val open = hover
-    if (open != null && open != Sec.RECORDINGS && open != Sec.SPLIT && (railFocus || flyFocus)) {
+    if (open != null && open != Sec.SPLIT && (railFocus || flyFocus)) {
         val back = iconReq.getValue(open)
         Box(
             Modifier.fillMaxHeight().background(Color.Black)
@@ -248,7 +247,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                     )
                 }
                 Sec.SPORTS -> FlyList(
-                    "SPORTS", League.entries.map { it.name to "${it.icon}  ${it.label}" },
+                    "SPORTS", League.entries.sortedBy { it.label }.map { it.name to "${it.icon}  ${it.label}" }, // A to Z
                     league.name, flyEntry, back,
                     onFocusItem = { k ->
                         if (k == "FAV") favTeams = true else { favTeams = false; league = League.valueOf(k) }
@@ -260,7 +259,33 @@ fun HomeScreen(onLogout: () -> Unit) {
                         toContent()
                     },
                 )
-                Sec.RECORDINGS, Sec.SPLIT -> Unit // no box
+                Sec.RECORDINGS -> {
+                    // Your recordings, newest first. OK plays one; "All recordings" opens the full screen (hold OK there = delete).
+                    val recs = remember(railFocus, flyFocus) { com.forbiddenstreams.tv.recording.Recordings.all(context) }
+                    FlyList(
+                        "RECORDINGS",
+                        listOf("__all__" to "📼  All recordings") + recs.map { r ->
+                            "${r.id}" to (when (r.status) { "recording" -> "● "; "scheduled" -> "⏰ "; "failed" -> "✖ "; else -> "" } +
+                                "${r.title} · ${Fmt.day(r.start)} ${Fmt.time(r.start)}")
+                        } + (if (recs.isEmpty()) listOf("__none__" to "No recordings yet") else emptyList()),
+                        null, flyEntry, back,
+                        onPick = { k ->
+                            when (k) {
+                                "__all__", "__none__" -> { section = Sec.RECORDINGS; toContent() }
+                                else -> {
+                                    val r = recs.firstOrNull { "${it.id}" == k }
+                                    val f = r?.let { java.io.File(it.file) }
+                                    if (r != null && f != null && f.exists() && f.length() > 0) {
+                                        Playback.one(context, PlayItem(r.title, android.net.Uri.fromFile(f).toString(), live = false, subtitle = r.channelName))
+                                    } else {
+                                        toast(context, if (r?.status == "scheduled") "Not recorded yet — starts ${Fmt.time(r.start)}" else "Nothing recorded yet")
+                                    }
+                                }
+                            }
+                        },
+                    )
+                }
+                Sec.SPLIT -> Unit // no box
                 Sec.SETTINGS -> FlyList(
                     "SETTINGS", SETTINGS_SECTIONS.map { (i, t) -> "$i" to t }, "$setSec", flyEntry, back,
                     icons = mapOf("7" to RailIcon.REMOTE), // TV remote drawn as a line icon
@@ -295,13 +320,13 @@ fun HomeScreen(onLogout: () -> Unit) {
                         onFocus = {
                             hover = s
                             val fromScreen = android.os.SystemClock.uptimeMillis() - contentLeftAt < 400
-                            if (fromScreen && !backToRail && section != Sec.RECORDINGS) { contentLeftAt = 0L; openList() }
+                            if (fromScreen && !backToRail) { contentLeftAt = 0L; openList() }
                             backToRail = false
                         },
                         onClick = {
                             hover = s
                             when (s) {
-                                Sec.RECORDINGS -> { section = Sec.RECORDINGS; toContent() } // no box: opens straight away
+                                Sec.RECORDINGS -> try { flyEntry.requestFocus() } catch (e: Exception) { }
                                 Sec.SPLIT -> {
                                     if (!PlayerHolder.openSplitScreen(context)) toast(context, "Start a channel first, then press Split Screen")
                                 }

@@ -121,7 +121,12 @@ fun SportsScreen(league: League, openGameId: String? = null, onOpened: () -> Uni
     Column(Modifier.fillMaxSize()) {
         // Date strip with game-count badges
         val w = week
-        val days = remember(w) { ((w?.keys ?: emptySet()) + todayKey).sorted() }
+        // Always 3 days back, TODAY in the middle, 3 days ahead.
+        val days = remember(todayKey) {
+            (-3..3).map { d ->
+                Espn.dayKey(java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_YEAR, d) }.timeInMillis)
+            }
+        }
         Row(Modifier.fillMaxWidth().padding(end = 24.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         // Dates spread evenly across the full width.
         Row(Modifier.weight(1f).padding(horizontal = 24.dp, vertical = 12.dp)) {

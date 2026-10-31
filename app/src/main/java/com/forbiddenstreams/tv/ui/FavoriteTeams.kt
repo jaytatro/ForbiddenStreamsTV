@@ -43,7 +43,7 @@ import com.forbiddenstreams.tv.sports.TeamList
 @Composable
 fun FavoriteTeamsScreen() {
     val context = LocalContext.current
-    var league by remember { mutableStateOf(League.NFL) }
+    var league by remember { mutableStateOf(League.entries.minBy { it.label }) }
     val favs = remember(FavTeams.version) { FavTeams.all(context) }
     Column(Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -53,7 +53,7 @@ fun FavoriteTeamsScreen() {
         }
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            for (l in League.entries) {
+            for (l in League.entries.sortedBy { it.label }) {
                 Pill(
                     "${l.icon}  ${l.label}", selected = l == league, outlined = true,
                     onClick = { league = l },
