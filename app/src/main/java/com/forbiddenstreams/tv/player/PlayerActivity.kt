@@ -395,13 +395,8 @@ class PlayerActivity : ComponentActivity() {
             }
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
                 if (down) {
+                    // Holding OK no longer opens the guide: OK (short or long) shows the buttons.
                     if (event.repeatCount == 0) { okDown = true; okLongFired = false }
-                    else if (okDown && !okLongFired) {
-                        // Held OK: see-through guide over the video.
-                        okLongFired = true
-                        infoVisible = false
-                        guideVisible = true
-                    }
                 } else {
                     if (okDown && !okLongFired) { showInfo(); actionsVisible = true }
                     okDown = false

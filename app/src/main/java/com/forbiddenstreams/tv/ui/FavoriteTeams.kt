@@ -1,5 +1,7 @@
 package com.forbiddenstreams.tv.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,7 +38,7 @@ import com.forbiddenstreams.tv.sports.TeamList
 
 /**
  * Sports › Favorite Teams: sports across the top; highlighting one lists all its teams with logos.
- * Hold OK on a team = add / remove favorite.
+ * OK on a team flips its on/off switch.
  */
 @Composable
 fun FavoriteTeamsScreen() {
@@ -47,7 +49,7 @@ fun FavoriteTeamsScreen() {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("⭐ Favorite Teams", color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.size(24.dp))
-            Text("Hold OK on a team to add or remove it · ${favs.size} picked", color = FS.TextDim, fontSize = 15.sp)
+            Text("OK on a team switches it on or off · ${favs.size} on", color = FS.TextDim, fontSize = 15.sp)
         }
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -69,31 +71,47 @@ fun FavoriteTeamsScreen() {
             list == null -> LoadingBox("Loading ${league.label} teams")
             list.isEmpty() -> MessageBox("Couldn't load the ${league.label} teams", "Check the internet connection and try again.")
             else -> LazyVerticalGrid(
-                columns = GridCells.Fixed(6),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                columns = GridCells.Fixed(3),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 items(list, key = { it.id }) { t ->
                     val fav = "${league.name}:${t.abbreviation.uppercase()}" in favs
+                    // OK flips the on/off switch next to the team.
                     FocusCard(
-                        onClick = { toast(context, "Hold OK to ${if (fav) "remove" else "add"} ${t.name}") },
-                        onLongClick = {
+                        onClick = {
                             val added = FavTeams.toggle(context, league, t.abbreviation)
-                            toast(context, if (added) "⭐ ${t.name} added" else "${t.name} removed")
+                            toast(context, if (added) "⭐ ${t.name} on" else "${t.name} off")
                         },
                         selected = fav,
-                        focusedScale = 1.05f,
-                        modifier = Modifier.fillMaxWidth().height(150.dp),
+                        focusedScale = 1.03f,
+                        modifier = Modifier.fillMaxWidth().height(76.dp),
                     ) {
-                        Column(Modifier.fillMaxSize().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Box(Modifier.size(76.dp), contentAlignment = Alignment.Center) { NetImage(t.logo, Modifier.fillMaxSize()) }
-                            Spacer(Modifier.height(6.dp))
-                            Text((if (fav) "⭐ " else "") + t.name, fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                                maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                        Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(52.dp), contentAlignment = Alignment.Center) { NetImage(t.logo, Modifier.fillMaxSize()) }
+                            Spacer(Modifier.size(12.dp))
+                            Text(t.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 2,
+                                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Spacer(Modifier.size(10.dp))
+                            OnOffSwitch(fav)
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/** Small on/off switch: green with the knob on the right = on. */
+@Composable
+fun OnOffSwitch(on: Boolean) {
+    Box(
+        Modifier.size(width = 54.dp, height = 28.dp)
+            .background(if (on) FS.Green else FS.GreenDim, androidx.compose.foundation.shape.RoundedCornerShape(50))
+            .border(1.dp, if (on) FS.Green else FS.GreenDeep, androidx.compose.foundation.shape.RoundedCornerShape(50))
+            .padding(3.dp),
+        contentAlignment = if (on) Alignment.CenterEnd else Alignment.CenterStart,
+    ) {
+        Box(Modifier.size(22.dp).background(if (on) androidx.compose.ui.graphics.Color.Black else FS.TextDim, androidx.compose.foundation.shape.CircleShape))
     }
 }

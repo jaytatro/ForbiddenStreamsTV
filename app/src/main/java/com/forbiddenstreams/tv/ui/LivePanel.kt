@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
@@ -84,10 +85,32 @@ fun LiveCategoryPanel(currentChannelId: String?, onPlay: (List<LiveChannel>, Int
                 Text("No channels", color = Color.White, fontSize = 18.sp, style = shadow, modifier = Modifier.padding(8.dp))
             } else {
                 val state = rememberLazyListState()
-                LaunchedEffect(group.key) { state.scrollToItem(0) }
+                val playingReq = remember { androidx.compose.ui.focus.FocusRequester() }
+                val playingIndex = channels.indexOfFirst { it.id == currentChannelId }
+                var opened by remember { mutableStateOf(false) }
+                LaunchedEffect(group.key) {
+                    if (!opened && playingIndex >= 0) {
+                        // Panel just opened: the channel that's playing, in the middle, with the cursor on it.
+                        opened = true
+                        state.scrollToItem(playingIndex)
+                        delay(60)
+                        val info = state.layoutInfo
+                        val itemH = info.visibleItemsInfo.firstOrNull()?.size ?: 1
+                        val rows = ((info.viewportEndOffset - info.viewportStartOffset) / itemH.coerceAtLeast(1))
+                        state.scrollToItem((playingIndex - rows / 2).coerceAtLeast(0))
+                        delay(120)
+                        try { playingReq.requestFocus() } catch (e: Exception) { }
+                    } else {
+                        opened = true
+                        state.scrollToItem(0)
+                    }
+                }
                 LazyColumn(state = state, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     itemsIndexed(channels, key = { _, c -> c.id }) { i, ch ->
-                        PanelChannelRow(ch, playing = ch.id == currentChannelId) { onPlay(channels, i) }
+                        PanelChannelRow(
+                            ch, playing = ch.id == currentChannelId,
+                            modifier = if (i == playingIndex) Modifier.focusRequester(playingReq) else Modifier,
+                        ) { onPlay(channels, i) }
                     }
                 }
             }
@@ -96,7 +119,7 @@ fun LiveCategoryPanel(currentChannelId: String?, onPlay: (List<LiveChannel>, Int
 }
 
 @Composable
-private fun PanelChannelRow(ch: LiveChannel, playing: Boolean, onClick: () -> Unit) {
+private fun PanelChannelRow(ch: LiveChannel, playing: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val epg by produceState(Session.cachedEpg(ch), ch.id) { delay(120); value = Session.epg(ch) }
     val now = System.currentTimeMillis()
     val prog = epg?.firstOrNull { it.isLive(now) }
@@ -104,7 +127,7 @@ private fun PanelChannelRow(ch: LiveChannel, playing: Boolean, onClick: () -> Un
         onClick = onClick,
         container = Color.Transparent,
         focusedScale = 1.01f,
-        modifier = Modifier.fillMaxWidth().height(64.dp),
+        modifier = modifier.fillMaxWidth().height(64.dp),
     ) {
         Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("${ch.num}", color = Color.White, fontSize = 15.sp, style = shadow, modifier = Modifier.width(52.dp))

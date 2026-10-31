@@ -576,7 +576,8 @@ fun GuideView(
                                 // scroll through time, a few steps per second.
                                 lrLong = true
                                 val t = System.currentTimeMillis()
-                                if (t - lrDownAt >= ButtonPrefs.holdMs && t - lastStep > 160) { lastStep = t; step(dir) }
+                                // After that, it stops on each show for 2 seconds before moving to the next.
+                                if (t - lrDownAt >= ButtonPrefs.holdMs && t - lastStep >= 2_000) { lastStep = t; step(dir) }
                             }
                         } else {
                             if (lrDown && !lrLong) {
@@ -646,6 +647,8 @@ fun GuideView(
     menu?.let { (ch, p) ->
         val t = System.currentTimeMillis()
         val opts = ArrayList<Pair<String, () -> Unit>>()
+        val isFav = ch.id in Prefs(context).favorites
+        opts += (if (isFav) "★  Remove from favorites" else "☆  Add to favorites") to { menu = null; onToggleFav(ch) }
         opts += "▶  Watch ${ch.name} live" to {
             menu = null
             playCh(channels, channels.indexOf(ch).coerceAtLeast(0))
@@ -667,8 +670,6 @@ fun GuideView(
                 playItem(PlayItem(p.title, u, live = false, subtitle = ch.name))
             }
         }
-        val fav = ch.id in Prefs(context).favorites
-        opts += (if (fav) "★  Remove from favorites" else "☆  Add to favorites") to { menu = null; onToggleFav(ch) }
         ChoiceDialog(
             title = p?.title ?: ch.name,
             subtitle = if (p != null) "${ch.name} · ${Fmt.day(p.start)} ${Fmt.range(p.start, p.end)}" +

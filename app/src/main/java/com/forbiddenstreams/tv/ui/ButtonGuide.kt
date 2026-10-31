@@ -109,7 +109,7 @@ fun guidePages(): List<GuidePage> {
                 "▲ ▼" to "Change channel",
                 "CH + / CH –" to "Jump 8 channels",
                 "▶ / ◀" to "Next show / back to the categories",
-                "Hold ◀ ▶ ($hold)" to "Scroll through the day",
+                "Hold ◀ ▶ ($hold)" to "Scroll through the shows, 2 s on each",
                 "▲ on the top channel" to "Dates: ◀ ▶ change the day, ▼ back",
                 "Hold ▲" to "The live preview (OK = full screen)",
                 "OK" to "Watch live · catch-up for past shows",
@@ -121,8 +121,8 @@ fun guidePages(): List<GuidePage> {
             listOf(
                 "OK" to "Last Channel · Record (again = stop/cancel) · Multi-View",
                 "▲ ▼ / CH ±" to "Change channel",
-                "◀" to "Category and channel list over the picture",
-                "Hold OK" to "See-through TV guide",
+                "◀" to "Category and channel list (on the playing channel)",
+                "◀ ◀" to "Back to the side bar",
                 "BACK" to "Keeps playing in the preview window",
             ),
         ),
@@ -141,7 +141,7 @@ fun guidePages(): List<GuidePage> {
             listOf(
                 "▲ ▼ in the Sports list" to "NFL · NBA · NHL · MLB",
                 "OK on a game" to "Pick a team or network channel",
-                "Settings › Favorite Teams" to "Hold OK on a team; its games go first with ⭐",
+                "Settings › Favorite Teams" to "OK switches a team on; its games go first with ⭐",
                 "Settings › Buttons" to "Change button timing and see this guide again",
             ),
         ),

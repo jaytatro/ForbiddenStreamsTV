@@ -42,7 +42,11 @@ object Session {
     /** True until the first screen has handled "resume last channel" for this app launch. */
     var resumePending = true
 
+    /** Folder for the 2-day guide history (set as soon as the app starts). */
+    @Volatile private var histDir: File? = null
+
     fun restore(context: Context): Boolean {
+        histDir = File(context.applicationContext.filesDir, "epg_history")
         val p = Prefs(context)
         p.userAgent?.let { Http.userAgent = it }
         val c = p.loadLogin() ?: return false
@@ -56,6 +60,7 @@ object Session {
     }
 
     suspend fun login(context: Context, c: LoginConfig) {
+        histDir = File(context.applicationContext.filesDir, "epg_history")
         val prefs = Prefs(context)
         when (c) {
             is LoginConfig.Xtream -> {
@@ -183,12 +188,46 @@ object Session {
         val src = source ?: return emptyList()
         val list = try {
             // Download and decode the guide off the screen thread so scrolling stays smooth.
-            epgLimiter.withPermit { withContext(Dispatchers.Default) { src.epg(channel) } }
+            epgLimiter.withPermit { withContext(Dispatchers.Default) { withHistory(channel.id, src.epg(channel)) } }
         } catch (e: Exception) {
-            emptyList()
+            withContext(Dispatchers.IO) { withHistory(channel.id, emptyList()) }
         }
         epgCache[channel.id] = now to list
         return list
+    }
+
+    /**
+     * Keeps 2 days of what each channel played: providers often drop past shows from their guide,
+     * so shows seen before are saved on the box and merged back in (new info wins).
+     */
+    private fun withHistory(channelId: String, fresh: List<Program>): List<Program> {
+        val dir = histDir ?: return fresh
+        val now = System.currentTimeMillis()
+        val cutoff = now - 2 * 86_400_000L
+        val f = File(dir, channelId.replace(Regex("[^A-Za-z0-9_-]"), "_") + ".json")
+        val old = try {
+            if (!f.exists()) emptyList() else {
+                val a = JSONArray(f.readText())
+                (0 until a.length()).mapNotNull { i ->
+                    val o = a.optJSONObject(i) ?: return@mapNotNull null
+                    Program(o.optString("t"), o.optString("d"), o.optLong("s"), o.optLong("e"), o.optBoolean("a"))
+                }
+            }
+        } catch (e: Exception) { emptyList() }
+        val freshStarts = fresh.map { it.start }.toHashSet()
+        // A saved show is dropped if a fresh one overlaps it (the guide was corrected).
+        val kept = old.filter { p -> p.end > cutoff && p.start !in freshStarts && fresh.none { it.start < p.end && it.end > p.start } }
+        val merged = (kept + fresh).filter { it.end > cutoff }.sortedBy { it.start }
+        // Save the shows that already started (the future comes from the provider anyway).
+        try {
+            dir.mkdirs()
+            val a = JSONArray()
+            merged.filter { it.start <= now }.forEach {
+                a.put(JSONObject().put("t", it.title).put("d", it.description).put("s", it.start).put("e", it.end).put("a", it.hasArchive))
+            }
+            f.writeText(a.toString())
+        } catch (e: Exception) { /* storage full: just show what we have */ }
+        return merged
     }
 
     fun cachedEpg(channel: LiveChannel): List<Program>? = epgCache[channel.id]?.second
