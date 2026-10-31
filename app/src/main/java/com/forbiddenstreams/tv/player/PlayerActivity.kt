@@ -244,6 +244,7 @@ class PlayerActivity : ComponentActivity() {
                                     },
                                 )
                             }
+                            val recording = remember(actionsVisible, recTick) {
 
                                 com.forbiddenstreams.tv.recording.Recordings.activeFor(this@PlayerActivity, item.url)
                             }
