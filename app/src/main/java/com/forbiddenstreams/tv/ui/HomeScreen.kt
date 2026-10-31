@@ -26,6 +26,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.foundation.layout.height
@@ -221,10 +222,10 @@ fun HomeScreen(onLogout: () -> Unit) {
     // Slides in/out smoothly instead of popping.
     androidx.compose.animation.AnimatedVisibility(
         visible = showList,
-        enter = androidx.compose.animation.expandHorizontally(androidx.compose.animation.core.tween(220)) +
+        enter = androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(220)) { -it / 3 } +
+            androidx.compose.animation.expandHorizontally(androidx.compose.animation.core.tween(220)) +
             androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220)),
-        exit = androidx.compose.animation.shrinkHorizontally(androidx.compose.animation.core.tween(200)) +
-            androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160)),
+        exit = androidx.compose.animation.ExitTransition.None,
     ) {
     if (open != null) {
         val back = iconReq.getValue(open)
@@ -410,7 +411,13 @@ fun HomeScreen(onLogout: () -> Unit) {
                     .focusGroup(),
             ) {
                 CompositionLocalProvider(LocalTopMenuFocus provides iconReq.getValue(section)) {
-                  androidx.compose.animation.Crossfade(section, animationSpec = androidx.compose.animation.core.tween(250), label = "screen") { section ->
+                  // New screen slides in from the right while fading in (only one screen exists at a time).
+                  val slide = remember(section) { androidx.compose.animation.core.Animatable(0f) }
+                  LaunchedEffect(section) { slide.animateTo(1f, androidx.compose.animation.core.tween(260)) }
+                  Box(Modifier.fillMaxSize().graphicsLayer {
+                      alpha = slide.value
+                      translationX = (1f - slide.value) * 80.dp.toPx()
+                  }) {
                     when (section) {
                         Sec.CHANNELS -> ChannelsScreen(chGroup, onGroup = { chGroup = it }, active = !(railFocus || flyFocus),
                             onCategories = { openList() })
