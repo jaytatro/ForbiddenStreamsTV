@@ -79,7 +79,7 @@ private val railIcon = mapOf(
 /** Settings box: MenuScreen section number to label (Recordings moved to its own rail icon). */
 val SETTINGS_SECTIONS = listOf(
     1 to "⏰  Reminders", 2 to "🗂  Categories", 6 to "⭐  Favorite Teams", 7 to "Buttons",
-    3 to "⟳  Refresh content", 4 to "👤  Account", 5 to "⎋  Log out",
+    3 to "⟳  Refresh content", 8 to "⬆  Check for updates", 4 to "👤  Account", 5 to "⎋  Log out",
 )
 
 /**
@@ -268,6 +268,7 @@ fun HomeScreen(onLogout: () -> Unit) {
                         when (val i = k.toInt()) {
                             3 -> { Session.refresh(context); toast(context, "Updating channels, movies and shows…") }
                             5 -> { confirmLogout = true }
+                            8 -> { toast(context, "Checking for updates…"); UpdateState.check(context, scope, manual = true) }
                             else -> { setSec = i; section = Sec.SETTINGS; toContent() }
                         }
                     },
@@ -385,6 +386,7 @@ fun HomeScreen(onLogout: () -> Unit) {
         )
     }
     ReminderWatcher()
+    if (!showTour) UpdatePrompt()
     if (showTour) Walkthrough(onDone = { ButtonPrefs.setTourSeen(context); showTour = false })
 }
 
