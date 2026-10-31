@@ -71,6 +71,7 @@ class PlayerActivity : ComponentActivity() {
     private var multiVisible by mutableStateOf(false)
     private var recStopAsk by mutableStateOf<com.forbiddenstreams.tv.recording.Recording?>(null)
     private var recTick by mutableStateOf(0)
+    private var favTick by mutableStateOf(0)
 
     /** "⏪ 10s" / "10s ⏩" flash for movies and episodes. */
     private var seekFlash by mutableStateOf<String?>(null)
@@ -163,17 +164,24 @@ class PlayerActivity : ComponentActivity() {
                       Column(
                           Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                               .padding(start = 32.dp, end = 32.dp, bottom = if (item.live) 28.dp else 96.dp)
-                              .background(Color(0xD9050805), RoundedCornerShape(12.dp))
-                              .padding(horizontal = 22.dp, vertical = 12.dp),
+                              .background(Color(0xE6040604), RoundedCornerShape(16.dp))
+                              .border(1.dp, FS.GreenDeep, RoundedCornerShape(16.dp))
+                              .padding(horizontal = 24.dp, vertical = 16.dp),
                       ) {
                         Row(
                             Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                val n = if (item.live && PlayerHolder.items.size > 1) "${PlayerHolder.index + 1}  " else ""
-                                Text(n + item.title, color = FS.Green, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                                val what = prog?.let { "${it.title}   ${Fmt.range(it.start, it.end)}" } ?: item.subtitle
+                                Row(verticalAlignment = Alignment.Bottom) {
+                                    if (item.live && ch != null) {
+                                        Text("${ch.num}", color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                                        Spacer(Modifier.width(12.dp))
+                                    }
+                                    Text(item.title, color = FS.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                }
+                                val next = epg?.firstOrNull { prog != null && it.start >= prog.end }
+                                val what = prog?.let { "${it.title}   ${Fmt.range(it.start, it.end)}" + (next?.let { n -> "     Next: ${n.title}" } ?: "") } ?: item.subtitle
                                 what?.let { Text(it, color = FS.Text, fontSize = 15.sp, maxLines = 1) }
                                 if (prog != null) {
                                     val f = ((now - prog.start).toFloat() / (prog.end - prog.start)).coerceIn(0f, 1f)
@@ -221,7 +229,22 @@ class PlayerActivity : ComponentActivity() {
                                     else com.forbiddenstreams.tv.ui.toast(this@PlayerActivity, "No previous channel yet")
                                 },
                             )
-                            val recording = remember(actionsVisible, recTick) {
+                            // ⟲ Start over: the show on now, from its beginning (catch-up channels only).
+                            val startUrl = remember(prog, ch) {
+                                if (ch != null && prog != null && ch.hasArchive) Session.source?.catchupUrl(ch, prog) else null
+                            }
+                            if (startUrl != null && prog != null) {
+                                com.forbiddenstreams.tv.ui.Pill(
+                                    "⟲  Start over", selected = false, fontSize = 18.sp,
+                                    onClick = {
+                                        actionsVisible = false
+                                        // A new player screen for the replay; the live channel is remembered for Last Channel.
+                                        PlayerHolder.start(this@PlayerActivity, listOf(PlayItem(prog.title, startUrl, live = false, subtitle = "${item.title} · from the start")), 0)
+                                        finish()
+                                    },
+                                )
+                            }
+
                                 com.forbiddenstreams.tv.recording.Recordings.activeFor(this@PlayerActivity, item.url)
                             }
                             com.forbiddenstreams.tv.ui.Pill(
@@ -241,6 +264,17 @@ class PlayerActivity : ComponentActivity() {
                                     multiVisible = true
                                 },
                             )
+                            if (ch != null) {
+                                val fav = remember(favTick, ch.id) { ch.id in com.forbiddenstreams.tv.data.Prefs(this@PlayerActivity).favorites }
+                                com.forbiddenstreams.tv.ui.Pill(
+                                    if (fav) "★  Favorite" else "☆  Favorite", selected = fav, fontSize = 18.sp,
+                                    onClick = {
+                                        val added = com.forbiddenstreams.tv.data.Prefs(this@PlayerActivity).toggleFavorite(ch.id)
+                                        favTick++
+                                        com.forbiddenstreams.tv.ui.toast(this@PlayerActivity, if (added) "Added ${ch.name} to favorites" else "Removed from favorites")
+                                    },
+                                )
+                            }
                             // CC: closed captions on/off (boxed like the symbol on TV remotes). ▶ on it wraps to Last Channel.
                             CcButton(
                                 on = PlayerHolder.captionsOn,
@@ -257,6 +291,32 @@ class PlayerActivity : ComponentActivity() {
                             }
                         }
                       }
+                    }
+                    if (infoVisible && item?.live == true && !guideVisible && !panelVisible && PlayerHolder.items.size > 1) {
+                        // What's on the channels above and below, before you switch.
+                        val list = PlayerHolder.items
+                        val i = PlayerHolder.index
+                        Column(
+                            Modifier.align(Alignment.TopEnd).padding(top = 28.dp, end = 32.dp).width(320.dp),
+                            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                        ) {
+                            for ((arrow, j) in listOf("▲" to (i - 1 + list.size) % list.size, "▼" to (i + 1) % list.size)) {
+                                val pi = list[j]
+                                val pch = pi.channelId?.let { Session.channelById(it) }
+                                val on = pch?.let { Session.cachedEpg(it) }?.firstOrNull { it.isLive(now) }?.title
+                                Row(
+                                    Modifier.fillMaxWidth().background(Color(0xD1040604), RoundedCornerShape(10.dp))
+                                        .border(1.dp, Color(0xFF1A2E1C), RoundedCornerShape(10.dp))
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text("$arrow ${pch?.num ?: ""}", color = FS.Green, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(pi.title + (on?.let { " · $it" } ?: ""), color = FS.Text, fontSize = 14.sp, maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
                     }
                     if (panelVisible) {
                         com.forbiddenstreams.tv.ui.LiveCategoryPanel(
