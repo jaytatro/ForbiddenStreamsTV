@@ -96,7 +96,7 @@ fun guidePages(): List<GuidePage> {
         GuidePage(
             "Side bar and categories",
             listOf(
-                "▲ ▼ on the side bar" to "Channels · Movies · TV Shows · Sports · Recordings · Settings",
+                "◀ from a list" to "Side bar: Home · Channels · Movies · TV Shows · Sports · Recordings · Settings",
                 "▶ from an icon" to "Into its category list",
                 "▲ ▼ in the list" to "Highlighting a category shows it on the right",
                 "OK or ▶" to "Go into that category",
@@ -119,7 +119,8 @@ fun guidePages(): List<GuidePage> {
         GuidePage(
             "Watching live TV",
             listOf(
-                "OK" to "Last Channel · Record (again = stop/cancel) · Multi-View",
+                "OK" to "Last Channel · Start over · Record · Multi-View · Favorite · CC",
+                "Info bar" to "Shows what's on the channels above (▲) and below (▼)",
                 "▲ ▼ / CH ±" to "Change channel",
                 "◀" to "This category's channels (on the playing channel)",
                 "◀ again" to "Categories (on the current one)",
@@ -140,8 +141,8 @@ fun guidePages(): List<GuidePage> {
         GuidePage(
             "Sports",
             listOf(
-                "▲ ▼ in the Sports list" to "NFL · NBA · NHL · MLB",
-                "OK on a game" to "Pick a team or network channel",
+                "Sports list" to "● Live now (every league) · ⭐ My teams · each league",
+                "OK on a game" to "Channels show on the right · ⟲ From kickoff for live games",
                 "Settings › Favorite Teams" to "OK switches a team on; its games go first with ⭐",
                 "Settings › Buttons" to "Change button timing and see this guide again",
             ),
