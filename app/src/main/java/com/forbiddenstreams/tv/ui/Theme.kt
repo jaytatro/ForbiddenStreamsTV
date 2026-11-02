@@ -129,6 +129,7 @@ fun Pill(
     modifier: Modifier = Modifier,
     outlined: Boolean = false,
     fontSize: TextUnit = 17.sp,
+    hPad: androidx.compose.ui.unit.Dp = 18.dp,
 ) {
     val shape = RoundedCornerShape(50)
     Surface(
@@ -154,7 +155,8 @@ fun Pill(
             fontSize = fontSize,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp),
+            softWrap = false,
+            modifier = Modifier.padding(horizontal = hPad, vertical = 8.dp),
         )
     }
 }

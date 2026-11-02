@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -113,5 +114,114 @@ fun OnOffSwitch(on: Boolean) {
         contentAlignment = if (on) Alignment.CenterEnd else Alignment.CenterStart,
     ) {
         Box(Modifier.size(22.dp).background(if (on) androidx.compose.ui.graphics.Color.Black else FS.TextDim, androidx.compose.foundation.shape.CircleShape))
+    }
+}
+
+/**
+ * Settings › Favorite teams (Nov 1 2026): the sports first; OK on a sport lists its teams,
+ * each with an on/off switch (OK flips it). BACK = the sports, BACK again = close.
+ * Teams switched on play first in the Sports tab on the days they play.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+fun FavoriteTeamsDialog(onClose: () -> Unit) {
+    val context = LocalContext.current
+    var league by remember { mutableStateOf<League?>(null) }
+    var lastLeague by remember { mutableStateOf<League?>(null) }
+    val tileReq = remember { com.forbiddenstreams.tv.sports.SPORTS_ORDER.associateWith { androidx.compose.ui.focus.FocusRequester() } }
+    val favs = remember(FavTeams.version) { FavTeams.all(context) }
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = { if (league != null) { lastLeague = league; league = null } else onClose() },
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(Modifier.fillMaxSize().background(FS.Bg).padding(horizontal = 40.dp, vertical = 28.dp)) {
+            val l = league
+            if (l == null) {
+                androidx.compose.runtime.LaunchedEffect(Unit) {
+                    repeat(6) {
+                        kotlinx.coroutines.delay(120)
+                        try { tileReq[lastLeague ?: com.forbiddenstreams.tv.sports.SPORTS_ORDER.first()]?.requestFocus(); return@LaunchedEffect } catch (e: Exception) { }
+                    }
+                }
+                Column {
+                    Text("⭐ Favorite teams", color = FS.Green, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                    Text("Pick a sport, then switch your teams on. Their games go to the top of Sports on the days they play · ${favs.size} on",
+                        color = FS.TextDim, fontSize = 16.sp)
+                    Spacer(Modifier.height(28.dp))
+                    androidx.compose.foundation.layout.FlowRow(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterHorizontally),
+                        verticalArrangement = Arrangement.spacedBy(18.dp),
+                    ) {
+                        for (s in com.forbiddenstreams.tv.sports.SPORTS_ORDER) {
+                            val n = favs.count { it.startsWith(s.name + ":") }
+                            FocusCard(
+                                onClick = { league = s },
+                                focusedScale = 1.05f,
+                                modifier = Modifier.size(width = 230.dp, height = 110.dp).focusRequester(tileReq.getValue(s)),
+                            ) {
+                                Column(Modifier.fillMaxSize().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center) {
+                                    Text(s.icon, fontSize = 30.sp)
+                                    Text(s.label, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 2)
+                                    if (n > 0) Text("⭐ $n on", color = FS.Green, fontSize = 13.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${l.icon}  ${l.label}", color = FS.Green, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.size(24.dp))
+                        Text("OK switches a team on or off · BACK = sports", color = FS.TextDim, fontSize = 15.sp)
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    val teams by produceState<List<TeamInfo>?>(null, l) {
+                        value = null
+                        value = try { TeamList.teams(l) } catch (e: Exception) { emptyList() }
+                    }
+                    val list = teams
+                    val firstReq = remember(l) { androidx.compose.ui.focus.FocusRequester() }
+                    when {
+                        list == null -> LoadingBox("Loading ${l.label} teams")
+                        list.isEmpty() -> MessageBox("Couldn't load the ${l.label} teams", "Check the internet connection and try again.")
+                        else -> {
+                            androidx.compose.runtime.LaunchedEffect(list) {
+                                repeat(6) { kotlinx.coroutines.delay(120); try { firstReq.requestFocus(); return@LaunchedEffect } catch (e: Exception) { } }
+                            }
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(3),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp),
+                            ) {
+                                items(list.size, key = { list[it].id + list[it].abbreviation }) { i ->
+                                    val t = list[i]
+                                    val fav = "${l.name}:${t.abbreviation.uppercase()}" in favs
+                                    FocusCard(
+                                        onClick = { FavTeams.toggle(context, l, t.abbreviation) },
+                                        selected = fav,
+                                        focusedScale = 1.03f,
+                                        modifier = Modifier.fillMaxWidth().height(76.dp)
+                                            .then(if (i == 0) Modifier.focusRequester(firstReq) else Modifier),
+                                    ) {
+                                        Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Box(Modifier.size(50.dp), contentAlignment = Alignment.Center) { NetImage(t.logo, Modifier.fillMaxSize()) }
+                                            Spacer(Modifier.size(12.dp))
+                                            Text(t.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                            Spacer(Modifier.size(10.dp))
+                                            OnOffSwitch(fav)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

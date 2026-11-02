@@ -16,15 +16,17 @@ object TeamList {
 
     suspend fun teams(league: League): List<TeamInfo> {
         cache[league]?.let { return it }
-        val j = jsonObject(Http.get("https://site.api.espn.com/apis/site/v2/sports/${league.espnPath}/teams?limit=1000"))
-        val arr = j?.optJSONArray("sports")?.optJSONObject(0)?.optJSONArray("leagues")?.optJSONObject(0)?.optJSONArray("teams")
         val out = ArrayList<TeamInfo>()
+        for (path in listOf(league.espnPath) + league.extraPaths) {
+        val j = try { jsonObject(Http.get("https://site.api.espn.com/apis/site/v2/sports/$path/teams?limit=1000")) } catch (e: Exception) { null }
+        val arr = j?.optJSONArray("sports")?.optJSONObject(0)?.optJSONArray("leagues")?.optJSONObject(0)?.optJSONArray("teams")
         if (arr != null) for (i in 0 until arr.length()) {
             val t = arr.optJSONObject(i)?.optJSONObject("team") ?: continue
             val logo = t.optJSONArray("logos")?.optJSONObject(0)?.str("href")
             out += TeamInfo(league, t.str("id") ?: continue, t.str("displayName") ?: continue, t.str("abbreviation") ?: "", logo)
         }
-        val sorted = out.sortedBy { it.name }
+        }
+        val sorted = out.distinctBy { it.abbreviation + it.name }.sortedBy { it.name }
         if (sorted.isNotEmpty()) cache[league] = sorted
         return sorted
     }

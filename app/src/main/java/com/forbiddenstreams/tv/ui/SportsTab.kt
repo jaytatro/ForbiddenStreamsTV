@@ -49,7 +49,7 @@ import kotlinx.coroutines.delay
  * OK on a league pill switches league; OK on a game pops up the channels it's on.
  */
 @Composable
-fun SportsTab() {
+fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val sp = remember { context.getSharedPreferences("forbidden_streams", android.content.Context.MODE_PRIVATE) }
     var leagueName by rememberSaveable { mutableStateOf(sp.getString("sports_league", null) ?: SPORTS_ORDER.first().name) }
@@ -57,6 +57,8 @@ fun SportsTab() {
     val pillReq = remember { SPORTS_ORDER.associateWith { FocusRequester() } }
     var inside by remember { mutableStateOf(false) }
 
+    // From Home's "Live games": that league, and the game's channel pop-up.
+    LaunchedEffect(open) { open?.let { leagueName = it.first.name } }
     // Put the cursor on the picked league's pill when the tab opens.
     LaunchedEffect(Unit) {
         repeat(10) {
@@ -71,12 +73,15 @@ fun SportsTab() {
             .onFocusChanged { inside = it.hasFocus }
             .focusGroup(),
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        // One row; slides sideways if it doesn't all fit, so every league keeps its name.
+        androidx.compose.foundation.lazy.LazyRow(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 4.dp),
         ) {
-            for (l in SPORTS_ORDER) {
-                Pill("${l.icon} ${shortName(l)}", selected = l == league, fontSize = 15.sp,
+            items(SPORTS_ORDER.size) { i ->
+                val l = SPORTS_ORDER[i]
+                Pill("${l.icon} ${shortName(l)}", selected = l == league, fontSize = 14.sp, hPad = 11.dp,
                     modifier = Modifier.focusRequester(pillReq.getValue(l)),
                     onClick = {
                         leagueName = l.name
@@ -85,7 +90,8 @@ fun SportsTab() {
             }
         }
         androidx.compose.runtime.key(league) {
-            SportsScreen(league, popup = true, onLeft = { })
+            SportsScreen(league, openGameId = open?.takeIf { it.first == league }?.second, onOpened = onOpened,
+                popup = true, onLeft = { })
         }
     }
 }
@@ -93,6 +99,6 @@ fun SportsTab() {
 private fun shortName(l: League): String = when (l) {
     League.NCAAB -> "NCAAM"
     League.NCAAW -> "NCAAW"
-    League.NCAABASE -> "NCAA BSB"
+    League.NCAABASE -> "NCAA Baseball"
     else -> l.label
 }

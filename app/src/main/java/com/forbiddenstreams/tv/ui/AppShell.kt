@@ -78,6 +78,8 @@ fun AppShell(onLogout: () -> Unit) {
     val context = LocalContext.current
     var tab by remember { mutableIntStateOf(0) } // always opens on Home
     var settings by remember { mutableStateOf(false) }
+    var favTeams by remember { mutableStateOf(false) }
+    var sportsOpen by remember { mutableStateOf<Pair<com.forbiddenstreams.tv.sports.League, String>?>(null) }
     val tabReq = remember { List(TABS.size) { FocusRequester() } }
     var tabsFocused by remember { mutableStateOf(false) }
     var exitHint by remember { mutableStateOf(false) }
@@ -99,9 +101,9 @@ fun AppShell(onLogout: () -> Unit) {
 
     Box(Modifier.fillMaxSize()) {
         when (tab) {
-            0 -> HomeTab()
+            0 -> HomeTab(onOpenGame = { l, id -> sportsOpen = l to id; tab = 2 })
             1 -> LiveTvTab()
-            2 -> SportsTab()
+            2 -> SportsTab(open = sportsOpen, onOpened = { sportsOpen = null })
             3 -> ComingNext("Movies")
             else -> ComingNext("TV Shows")
         }
@@ -129,12 +131,14 @@ fun AppShell(onLogout: () -> Unit) {
                     toast(context, "Checking for updates…")
                     UpdateState.check(context, kotlinx.coroutines.MainScope(), manual = true)
                 },
+                "⭐  Favorite teams" to { settings = false; favTeams = true },
                 "⎋  Log out" to { settings = false; onLogout() },
                 "Close" to { settings = false },
             ),
             onDismiss = { settings = false },
         )
     }
+    if (favTeams) FavoriteTeamsDialog(onClose = { favTeams = false })
     UpdatePrompt()
 }
 
@@ -229,7 +233,7 @@ private data class Card(
  * (Later: Continue watching · Live TV, then Favorite sports teams.)
  */
 @Composable
-private fun HomeTab() {
+private fun HomeTab(onOpenGame: (com.forbiddenstreams.tv.sports.League, String) -> Unit) {
     val context = LocalContext.current
     var focused by remember { mutableStateOf<Card?>(null) }
     var menu by remember { mutableStateOf<Card?>(null) }
@@ -260,6 +264,7 @@ private fun HomeTab() {
             Card("c:${ch.id}", "channel", ch.name, ch.logo, channel = ch)
         }
     }
+    val liveGames = liveGamesNow()
     LaunchedEffect(shows, movies, channels) { if (focused == null) focused = shows.firstOrNull() ?: movies.firstOrNull() ?: channels.firstOrNull() }
 
     Column(Modifier.fillMaxSize()) {
@@ -271,7 +276,8 @@ private fun HomeTab() {
             if (shows.isNotEmpty()) item { CardRow("Continue watching", "Shows", RailIcon.SHOWS, shows, { focused = it }, { menu = it }) }
             if (movies.isNotEmpty()) item { CardRow("Continue watching", "Movies", RailIcon.MOVIES, movies, { focused = it }, { menu = it }) }
             if (channels.isNotEmpty()) item { CardRow("Continue watching", "Live TV", RailIcon.CHANNELS, channels, { focused = it }, { menu = it }) }
-            if (shows.isEmpty() && movies.isEmpty() && channels.isEmpty()) {
+            if (liveGames.isNotEmpty()) item { LiveGamesRow(liveGames, onOpenGame) }
+            if (shows.isEmpty() && movies.isEmpty() && channels.isEmpty() && liveGames.isEmpty()) {
                 item {
                     Text("Nothing here yet. TV shows and movies you start watching show up here so you can pick up where you left off.",
                         color = FS.TextDim, fontSize = 17.sp, modifier = Modifier.padding(horizontal = 36.dp, vertical = 20.dp))
