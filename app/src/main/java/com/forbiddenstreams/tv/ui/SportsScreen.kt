@@ -61,7 +61,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 @Composable
-fun SportsScreen(league: League, openGameId: String? = null, onOpened: () -> Unit = {}, onLeft: () -> Unit = {}) {
+fun SportsScreen(league: League, openGameId: String? = null, onOpened: () -> Unit = {}, onLeft: () -> Unit = {}, popup: Boolean = false) {
     if (Session.source == null) return
     val context = LocalContext.current
     val todayKey = remember { Espn.dayKey(System.currentTimeMillis()) }
@@ -187,6 +187,8 @@ fun SportsScreen(league: League, openGameId: String? = null, onOpened: () -> Uni
                     teamFor = { teamChannels.orEmpty() },
                     favFor = { l, g -> com.forbiddenstreams.tv.sports.FavTeams.inGame(context, l, g) },
                     onLeft = onLeft,
+                    // New Sports tab: OK on a game pops up its channels.
+                    onPick = if (popup) { { _, g -> picker = g } } else null,
                 )
             }
         }
@@ -362,6 +364,7 @@ private fun GameBoard(
     teamFor: (League) -> List<LiveChannel>,
     favFor: (League, Game) -> Boolean,
     onLeft: () -> Unit,
+    onPick: ((League, Game) -> Unit)? = null,
 ) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var sel by remember { mutableStateOf<Pair<League, Game>?>(null) }
@@ -370,7 +373,7 @@ private fun GameBoard(
     val current = sel?.let { (l, g) -> games.firstOrNull { it.first == l && it.second.id == g.id } ?: sel }
     Row(Modifier.fillMaxSize().padding(start = 24.dp, end = 24.dp, bottom = 12.dp)) {
         androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
-            columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(2),
+            columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(if (onPick != null) 3 else 2),
             modifier = Modifier.weight(1f).fillMaxHeight(),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -382,20 +385,23 @@ private fun GameBoard(
                     modifier = Modifier
                         .onFocusChanged { if (it.isFocused) sel = l to g }
                         .onPreviewKeyEvent { ev ->
-                            if (i % 2 == 0 && ev.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
+                            if (i % (if (onPick != null) 3 else 2) == 0 && ev.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
                                 ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT
                             ) { if (ev.nativeKeyEvent.repeatCount == 0) onLeft(); true } else false
                         },
                     onClick = {
                         sel = l to g
-                        scope.launch { delay(80); try { panelReq.requestFocus() } catch (e: Exception) { } }
+                        if (onPick != null) onPick(l, g)
+                        else scope.launch { delay(80); try { panelReq.requestFocus() } catch (e: Exception) { } }
                     },
                 )
             }
             item { Spacer(Modifier.height(16.dp)) }
         }
-        Spacer(Modifier.width(18.dp))
-        WatchPanel(current, matchFor, teamFor, panelReq, Modifier.width(340.dp).fillMaxHeight())
+        if (onPick == null) {
+            Spacer(Modifier.width(18.dp))
+            WatchPanel(current, matchFor, teamFor, panelReq, Modifier.width(340.dp).fillMaxHeight())
+        }
     }
 }
 
@@ -403,12 +409,12 @@ private fun GameBoard(
 private fun GameCard(league: League, g: Game, fav: Boolean, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     FocusCard(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth().height(148.dp),
+        modifier = modifier.fillMaxWidth().height(172.dp),
         container = if (selected) FS.GreenDim else FS.Panel,
         shape = RoundedCornerShape(14.dp),
         focusedScale = 1.02f,
     ) {
-        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val state = when {
                     g.isLive -> "● LIVE · ${g.detail}"
@@ -429,6 +435,8 @@ private fun GameCard(league: League, g: Game, fav: Boolean, selected: Boolean, m
                     if (g.isLive || g.isFinal) Text(t.score ?: "0", fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 }
             }
+            // Where they're playing.
+            g.venue?.let { Text("📍 $it", color = FS.Green, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
     }
 }

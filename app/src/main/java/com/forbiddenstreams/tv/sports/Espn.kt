@@ -28,16 +28,27 @@ enum class League(
     val groupName: String,
     val keywords: List<String>,
     val query: String = "",
+    /** More ESPN leagues shown together (Soccer = MLS + Premier League + Champions League + Liga MX). */
+    val extraPaths: List<String> = emptyList(),
 ) {
     NFL("NFL", "🏈", "football/nfl", "USA | NFL Teams", listOf("nfl")),
     NBA("NBA", "🏀", "basketball/nba", "USA | NBA Teams", listOf("nba")),
     WNBA("WNBA", "🏀", "basketball/wnba", "USA | WNBA Teams", listOf("wnba")),
     NHL("NHL", "🏒", "hockey/nhl", "USA | NHL Teams", listOf("nhl")),
     MLB("MLB", "⚾", "baseball/mlb", "USA | MLB Teams", listOf("mlb")),
-    MLS("MLS", "⚽", "soccer/usa.1", "USA | MLS Teams", listOf("mls")),
+    MLS("Soccer", "⚽", "soccer/usa.1", "USA | MLS Teams", listOf("mls", "soccer"),
+        extraPaths = listOf("soccer/eng.1", "soccer/uefa.champions", "soccer/mex.1")),
     NCAAF("NCAAF", "🏈", "football/college-football", "USA | NCAAF Teams", listOf("ncaaf", "college football", "ncaa football"), "groups=80"),
-    NCAAB("NCAAB", "🏀", "basketball/mens-college-basketball", "USA | NCAAB Teams", listOf("ncaab", "college basketball", "ncaa basketball"), "groups=50"),
+    NCAAB("NCAA Men's Basketball", "🏀", "basketball/mens-college-basketball", "USA | NCAAB Teams", listOf("ncaab", "college basketball", "ncaa basketball"), "groups=50"),
+    NCAAW("NCAA Women's Basketball", "🏀", "basketball/womens-college-basketball", "USA | NCAAW Teams", listOf("ncaaw", "women's college basketball", "ncaa women"), "groups=50"),
+    NCAABASE("NCAA Baseball", "⚾", "baseball/college-baseball", "USA | NCAA Baseball Teams", listOf("college baseball", "ncaa baseball")),
 }
+
+/** The Sports tab's order (user, Nov 1 2026). */
+val SPORTS_ORDER = listOf(
+    League.NFL, League.NBA, League.NHL, League.MLB, League.MLS, League.WNBA,
+    League.NCAAF, League.NCAAB, League.NCAAW, League.NCAABASE,
+)
 
 data class Team(
     val displayName: String,
@@ -107,22 +118,27 @@ object Espn {
         return best
     }
 
-    private fun url(league: League, query: String): String {
+    private fun url(league: League, query: String, path: String = league.espnPath): String {
         val q = listOf(query, league.query).filter { it.isNotEmpty() }.joinToString("&")
-        return "https://site.api.espn.com/apis/site/v2/sports/${league.espnPath}/scoreboard" + if (q.isEmpty()) "" else "?$q&limit=300"
+        return "https://site.api.espn.com/apis/site/v2/sports/$path/scoreboard" + if (q.isEmpty()) "" else "?$q&limit=300"
     }
 
     private suspend fun fetch(league: League, query: String): List<Game> = withContext(Dispatchers.Default) { fetchNow(league, query) }
 
     private suspend fun fetchNow(league: League, query: String): List<Game> {
-        val j = jsonObject(Http.get(url(league, query))) ?: return emptyList()
-        val events = j.optJSONArray("events") ?: return emptyList()
         val out = ArrayList<Game>()
-        for (i in 0 until events.length()) {
-            val ev = events.optJSONObject(i) ?: continue
-            parseGame(ev)?.let { out += it }
+        var ok = false
+        for (path in listOf(league.espnPath) + league.extraPaths) {
+            val j = try { jsonObject(Http.get(url(league, query, path))) } catch (e: Exception) { if (path == league.espnPath) throw e else null } ?: continue
+            ok = true
+            val events = j.optJSONArray("events") ?: continue
+            for (i in 0 until events.length()) {
+                val ev = events.optJSONObject(i) ?: continue
+                parseGame(ev)?.let { out += it }
+            }
         }
-        return out.sortedBy { it.start }
+        if (!ok) return emptyList()
+        return out.distinctBy { it.id }.sortedBy { it.start }
     }
 
     private fun parseGame(ev: JSONObject): Game? {

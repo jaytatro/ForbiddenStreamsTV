@@ -99,7 +99,7 @@ fun AppShell(onLogout: () -> Unit) {
         when (tab) {
             0 -> HomeTab()
             1 -> LiveTvTab()
-            2 -> ComingNext("Sports")
+            2 -> SportsTab()
             3 -> ComingNext("Movies")
             else -> ComingNext("TV Shows")
         }
