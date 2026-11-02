@@ -94,7 +94,7 @@ fun AppShell(onLogout: () -> Unit) {
     Box(Modifier.fillMaxSize()) {
         when (tab) {
             0 -> HomeTab()
-            1 -> ComingNext("Live TV")
+            1 -> LiveTvTab()
             2 -> ComingNext("Sports")
             3 -> ComingNext("Movies")
             else -> ComingNext("TV Shows")
