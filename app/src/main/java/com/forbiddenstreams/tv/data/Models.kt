@@ -33,8 +33,10 @@ data class VodItem(
     val categoryId: String,
     val ext: String,
     val directUrl: String? = null,
-    /** When the provider added it (seconds), for "New in HD". */
+    /** When the provider added it (seconds). */
     val added: Long = 0L,
+    /** Release date or year when the provider's list gives one ("2026-03-14" / "2026"). */
+    val releaseDate: String? = null,
 )
 
 data class VodDetails(
@@ -47,6 +49,8 @@ data class VodDetails(
     val backdrop: String? = null,
     val releaseDate: String? = null,
     val minutes: Int? = null,
+    /** YouTube trailer (video id or link) when the provider has one. */
+    val trailer: String? = null,
 )
 
 /** A show's own info from the provider. */
@@ -63,6 +67,7 @@ data class SeriesItem(
     /** When the provider last updated it (seconds), for "New TV Shows". */
     val lastModified: Long = 0L,
     val backdrop: String? = null,
+    val releaseDate: String? = null,
 )
 
 data class Episode(

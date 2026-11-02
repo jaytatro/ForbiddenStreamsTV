@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -219,6 +220,7 @@ private fun HomeTab() {
     val context = LocalContext.current
     var focused by remember { mutableStateOf<Card?>(null) }
     var menu by remember { mutableStateOf<Card?>(null) }
+    var showPick by remember { mutableStateOf<SeriesItem?>(null) }
     var libraryReady by remember { mutableStateOf(MovieMatcher.ready) }
     var seriesReady by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { libraryReady = MovieMatcher.load() }
@@ -266,7 +268,9 @@ private fun HomeTab() {
             item { Spacer(Modifier.height(30.dp)) }
         }
     }
-    menu?.let { CardMenu(it, onClose = { menu = null }) }
+    menu?.let { CardMenu(it, onClose = { menu = null }, onSeasons = { s -> menu = null; showPick = s }) }
+    showPick?.let { ShowPicker(it, onClose = { showPick = null }) }
+    LaunchedEffect(Unit) { openShow = { s -> showPick = s } }
 }
 
 /** The provider's own picture and details for a card (cached). */
@@ -390,11 +394,14 @@ private fun playCard(context: android.content.Context, c: Card) {
             Playback.one(context, PlayItem(c.title, src.vodUrl(c.vod), live = false, resumeKey = "m:${c.vod.id}",
                 kind = "movie", image = c.vod.poster, startMs = saved?.positionMs))
         }
-        c.series != null -> playShow(context, c.series)
+        c.series != null -> openShow?.invoke(c.series) ?: playShow(context, c.series)
     }
 }
 
-/** A show from Popular TV Shows: the next episode after the last one you watched, else S1 E1. */
+/** OK on a show card opens its seasons (set by Home). */
+private var openShow: ((SeriesItem) -> Unit)? = null
+
+/** A show from New TV Shows: the next episode after the last one you watched, else S1 E1. */
 private fun playShow(context: android.content.Context, s: SeriesItem) {
     val src = Session.source ?: return
     kotlinx.coroutines.MainScope().launch {
@@ -413,10 +420,11 @@ private fun playShow(context: android.content.Context, s: SeriesItem) {
 
 /** Hold OK on a card: more choices. */
 @Composable
-private fun CardMenu(c: Card, onClose: () -> Unit) {
+private fun CardMenu(c: Card, onClose: () -> Unit, onSeasons: (SeriesItem) -> Unit) {
     val context = LocalContext.current
     val r = c.recent
     val opts = ArrayList<Pair<String, () -> Unit>>()
+    val showOf = c.series ?: if (c.kind == "episode") MovieMatcher.findSeries(c.title) else null
     if (r != null) {
         opts += "▶  Resume" to { onClose(); playCard(context, c) }
         opts += "⟲  Start over" to {
@@ -424,8 +432,14 @@ private fun CardMenu(c: Card, onClose: () -> Unit) {
             Playback.one(context, PlayItem(r.title, r.url, live = false, subtitle = r.subtitle, resumeKey = r.key, kind = r.kind, image = r.image))
         }
         opts += "✖  Remove from Continue watching" to { Recents.remove(context, r.key); onClose(); toast(context, "Removed") }
-    } else {
+    } else if (c.series == null) {
         opts += "▶  Play" to { onClose(); playCard(context, c) }
+    }
+    if (showOf != null) opts += "📺  Seasons & episodes" to { onSeasons(showOf) }
+    // Movies: the trailer on YouTube (the provider's trailer link, else a YouTube search).
+    val movieId = c.vod?.id ?: r?.key?.takeIf { it.startsWith("m:") }?.removePrefix("m:")
+    if (c.kind == "movie" && movieId != null) {
+        opts += "🎬  Trailers" to { onClose(); openTrailer(context, movieId, c.title, c.year) }
     }
     opts += "Close" to onClose
     val sub = listOfNotNull(
@@ -433,4 +447,127 @@ private fun CardMenu(c: Card, onClose: () -> Unit) {
         c.year,
     ).joinToString("  ·  ").ifBlank { null }
     ChoiceDialog(title = c.title, subtitle = sub, options = opts, onDismiss = onClose)
+}
+
+
+/** Opens the movie's trailer in YouTube: the provider's trailer if it has one, else a YouTube search. */
+private fun openTrailer(context: android.content.Context, vodId: String, title: String, year: String?) {
+    val src = Session.source ?: return
+    kotlinx.coroutines.MainScope().launch {
+        val t = try { src.vodDetails(VodItem(vodId, title, null, null, "", "mp4"))?.trailer } catch (e: Exception) { null }
+        val id = t?.let { youtubeId(it) }
+        if (id != null) {
+            val ok = tryStart(context, android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("vnd.youtube:$id"))) ||
+                tryStart(context, android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=$id")))
+            if (!ok) toast(context, "YouTube isn't installed on this box")
+            return@launch
+        }
+        // No trailer from the provider: search YouTube for it.
+        val q = "$title ${year ?: ""} official trailer".replace(Regex("\\s+"), " ").trim()
+        val ok = tryStart(context, android.content.Intent(android.content.Intent.ACTION_SEARCH)
+            .setPackage("com.google.android.youtube.tv").putExtra(android.app.SearchManager.QUERY, q)) ||
+            tryStart(context, android.content.Intent(android.content.Intent.ACTION_SEARCH)
+                .setPackage("com.google.android.youtube").putExtra(android.app.SearchManager.QUERY, q)) ||
+            tryStart(context, android.content.Intent(android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse("https://www.youtube.com/results?search_query=" + java.net.URLEncoder.encode(q, "UTF-8"))))
+        if (!ok) toast(context, "YouTube isn't installed on this box")
+    }
+}
+
+private fun youtubeId(t: String): String? {
+    val s = t.trim()
+    Regex("(?:v=|youtu\\.be/|embed/|shorts/)([A-Za-z0-9_-]{11})").find(s)?.let { return it.groupValues[1] }
+    return s.takeIf { it.matches(Regex("[A-Za-z0-9_-]{11}")) }
+}
+
+private fun tryStart(context: android.content.Context, i: android.content.Intent): Boolean = try {
+    context.startActivity(i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)); true
+} catch (e: Exception) { false }
+
+/**
+ * OK on a TV show: a pop-up with its seasons; picking a season lists its episodes;
+ * picking an episode plays it (and keeps going into the next ones).
+ */
+@Composable
+private fun ShowPicker(series: SeriesItem, onClose: () -> Unit) {
+    val context = LocalContext.current
+    val src = Session.source ?: run { onClose(); return }
+    val eps by produceState<List<com.forbiddenstreams.tv.data.Episode>?>(null, series.id) {
+        value = try { src.episodes(series) } catch (e: Exception) { emptyList() }
+    }
+    var season by remember { mutableStateOf<Int?>(null) }
+    val list = eps
+    val name = MovieMatcher.cleanTitle(series.name)
+    when {
+        list == null -> ListDialog(name, "Loading seasons…", emptyList(), onClose)
+        list.isEmpty() -> ListDialog(name, "No episodes found", emptyList(), onClose)
+        season == null -> {
+            val seasons = list.groupBy { it.season }.toSortedMap()
+            ListDialog(
+                name, "${seasons.size} season" + (if (seasons.size == 1) "" else "s"),
+                seasons.map { (s, e) -> Triple("Season $s", "${e.size} episode" + (if (e.size == 1) "" else "s"), { season = s }) },
+                onClose,
+            )
+        }
+        else -> {
+            val all = list.sortedWith(compareBy({ it.season }, { it.episodeNum }))
+            val inSeason = all.filter { it.season == season }
+            val items = all.map {
+                PlayItem("$name · S${it.season}E${it.episodeNum}", src.episodeUrl(it), live = false, subtitle = it.title,
+                    resumeKey = "e:${it.id}", kind = "episode", image = series.cover ?: it.image)
+            }
+            ListDialog(
+                "$name · Season $season", "${inSeason.size} episodes · BACK = seasons",
+                inSeason.map { e ->
+                    val saved = Recents.get(context, "e:${e.id}")
+                    val note = listOfNotNull(
+                        saved?.let { r -> if (r.durationMs > 0) "▶ ${((r.durationMs - r.positionMs) / 60_000).coerceAtLeast(1)} min left" else "▶ Resume" },
+                        e.minutes?.let { "$it min" },
+                    ).joinToString("  ·  ").ifEmpty { null }
+                    Triple("E${e.episodeNum} · ${e.title}", note, {
+                        onClose()
+                        val i = all.indexOf(e)
+                        Playback.start(context, items.mapIndexed { j, it -> if (j == i && saved != null) it.copy(startMs = saved.positionMs) else it }, i)
+                    })
+                },
+                onBack = { season = null },
+            )
+        }
+    }
+}
+
+/** A pop-up with a scrolling list (seasons, episodes). */
+@Composable
+private fun ListDialog(
+    title: String,
+    subtitle: String?,
+    items: List<Triple<String, String?, () -> Unit>>,
+    onBack: () -> Unit,
+) {
+    val first = remember(title) { FocusRequester() }
+    LaunchedEffect(title, items.size) { delay(120); try { first.requestFocus() } catch (e: Exception) { } }
+    Dialog(onDismissRequest = onBack) {
+        Column(
+            Modifier.width(620.dp).background(FS.Panel, RoundedCornerShape(16.dp))
+                .border(2.dp, FS.GreenDeep, RoundedCornerShape(16.dp)).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(title, color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            subtitle?.let { Text(it, color = FS.TextDim, fontSize = 15.sp) }
+            LazyColumn(Modifier.heightIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                itemsIndexed(items) { i, (label, note, action) ->
+                    FocusCard(
+                        onClick = action,
+                        modifier = Modifier.fillMaxWidth().then(if (i == 0) Modifier.focusRequester(first) else Modifier),
+                        focusedScale = 1.02f,
+                    ) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(label, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            note?.let { Text(it, color = FS.Green, fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp)) }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

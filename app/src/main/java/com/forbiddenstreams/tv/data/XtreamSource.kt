@@ -199,23 +199,25 @@ class XtreamSource(
         allSeriesCache ?: streamSeries(api("get_series"), "").also { allSeriesCache = it }
 
     private suspend fun streamVod(url: String, categoryId: String): List<VodItem> =
-        streamObjects(url, setOf("stream_id", "name", "stream_icon", "rating", "category_id", "container_extension", "added")) { o ->
+        streamObjects(url, setOf("stream_id", "name", "stream_icon", "rating", "category_id", "container_extension", "added", "year", "releaseDate", "release_date")) { o ->
             val id = o["stream_id"] ?: return@streamObjects null
             VodItem(
                 id = id, name = o["name"] ?: "Movie", poster = o["stream_icon"], rating = o["rating"],
                 categoryId = o["category_id"] ?: categoryId, ext = o["container_extension"] ?: "mp4",
                 added = o["added"]?.toLongOrNull() ?: 0L,
+                releaseDate = o["releaseDate"] ?: o["release_date"] ?: o["year"],
             )
         }
 
     private suspend fun streamSeries(url: String, categoryId: String): List<SeriesItem> =
-        streamObjects(url, setOf("series_id", "name", "cover", "plot", "rating", "category_id", "last_modified", "backdrop_path")) { o ->
+        streamObjects(url, setOf("series_id", "name", "cover", "plot", "rating", "category_id", "last_modified", "backdrop_path", "releaseDate", "release_date", "year")) { o ->
             val id = o["series_id"] ?: return@streamObjects null
             SeriesItem(
                 id = id, name = o["name"] ?: "Show", cover = o["cover"], plot = o["plot"]?.take(400),
                 rating = o["rating"], categoryId = o["category_id"] ?: categoryId,
                 lastModified = o["last_modified"]?.toLongOrNull() ?: 0L,
                 backdrop = o["backdrop_path"]?.takeIf { it.startsWith("http") },
+                releaseDate = o["releaseDate"] ?: o["release_date"] ?: o["year"],
             )
         }
 
@@ -296,6 +298,7 @@ class XtreamSource(
             backdrop = firstPic(info.opt("backdrop_path")),
             releaseDate = info.str("releasedate") ?: info.str("release_date"),
             minutes = minutesOf(info),
+            trailer = info.str("youtube_trailer") ?: info.str("trailer"),
         )
     }
 

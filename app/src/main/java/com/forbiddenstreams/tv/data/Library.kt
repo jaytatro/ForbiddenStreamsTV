@@ -99,7 +99,7 @@ object MovieMatcher {
         val src = Session.source ?: return false
         val all = try { src.allSeries() } catch (e: Throwable) { return false }
         seriesIndex = all.groupBy { key(it.name) }
-        newestSeries = all.filter { it.lastModified > 0 }.sortedByDescending { it.lastModified }.distinctBy { key(it.name) }
+        newestSeries = newestOf(all.map { Triple(it, releaseOf(it.releaseDate, it.name), it.lastModified) }).distinctBy { key(it.name) }
         true
     }
 
@@ -113,12 +113,30 @@ object MovieMatcher {
         val src = Session.source ?: return false
         val all = try { src.allVod() } catch (e: Throwable) { return false }
         index = all.groupBy { key(it.name) }
-        newest = all.filter { it.added > 0 }.sortedByDescending { it.added }.distinctBy { key(it.name) }
+        newest = newestOf(all.map { Triple(it, releaseOf(it.releaseDate, it.name), it.added) }).distinctBy { key(it.name) }
         true
     }
 
     /** Movies the provider added most recently ("New in HD"). */
     fun newest(limit: Int = 40): List<VodItem> = newest.take(limit)
+
+    /** "2026-03-14" (or just the year from the name, "… (2026)") → "2026-03-14" / "2026". */
+    private fun releaseOf(date: String?, name: String): String? =
+        date?.trim()?.takeIf { it.length >= 4 && it.take(4).all(Char::isDigit) } ?: yearOf(name)
+
+    /**
+     * Titles that came out THIS year (the current year, so it moves on by itself every January),
+     * newest month first; titles with only a year go after, newest added first. Early in a year,
+     * when there are few, last year's newest fill in.
+     */
+    private fun <T> newestOf(items: List<Triple<T, String?, Long>>): List<T> {
+        val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        fun pick(y: Int) = items.filter { it.second?.take(4) == y.toString() }
+            .sortedWith(compareByDescending<Triple<T, String?, Long>> { it.second?.takeIf { d -> d.length >= 7 } ?: "" }.thenByDescending { it.third })
+        val now = pick(year)
+        val out = if (now.size >= 15) now else now + pick(year - 1)
+        return out.map { it.first }.ifEmpty { items.sortedByDescending { it.third }.map { it.first } }
+    }
 
     fun reset() { index = null; newest = emptyList(); seriesIndex = null }
 }
