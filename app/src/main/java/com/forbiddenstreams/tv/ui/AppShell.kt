@@ -247,9 +247,18 @@ private fun HomeTab() {
         MovieMatcher.newest(30).map { Card("v:${it.id}", "movie", MovieMatcher.cleanTitle(it.name), it.poster, year = MovieMatcher.yearOf(it.name), vod = it) }
     }
     // "New TV Shows": the shows the provider added or updated most recently.
-    val newShows = remember(seriesReady) {
-        MovieMatcher.newestSeries(30).map { s ->
-            Card("s:${s.id}", "show", MovieMatcher.cleanTitle(s.name), s.cover, series = s, backdrop = s.backdrop)
+    // "New TV Shows": TVmaze's US schedule (new this year first, then shows with new episodes),
+    // only the ones your provider has. If TVmaze can't be reached: the provider's newest US shows.
+    val newShows by produceState(emptyList<Card>(), seriesReady) {
+        if (!seriesReady) return@produceState
+        val maze = try { com.forbiddenstreams.tv.data.TvMaze.newShows() } catch (e: Exception) { emptyList() }
+        val matched = maze.mapNotNull { m ->
+            MovieMatcher.findSeries(m.name)?.let { s ->
+                Card("s:${s.id}", "show", m.name, s.cover ?: m.image, series = s, backdrop = s.backdrop)
+            }
+        }.distinctBy { it.key }.take(30)
+        value = matched.ifEmpty {
+            MovieMatcher.newestSeries(30).map { s -> Card("s:${s.id}", "show", MovieMatcher.cleanTitle(s.name), s.cover, series = s, backdrop = s.backdrop) }
         }
     }
     LaunchedEffect(shows, movies, newMovies) { if (focused == null) focused = shows.firstOrNull() ?: movies.firstOrNull() ?: newMovies.firstOrNull() }
@@ -257,13 +266,13 @@ private fun HomeTab() {
     Column(Modifier.fillMaxSize()) {
         Hero(focused, Modifier.fillMaxWidth().height(330.dp))
         LazyColumn(
-            Modifier.weight(1f).fillMaxWidth().padding(start = 36.dp),
+            Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             if (shows.isNotEmpty()) item { CardRow("Continue watching", "Shows", RailIcon.SHOWS, shows, { focused = it }, { menu = it }) }
             if (movies.isNotEmpty()) item { CardRow("Continue watching", "Movies", RailIcon.MOVIES, movies, { focused = it }, { menu = it }) }
             if (newMovies.isNotEmpty()) item { CardRow("New Movies", null, RailIcon.MOVIES, newMovies, { focused = it }, { menu = it }) }
-            else if (!libraryReady) item { Text("Loading new movies…", color = FS.TextDim, fontSize = 15.sp) }
+            else if (!libraryReady) item { Text("Loading new movies…", color = FS.TextDim, fontSize = 15.sp, modifier = Modifier.padding(start = 36.dp)) }
             if (newShows.isNotEmpty()) item { CardRow("New TV Shows", null, RailIcon.SHOWS, newShows, { focused = it }, { menu = it }) }
             item { Spacer(Modifier.height(30.dp)) }
         }
@@ -334,7 +343,7 @@ private fun niceDate(d: String): String = try {
 private fun CardRow(title: String, sub: String?, icon: RailIcon, cards: List<Card>, onFocus: (Card) -> Unit, onMore: (Card) -> Unit) {
     val context = LocalContext.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth().padding(end = 36.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp), verticalAlignment = Alignment.CenterVertically) {
             LineIcon(icon, 22.dp, FS.Green)
             Spacer(Modifier.width(10.dp))
             Text(title, color = FS.Text, fontSize = 19.sp, fontWeight = FontWeight.Bold)
@@ -342,11 +351,15 @@ private fun CardRow(title: String, sub: String?, icon: RailIcon, cards: List<Car
             Spacer(Modifier.weight(1f))
             Text("Press and hold \"OK\" for more", color = FS.TextDim, fontSize = 13.sp)
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        // Room around the cards so the green outline (and the slight zoom) of a highlighted card
+        // isn't cut off at the screen edge.
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 36.dp, vertical = 8.dp),
+        ) {
             itemsIndexed(cards, key = { _, c -> c.key }) { _, c ->
                 WideCard(c, onFocus = { onFocus(c) }, onClick = { playCard(context, c) }, onLongClick = { onMore(c) })
             }
-            item { Spacer(Modifier.width(24.dp)) }
         }
     }
 }
