@@ -33,6 +33,8 @@ data class VodItem(
     val categoryId: String,
     val ext: String,
     val directUrl: String? = null,
+    /** When the provider added it (seconds), for "New in HD". */
+    val added: Long = 0L,
 )
 
 data class VodDetails(

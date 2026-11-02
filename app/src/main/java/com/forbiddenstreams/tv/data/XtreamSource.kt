@@ -199,11 +199,12 @@ class XtreamSource(
         allSeriesCache ?: streamSeries(api("get_series"), "").also { allSeriesCache = it }
 
     private suspend fun streamVod(url: String, categoryId: String): List<VodItem> =
-        streamObjects(url, setOf("stream_id", "name", "stream_icon", "rating", "category_id", "container_extension")) { o ->
+        streamObjects(url, setOf("stream_id", "name", "stream_icon", "rating", "category_id", "container_extension", "added")) { o ->
             val id = o["stream_id"] ?: return@streamObjects null
             VodItem(
                 id = id, name = o["name"] ?: "Movie", poster = o["stream_icon"], rating = o["rating"],
                 categoryId = o["category_id"] ?: categoryId, ext = o["container_extension"] ?: "mp4",
+                added = o["added"]?.toLongOrNull() ?: 0L,
             )
         }
 

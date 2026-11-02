@@ -29,7 +29,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.forbiddenstreams.tv.reminders.Alarms
 import com.forbiddenstreams.tv.ui.FS
 import com.forbiddenstreams.tv.ui.ForbiddenTheme
-import com.forbiddenstreams.tv.ui.HomeScreen
+import com.forbiddenstreams.tv.ui.AppShell
 import com.forbiddenstreams.tv.ui.LoginScreen
 
 class App : Application(), ImageLoaderFactory {
@@ -81,9 +81,11 @@ class MainActivity : ComponentActivity() {
                     if (!loggedIn) {
                         LoginScreen(onLoggedIn = { loggedIn = true })
                     } else {
-                        HomeScreen(onLogout = {
+                        // The new app (started from scratch): tabs across the top, opens on Home.
+                        AppShell(onLogout = {
                             PlayerHolder.stop()
                             Session.logout(context)
+                            com.forbiddenstreams.tv.data.MovieMatcher.reset()
                             loggedIn = false
                         })
                     }

@@ -9,7 +9,8 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.forbiddenstreams.tv"
+        // New app (Nov 1 2026, started from scratch) installs next to the old one, which keeps working.
+        applicationId = "com.forbiddenstreams.tvnext"
         minSdk = 21
         targetSdk = 35
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
