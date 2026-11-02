@@ -181,7 +181,26 @@ fun SportsScreen(league: League, openGameId: String? = null, onOpened: () -> Uni
                         { if (it.isLive) 0 else if (it.isFinal) 2 else 1 }, { it.start },
                     ))
                 }
-                GameBoard(
+                if (popup) {
+                    // Full-width rows like the user's photo (Heat Live style): away logo · "Away vs. Home" with
+                    // the venue under it · home logo │ networks · time or score. OK = channels pop-up.
+                    LazyColumn(
+                        Modifier.fillMaxSize()
+                            .onPreviewKeyEvent { ev ->
+                                if (ev.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
+                                    ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT
+                                ) { if (ev.nativeKeyEvent.repeatCount == 0) onLeft(); true } else false
+                            }
+                            .padding(horizontal = 40.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 6.dp, bottom = 24.dp),
+                    ) {
+                        items(sorted, key = { it.id }) { g ->
+                            GameRow(g, matches[g.id], groupMissing, teamChannels == null,
+                                fav = com.forbiddenstreams.tv.sports.FavTeams.inGame(context, league, g)) { picker = g }
+                        }
+                    }
+                } else GameBoard(
                     games = sorted.map { league to it },
                     matchFor = { _, g -> matches[g.id] },
                     teamFor = { teamChannels.orEmpty() },

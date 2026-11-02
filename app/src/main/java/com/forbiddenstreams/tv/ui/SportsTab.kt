@@ -6,6 +6,7 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
@@ -42,78 +43,56 @@ import com.forbiddenstreams.tv.sports.SPORTS_ORDER
 import kotlinx.coroutines.delay
 
 /**
- * Sports tab (Nov 1 2026): the leagues as tiles, left to right, wrapping onto centered rows.
- * OK on a league → its games (teams, live score, where they're playing; 7-day date strip,
- * today in the middle). OK on a game → a pop-up with the channels it's on. BACK = the leagues.
+ * Sports tab (Nov 1 2026, like the user's photo): the leagues as pills in one row across the top,
+ * the 7-day date strip under them (today in the middle), then each game as a full-width row:
+ * away logo · "Away vs. Home" with the venue · home logo │ networks · time or live score.
+ * OK on a league pill switches league; OK on a game pops up the channels it's on.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SportsTab() {
-    var leagueName by rememberSaveable { mutableStateOf<String?>(null) }
-    val league = leagueName?.let { n -> League.entries.firstOrNull { it.name == n } }
-    val tileReq = remember { SPORTS_ORDER.associateWith { FocusRequester() } }
-    var lastPicked by remember { mutableStateOf<League?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val sp = remember { context.getSharedPreferences("forbidden_streams", android.content.Context.MODE_PRIVATE) }
+    var leagueName by rememberSaveable { mutableStateOf(sp.getString("sports_league", null) ?: SPORTS_ORDER.first().name) }
+    val league = League.entries.firstOrNull { it.name == leagueName } ?: SPORTS_ORDER.first()
+    val pillReq = remember { SPORTS_ORDER.associateWith { FocusRequester() } }
+    var inside by remember { mutableStateOf(false) }
 
-    if (league != null) {
-        BackHandler { lastPicked = league; leagueName = null }
-        // Put the cursor into the games right away (the tile that had it is gone now).
-        val gamesReq = remember { FocusRequester() }
-        var inGames by remember { mutableStateOf(false) }
-        LaunchedEffect(league) {
-            repeat(12) {
-                delay(150)
-                if (inGames) return@LaunchedEffect
-                try { gamesReq.requestFocus() } catch (e: Exception) { }
-            }
+    // Put the cursor on the picked league's pill when the tab opens.
+    LaunchedEffect(Unit) {
+        repeat(10) {
+            delay(150)
+            if (inside) return@LaunchedEffect
+            try { pillReq[league]?.requestFocus() } catch (e: Exception) { }
         }
-        Column(
-            Modifier.fillMaxSize().padding(top = 76.dp)
-                .onFocusChanged { inGames = it.hasFocus }
-                .focusRequester(gamesReq).focusGroup(),
-        ) {
-            Text("${league.icon}  ${league.label}", color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(start = 36.dp, bottom = 2.dp))
-            SportsScreen(league, popup = true, onLeft = { lastPicked = league; leagueName = null })
-        }
-        return
     }
 
-    // Back from a league: the cursor goes back onto its tile.
-    LaunchedEffect(lastPicked) {
-        val l = lastPicked ?: return@LaunchedEffect
-        delay(120)
-        try { tileReq[l]?.requestFocus() } catch (e: Exception) { }
-    }
-    Box(Modifier.fillMaxSize().padding(top = 96.dp), contentAlignment = Alignment.TopCenter) {
-        FlowRow(
-            Modifier.widthIn(max = 1150.dp).fillMaxWidth().padding(horizontal = 36.dp),
-            horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+    Column(
+        Modifier.fillMaxSize().padding(top = 76.dp)
+            .onFocusChanged { inside = it.hasFocus }
+            .focusGroup(),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         ) {
             for (l in SPORTS_ORDER) {
-                val shape = RoundedCornerShape(16.dp)
-                Surface(
-                    onClick = { leagueName = l.name },
-                    modifier = Modifier.size(width = 240.dp, height = 120.dp).focusRequester(tileReq.getValue(l)),
-                    shape = ClickableSurfaceDefaults.shape(shape = shape),
-                    colors = ClickableSurfaceDefaults.colors(
-                        containerColor = FS.Panel, contentColor = FS.Text,
-                        focusedContainerColor = FS.GreenDeep, focusedContentColor = Color.White,
-                    ),
-                    border = ClickableSurfaceDefaults.border(
-                        border = Border(BorderStroke(1.dp, FS.GreenDim), shape = shape),
-                        focusedBorder = Border(BorderStroke(3.dp, FS.Green), shape = shape),
-                    ),
-                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
-                ) {
-                    Column(Modifier.fillMaxSize().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center) {
-                        Text(l.icon, fontSize = 34.sp)
-                        Spacer(Modifier.height(6.dp))
-                        Text(l.label, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 2)
-                    }
-                }
+                Pill("${l.icon} ${shortName(l)}", selected = l == league, fontSize = 15.sp,
+                    modifier = Modifier.focusRequester(pillReq.getValue(l)),
+                    onClick = {
+                        leagueName = l.name
+                        sp.edit().putString("sports_league", l.name).apply()
+                    })
             }
         }
+        androidx.compose.runtime.key(league) {
+            SportsScreen(league, popup = true, onLeft = { })
+        }
     }
+}
+
+private fun shortName(l: League): String = when (l) {
+    League.NCAAB -> "NCAAM"
+    League.NCAAW -> "NCAAW"
+    League.NCAABASE -> "NCAA BSB"
+    else -> l.label
 }
