@@ -221,10 +221,8 @@ private fun HomeTab() {
     var focused by remember { mutableStateOf<Card?>(null) }
     var menu by remember { mutableStateOf<Card?>(null) }
     var showPick by remember { mutableStateOf<SeriesItem?>(null) }
-    var libraryReady by remember { mutableStateOf(MovieMatcher.ready) }
-    var seriesReady by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { libraryReady = MovieMatcher.load() }
-    LaunchedEffect(Unit) { seriesReady = MovieMatcher.loadSeries() }
+    // The provider's show list (for "Seasons & episodes" and episode details).
+    LaunchedEffect(Unit) { MovieMatcher.loadSeries() }
 
     val recents = remember(PlayerHolder.fullScreen, menu) { Recents.all(context) }
     val shows = remember(recents) {
@@ -243,25 +241,7 @@ private fun HomeTab() {
                 progress = if (r.durationMs > 0) r.positionMs.toFloat() / r.durationMs else null, recent = r)
         }
     }
-    val newMovies = remember(libraryReady) {
-        MovieMatcher.newest(30).map { Card("v:${it.id}", "movie", MovieMatcher.cleanTitle(it.name), it.poster, year = MovieMatcher.yearOf(it.name), vod = it) }
-    }
-    // "New TV Shows": the shows the provider added or updated most recently.
-    // "New TV Shows": TVmaze's US schedule (new this year first, then shows with new episodes),
-    // only the ones your provider has. If TVmaze can't be reached: the provider's newest US shows.
-    val newShows by produceState(emptyList<Card>(), seriesReady) {
-        if (!seriesReady) return@produceState
-        val maze = try { com.forbiddenstreams.tv.data.TvMaze.newShows() } catch (e: Exception) { emptyList() }
-        val matched = maze.mapNotNull { m ->
-            MovieMatcher.findSeries(m.name)?.let { s ->
-                Card("s:${s.id}", "show", m.name, s.cover ?: m.image, series = s, backdrop = s.backdrop)
-            }
-        }.distinctBy { it.key }.take(30)
-        value = matched.ifEmpty {
-            MovieMatcher.newestSeries(30).map { s -> Card("s:${s.id}", "show", MovieMatcher.cleanTitle(s.name), s.cover, series = s, backdrop = s.backdrop) }
-        }
-    }
-    LaunchedEffect(shows, movies, newMovies) { if (focused == null) focused = shows.firstOrNull() ?: movies.firstOrNull() ?: newMovies.firstOrNull() }
+    LaunchedEffect(shows, movies) { if (focused == null) focused = shows.firstOrNull() ?: movies.firstOrNull() }
 
     Column(Modifier.fillMaxSize()) {
         Hero(focused, Modifier.fillMaxWidth().height(330.dp))
@@ -271,9 +251,12 @@ private fun HomeTab() {
         ) {
             if (shows.isNotEmpty()) item { CardRow("Continue watching", "Shows", RailIcon.SHOWS, shows, { focused = it }, { menu = it }) }
             if (movies.isNotEmpty()) item { CardRow("Continue watching", "Movies", RailIcon.MOVIES, movies, { focused = it }, { menu = it }) }
-            if (newMovies.isNotEmpty()) item { CardRow("New Movies", null, RailIcon.MOVIES, newMovies, { focused = it }, { menu = it }) }
-            else if (!libraryReady) item { Text("Loading new movies…", color = FS.TextDim, fontSize = 15.sp, modifier = Modifier.padding(start = 36.dp)) }
-            if (newShows.isNotEmpty()) item { CardRow("New TV Shows", null, RailIcon.SHOWS, newShows, { focused = it }, { menu = it }) }
+            if (shows.isEmpty() && movies.isEmpty()) {
+                item {
+                    Text("Nothing here yet. TV shows and movies you start watching show up here so you can pick up where you left off.",
+                        color = FS.TextDim, fontSize = 17.sp, modifier = Modifier.padding(horizontal = 36.dp, vertical = 20.dp))
+                }
+            }
             item { Spacer(Modifier.height(30.dp)) }
         }
     }
