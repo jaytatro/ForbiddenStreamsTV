@@ -99,7 +99,9 @@ object MovieMatcher {
         val src = Session.source ?: return false
         val all = try { src.allSeries() } catch (e: Throwable) { return false }
         seriesIndex = all.groupBy { key(it.name) }
-        newestSeries = newestOf(all.map { Triple(it, releaseOf(it.releaseDate, it.name), it.lastModified) }).distinctBy { key(it.name) }
+        val cats = try { src.seriesCategories().associate { it.id to it.name } } catch (e: Exception) { emptyMap() }
+        val us = all.filter { isUsa(it.name, cats[it.categoryId]) }
+        newestSeries = newestOf(us.map { Triple(it, releaseOf(it.releaseDate, it.name), it.lastModified) }).distinctBy { key(it.name) }
         true
     }
 
@@ -113,12 +115,47 @@ object MovieMatcher {
         val src = Session.source ?: return false
         val all = try { src.allVod() } catch (e: Throwable) { return false }
         index = all.groupBy { key(it.name) }
-        newest = newestOf(all.map { Triple(it, releaseOf(it.releaseDate, it.name), it.added) }).distinctBy { key(it.name) }
+        val cats = try { src.vodCategories().associate { it.id to it.name } } catch (e: Exception) { emptyMap() }
+        val us = all.filter { isUsa(it.name, cats[it.categoryId]) }
+        newest = newestOf(us.map { Triple(it, releaseOf(it.releaseDate, it.name), it.added) }).distinctBy { key(it.name) }
         true
     }
 
     /** Movies the provider added most recently ("New in HD"). */
     fun newest(limit: Int = 40): List<VodItem> = newest.take(limit)
+
+    // ---- USA only (for New Movies / New TV Shows) ----
+    private val leadTag = Regex("^\\s*[\\[|(]?\\s*([A-Za-z]{2,8}(?:-[A-Za-z]{2,4})?)\\s*[\\]|)]?\\s*[-:|]")
+    private val usTags = setOf("US", "USA", "EN", "ENG", "ENGLISH", "AMERICAN", "AM")
+    private val foreignTags = setOf(
+        "FR", "FRA", "DE", "GER", "IT", "ITA", "ES", "ESP", "SP", "PT", "POR", "BR", "AR", "ARA", "TR", "TUR", "NL", "PL", "RU", "RUS",
+        "IN", "IND", "HI", "HIN", "PK", "GR", "RO", "AL", "EX-YU", "YU", "SE", "SWE", "NO", "DK", "FI", "KR", "KOR", "JP", "JAP",
+        "CN", "CH", "LAT", "LATINO", "MX", "UK", "IR", "IL", "HU", "CZ", "SK", "BG", "HR", "RS", "UA", "VN", "TH", "PH", "ID",
+        "MY", "AF", "SO", "ET", "NG", "QC", "KU", "KURD", "PERSIAN", "SOM", "BD", "LK", "NP", "TA", "TE", "ML", "PB", "MA",
+    )
+    private val foreignWords = Regex(
+        "(?i)\\b(arab|arabic|french|fran[cç]ais|german|deutsch|turk|turkish|t[uü]rk[cç]e|hindi|bollywood|punjabi|tamil|telugu|" +
+            "malayalam|kannada|bangla|urdu|pakistan|spanish|espa[nñ]ol|latino|latin|mexic|italian|italiano|portug|brasil|brazil|" +
+            "polish|polska|dutch|nederland|russian|ukrain|korean|k-drama|chinese|mandarin|japanese|persian|farsi|kurd|somali|" +
+            "african|nollywood|filipino|tagalog|thai|vietnam|indonesia|greek|albanian|romanian|ex-yu|balkan|scandinav|nordic|" +
+            "swedish|norwegian|danish|finnish|hebrew|israel|quebec|qu[eé]b[eé]c|uk only|british)\\b",
+    )
+
+    /**
+     * True for American / English titles: a US/EN tag on the title or its category, or no
+     * foreign-language tag, word or script at all. Titles in other scripts (Arabic, Cyrillic…)
+     * and foreign categories are left out.
+     */
+    fun isUsa(name: String, category: String?): Boolean {
+        val tags = listOfNotNull(leadTag.find(name)?.groupValues?.get(1), category?.let { leadTag.find(it)?.groupValues?.get(1) })
+            .map { it.uppercase(Locale.US) }
+        if (tags.any { it in usTags }) return !tags.any { it in foreignTags }
+        if (tags.any { it in foreignTags }) return false
+        if (foreignWords.containsMatchIn(name) || (category != null && foreignWords.containsMatchIn(category))) return false
+        // Letters outside the Latin alphabet (Arabic, Cyrillic, Hindi, CJK…) = not an American title.
+        if (name.any { it.isLetter() && it.code > 0x24F }) return false
+        return true
+    }
 
     /** "2026-03-14" (or just the year from the name, "… (2026)") → "2026-03-14" / "2026". */
     private fun releaseOf(date: String?, name: String): String? =
