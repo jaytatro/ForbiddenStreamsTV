@@ -82,6 +82,10 @@ fun AppShell(onLogout: () -> Unit) {
     val activity = context as? android.app.Activity
     LaunchedEffect(Unit) { delay(150); try { tabReq[0].requestFocus() } catch (e: Exception) { } }
     LaunchedEffect(exitHint) { if (exitHint) { delay(2500); exitHint = false } }
+    // Leaving Live TV (or coming back from the player to another tab) stops the live channel.
+    LaunchedEffect(tab, PlayerHolder.fullScreen) {
+        if (tab != 1 && !PlayerHolder.fullScreen && PlayerHolder.current?.live == true) PlayerHolder.stop()
+    }
     // BACK: from a screen → the tabs; on the tabs → "click back one more time", then close.
     BackHandler {
         when {
@@ -206,7 +210,8 @@ private data class Card(
     val recent: RecentItem? = null,
     val vod: VodItem? = null,
     val series: SeriesItem? = null,
-    val backdrop: String? = null, // known up front (TMDB lists)
+    val backdrop: String? = null, // known up front
+    val channel: com.forbiddenstreams.tv.data.LiveChannel? = null,
 )
 
 /**
@@ -241,7 +246,13 @@ private fun HomeTab() {
                 progress = if (r.durationMs > 0) r.positionMs.toFloat() / r.durationMs else null, recent = r)
         }
     }
-    LaunchedEffect(shows, movies) { if (focused == null) focused = shows.firstOrNull() ?: movies.firstOrNull() }
+    // Live channels you watched lately (newest first), with what's on now.
+    val channels = remember(recents, Session.liveAll) {
+        com.forbiddenstreams.tv.data.Prefs(context).history.mapNotNull { Session.channelById(it) }.take(20).map { ch ->
+            Card("c:${ch.id}", "channel", ch.name, ch.logo, channel = ch)
+        }
+    }
+    LaunchedEffect(shows, movies, channels) { if (focused == null) focused = shows.firstOrNull() ?: movies.firstOrNull() ?: channels.firstOrNull() }
 
     Column(Modifier.fillMaxSize()) {
         Hero(focused, Modifier.fillMaxWidth().height(330.dp))
@@ -251,7 +262,8 @@ private fun HomeTab() {
         ) {
             if (shows.isNotEmpty()) item { CardRow("Continue watching", "Shows", RailIcon.SHOWS, shows, { focused = it }, { menu = it }) }
             if (movies.isNotEmpty()) item { CardRow("Continue watching", "Movies", RailIcon.MOVIES, movies, { focused = it }, { menu = it }) }
-            if (shows.isEmpty() && movies.isEmpty()) {
+            if (channels.isNotEmpty()) item { CardRow("Continue watching", "Live TV", RailIcon.CHANNELS, channels, { focused = it }, { menu = it }) }
+            if (shows.isEmpty() && movies.isEmpty() && channels.isEmpty()) {
                 item {
                     Text("Nothing here yet. TV shows and movies you start watching show up here so you can pick up where you left off.",
                         color = FS.TextDim, fontSize = 17.sp, modifier = Modifier.padding(horizontal = 36.dp, vertical = 20.dp))
@@ -283,6 +295,7 @@ private fun cardArt(c: Card?): ProviderArt.Art? {
 /** Top of Home: the highlighted title's big picture, fading into black on the left and bottom. */
 @Composable
 private fun Hero(c: Card?, modifier: Modifier) {
+    if (c?.channel != null) { ChannelHero(c.channel, modifier); return }
     val art = cardArt(c)
     Box(modifier) {
         val pic = art?.backdrop ?: c?.backdrop ?: c?.image
@@ -362,6 +375,7 @@ private fun WideCard(c: Card, onFocus: () -> Unit, onClick: () -> Unit, onLongCl
             border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, FS.Green), shape = shape)),
             scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
         ) {
+            if (c.channel != null) { ChannelCardBody(c.channel); return@Surface }
             Box(Modifier.fillMaxSize()) {
                 val pic = c.backdrop ?: art?.backdrop ?: c.image
                 if (pic != null) NetImage(pic, Modifier.fillMaxSize(), crop = true)
@@ -391,6 +405,11 @@ private fun playCard(context: android.content.Context, c: Card) {
                 kind = "movie", image = c.vod.poster, startMs = saved?.positionMs))
         }
         c.series != null -> openShow?.invoke(c.series) ?: playShow(context, c.series)
+        c.channel != null -> {
+            // Watch it; ▲ ▼ in the player go through your recently watched channels.
+            val hist = com.forbiddenstreams.tv.data.Prefs(context).history.mapNotNull { Session.channelById(it) }.ifEmpty { listOf(c.channel) }
+            playChannels(context, hist, hist.indexOfFirst { it.id == c.channel.id }.coerceAtLeast(0))
+        }
     }
 }
 
@@ -421,6 +440,23 @@ private fun CardMenu(c: Card, onClose: () -> Unit, onSeasons: (SeriesItem) -> Un
     val r = c.recent
     val opts = ArrayList<Pair<String, () -> Unit>>()
     val showOf = c.series ?: if (c.kind == "episode") MovieMatcher.findSeries(c.title) else null
+    if (c.channel != null) {
+        val ch = c.channel
+        ChoiceDialog(
+            title = ch.name, subtitle = null,
+            options = listOf(
+                "▶  Watch" to { onClose(); playCard(context, c) },
+                "✖  Remove from Continue watching" to {
+                    val p = com.forbiddenstreams.tv.data.Prefs(context)
+                    p.history = p.history.filter { it != ch.id }
+                    onClose(); toast(context, "Removed")
+                },
+                "Close" to onClose,
+            ),
+            onDismiss = onClose,
+        )
+        return
+    }
     if (r != null) {
         opts += "▶  Resume" to { onClose(); playCard(context, c) }
         opts += "⟲  Start over" to {
@@ -562,6 +598,74 @@ private fun ListDialog(
                             note?.let { Text(it, color = FS.Green, fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp)) }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+
+/** What's on a channel right now (refreshes every minute). */
+@Composable
+private fun nowOn(ch: com.forbiddenstreams.tv.data.LiveChannel): Pair<com.forbiddenstreams.tv.data.Program?, com.forbiddenstreams.tv.data.Program?> {
+    val epg by produceState(Session.cachedEpg(ch), ch.id) { value = Session.epg(ch) }
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { delay(60_000); now = System.currentTimeMillis() } }
+    val cur = epg?.firstOrNull { it.isLive(now) }
+    val next = cur?.let { c -> epg?.firstOrNull { it.start >= c.end } }
+    return cur to next
+}
+
+/** Live channel card: the channel's logo, and what's on now with how far along it is. */
+@Composable
+private fun ChannelCardBody(ch: com.forbiddenstreams.tv.data.LiveChannel) {
+    val (cur, _) = nowOn(ch)
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF0E1A10), Color(0xFF060906))))) {
+        Box(Modifier.align(Alignment.Center).padding(bottom = 30.dp).fillMaxWidth(0.62f).height(82.dp), contentAlignment = Alignment.Center) {
+            if (ch.logo != null) NetImage(ch.logo, Modifier.fillMaxSize())
+            else Text(ch.name, color = FS.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 2)
+        }
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) {
+            Text(cur?.title ?: "Live", color = FS.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (cur != null) {
+                val f = ((System.currentTimeMillis() - cur.start).toFloat() / (cur.end - cur.start)).coerceIn(0.03f, 1f)
+                Box(Modifier.padding(top = 4.dp).fillMaxWidth().height(5.dp).background(Color(0x99FFFFFF), RoundedCornerShape(3.dp))) {
+                    Box(Modifier.fillMaxWidth(f).height(5.dp).background(FS.Green, RoundedCornerShape(3.dp)))
+                }
+            }
+        }
+        Text("LIVE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.align(Alignment.TopStart).padding(8.dp).background(FS.Live, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
+    }
+}
+
+/** Top of Home for a live channel: big logo on the right, what's on now and next on the left. */
+@Composable
+private fun ChannelHero(ch: com.forbiddenstreams.tv.data.LiveChannel, modifier: Modifier) {
+    val (cur, next) = nowOn(ch)
+    Box(modifier) {
+        if (ch.logo != null) {
+            Box(Modifier.align(Alignment.CenterEnd).padding(end = 90.dp, top = 40.dp).size(width = 360.dp, height = 200.dp), contentAlignment = Alignment.Center) {
+                NetImage(ch.logo, Modifier.fillMaxSize())
+            }
+        }
+        Column(
+            Modifier.align(Alignment.BottomStart).padding(start = 36.dp, bottom = 10.dp).width(620.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("LIVE", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.background(FS.Live, RoundedCornerShape(4.dp)).padding(horizontal = 8.dp, vertical = 2.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("${ch.num} · ${ch.name}", color = FS.TextDim, fontSize = 16.sp, maxLines = 1)
+            }
+            Text(cur?.title ?: ch.name, color = FS.Text, fontSize = 40.sp, fontWeight = FontWeight.Bold, maxLines = 2,
+                overflow = TextOverflow.Ellipsis, lineHeight = 42.sp)
+            if (cur != null) {
+                Text("⏱  ${Fmt.range(cur.start, cur.end)}" + (next?.let { "      Next: ${it.title}" } ?: ""),
+                    color = FS.Text, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                cur.description.takeIf { it.isNotBlank() }?.let {
+                    Text(it, color = FS.Text, fontSize = 15.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 20.sp)
                 }
             }
         }

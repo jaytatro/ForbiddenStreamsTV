@@ -30,6 +30,9 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Color
@@ -91,6 +94,22 @@ fun LiveTvTab() {
         scope.launch { repeat(4) { delay(90); if (listFocused) return@launch; try { selReq.requestFocus() } catch (e: Exception) { } } }
     }
 
+    /** OK (or ▶) on a category: its guide, the cursor into it, and the list slides away. */
+    fun pick(g: Group) {
+        picked = g
+        pending = null
+        shown = g
+        if (g != Group.Search) prefs.lastGroup = g.key
+        listOpen = false
+        scope.launch {
+            repeat(8) {
+                delay(70)
+                if (guideFocused) return@launch
+                try { guideReq.requestFocus() } catch (e: Exception) { }
+            }
+        }
+    }
+
     Row(Modifier.fillMaxSize().padding(top = 76.dp)) {
         if (listOpen || listW > 0.dp) {
             Box(
@@ -109,22 +128,15 @@ fun LiveTvTab() {
                                 g.title, selected = g.key == picked?.key,
                                 textColor = FS.Green,
                                 onFocus = { if (listOpen) pending = g },
-                                onClick = {
-                                    picked = g
-                                    pending = null
-                                    shown = g
-                                    if (g != Group.Search) prefs.lastGroup = g.key
-                                    // Cursor into the guide, then the list slides away.
-                                    listOpen = false
-                                    scope.launch {
-                                        repeat(8) {
-                                            delay(70)
-                                            if (guideFocused) return@launch
-                                            try { guideReq.requestFocus() } catch (e: Exception) { }
-                                        }
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth().then(if (i == selIndex) Modifier.focusRequester(selReq) else Modifier),
+                                onClick = { pick(g) },
+                                modifier = Modifier.fillMaxWidth().then(if (i == selIndex) Modifier.focusRequester(selReq) else Modifier)
+                                    // ▶ on a category does the same as OK.
+                                    .onPreviewKeyEvent { ev ->
+                                        if (ev.type == KeyEventType.KeyDown && ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) {
+                                            if (ev.nativeKeyEvent.repeatCount == 0) pick(g)
+                                            true
+                                        } else false
+                                    },
                             )
                         }
                     }
