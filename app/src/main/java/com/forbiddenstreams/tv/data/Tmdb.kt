@@ -45,6 +45,83 @@ object Tmdb {
         cache.clear()
     }
 
+    /** One TMDB request; null without a key or on any error (artwork is optional). */
+    private suspend fun json(context: Context, path: String, query: String = ""): org.json.JSONObject? {
+        val key = key(context) ?: return null
+        val ck = "$path?$query"
+        jsonCache[ck]?.let { return it }
+        val bearer = key.length > 60
+        val url = BASE + path + "?language=en-US" + (if (query.isNotEmpty()) "&$query" else "") + (if (bearer) "" else "&api_key=$key")
+        val text = try {
+            withContext(Dispatchers.IO) {
+                val b = Request.Builder().url(url).header("Accept", "application/json")
+                if (bearer) b.header("Authorization", "Bearer $key")
+                Http.client.newCall(b.build()).execute().use { r -> if (r.isSuccessful) r.body?.string() else null }
+            }
+        } catch (e: Exception) { null } ?: return null
+        val j = jsonObject(text) ?: return null
+        jsonCache[ck] = j
+        return j
+    }
+    private val jsonCache = java.util.concurrent.ConcurrentHashMap<String, org.json.JSONObject>()
+
+    /** Big picture, dates and story for the Home hero and the cards. */
+    data class Art(
+        val backdrop: String?,
+        val title: String?,
+        val date: String?,
+        val runtimeMin: Int?,
+        val overview: String?,
+        val episodeName: String? = null,
+    )
+
+    suspend fun movieArt(context: Context, title: String, year: String?): Art? {
+        val q = "query=" + java.net.URLEncoder.encode(title, "UTF-8") + (year?.let { "&year=$it" } ?: "")
+        val hit = json(context, "search/movie", q)?.optJSONArray("results")?.optJSONObject(0) ?: return null
+        val id = hit.optInt("id")
+        val d = json(context, "movie/$id")
+        return Art(
+            backdrop = (d?.str("backdrop_path") ?: hit.str("backdrop_path"))?.let { IMG + "w1280" + it },
+            title = hit.str("title"),
+            date = hit.str("release_date"),
+            runtimeMin = d?.optInt("runtime")?.takeIf { it > 0 },
+            overview = hit.str("overview"),
+        )
+    }
+
+    suspend fun showId(context: Context, name: String): Int? {
+        val q = "query=" + java.net.URLEncoder.encode(name, "UTF-8")
+        return json(context, "search/tv", q)?.optJSONArray("results")?.optJSONObject(0)?.optInt("id")?.takeIf { it > 0 }
+    }
+
+    suspend fun showArt(context: Context, name: String, season: Int?, episode: Int?): Art? {
+        val id = showId(context, name) ?: return null
+        val show = json(context, "tv/$id")
+        val ep = if (season != null && episode != null) json(context, "tv/$id/season/$season/episode/$episode") else null
+        return Art(
+            backdrop = show?.str("backdrop_path")?.let { IMG + "w1280" + it },
+            title = show?.str("name"),
+            date = ep?.str("air_date") ?: show?.str("first_air_date"),
+            runtimeMin = ep?.optInt("runtime")?.takeIf { it > 0 }
+                ?: show?.optJSONArray("episode_run_time")?.optInt(0)?.takeIf { it > 0 },
+            overview = ep?.str("overview")?.takeIf { it.isNotBlank() } ?: show?.str("overview"),
+            episodeName = ep?.str("name"),
+        )
+    }
+
+    /** Popular TV shows: (name, backdrop). */
+    suspend fun popularShows(context: Context, pages: Int = 3): List<Pair<String, String?>> {
+        val out = ArrayList<Pair<String, String?>>()
+        for (p in 1..pages) {
+            val arr = json(context, "tv/popular", "page=$p")?.optJSONArray("results") ?: break
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                out += (o.str("name") ?: continue) to o.str("backdrop_path")?.let { IMG + "w780" + it }
+            }
+        }
+        return out
+    }
+
     private val cache = HashMap<String, List<TmdbMovie>>()
     private val lock = Mutex()
 
@@ -108,7 +185,29 @@ object MovieMatcher {
         return t.filter { it.isLetterOrDigit() }
     }
 
-    private fun yearOf(name: String): String? = yearRx.findAll(name).lastOrNull()?.value
+    fun yearOf(name: String): String? = yearRx.findAll(name).lastOrNull()?.value
+
+    /** "EN - The Batman (2022) [4K]" → "The Batman" (for searching TMDB). */
+    fun cleanTitle(name: String): String {
+        var t = name
+        repeat(3) { t = t.replace(tagRx, "") }
+        t = t.replace(Regex("\\(.*?\\)|\\[.*?\\]"), " ").replace(Regex("\\b(19|20)\\d{2}\\b"), " ")
+            .replace(Regex("(?i)\\b(4k|uhd|fhd|hd|sd|hevc|x265|1080p|720p|2160p|multi)\\b"), " ")
+        return t.replace(Regex("\\s+"), " ").trim(' ', '-', ':', '|')
+    }
+
+    private var seriesIndex: Map<String, List<SeriesItem>>? = null
+
+    /** Loads the provider's TV show list once. */
+    suspend fun loadSeries(): Boolean = lock.withLock {
+        if (seriesIndex != null) return true
+        val src = Session.source ?: return false
+        val all = try { src.allSeries() } catch (e: Throwable) { return false }
+        seriesIndex = all.groupBy { key(it.name) }
+        true
+    }
+
+    fun findSeries(name: String): SeriesItem? = seriesIndex?.get(key(name))?.firstOrNull()
 
     val ready: Boolean get() = index != null
 
@@ -130,5 +229,5 @@ object MovieMatcher {
     /** Movies the provider added most recently ("New in HD"). */
     fun newest(limit: Int = 40): List<VodItem> = newest.take(limit)
 
-    fun reset() { index = null; newest = emptyList() }
+    fun reset() { index = null; newest = emptyList(); seriesIndex = null }
 }
