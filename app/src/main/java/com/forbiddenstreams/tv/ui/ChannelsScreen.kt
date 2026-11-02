@@ -356,6 +356,8 @@ fun GuideView(
     onPlayChannel: ((List<LiveChannel>, Int) -> Unit)? = null,
     onPlayItem: ((PlayItem) -> Unit)? = null,
     leftOpensCategories: Boolean = false,
+    /** Lets the screen around the guide put the cursor in it. */
+    focusRequester: FocusRequester? = null,
 ) {
     val context = LocalContext.current
     val src = Session.source ?: return
@@ -363,7 +365,7 @@ fun GuideView(
     val scope = rememberCoroutineScope()
     val hState = rememberScrollState()
     val listState = rememberLazyListState()
-    val focus = remember { FocusRequester() }
+    val focus = focusRequester ?: remember { FocusRequester() }
     val topMenu = LocalTopMenuFocus.current
     val previewReq = remember { FocusRequester() }
     var previewFocused by remember { mutableStateOf(false) }
@@ -779,7 +781,9 @@ private fun GuideRow(
             Modifier.width(CH_COL.dp).fillMaxHeight().padding(1.dp)
                 .then(
                     if (overlay) Modifier.border(if (rowSel) 2.dp else 1.dp, if (rowSel) FS.Green else line, shape)
-                    else Modifier.background(if (rowSel) FS.GreenDim else FS.Panel, shape)
+                    // The highlighted channel stands out: green fill with a bright green outline.
+                    else Modifier.background(if (rowSel) FS.GreenDeep else FS.Panel, shape)
+                        .then(if (rowSel) Modifier.border(2.dp, FS.Green, shape) else Modifier)
                 )
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,

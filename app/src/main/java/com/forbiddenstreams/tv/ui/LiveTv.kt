@@ -30,6 +30,8 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -72,6 +74,7 @@ fun LiveTvTab() {
     val selReq = remember { FocusRequester() }
     val guideReq = remember { FocusRequester() }
     var listFocused by remember { mutableStateOf(false) }
+    var guideFocused by remember { mutableStateOf(false) }
 
     LaunchedEffect(pending) {
         val g = pending ?: return@LaunchedEffect
@@ -111,9 +114,15 @@ fun LiveTvTab() {
                                     pending = null
                                     shown = g
                                     if (g != Group.Search) prefs.lastGroup = g.key
-                                    // Cursor into the guide first, then the list slides away.
+                                    // Cursor into the guide, then the list slides away.
                                     listOpen = false
-                                    scope.launch { repeat(5) { delay(80); try { guideReq.requestFocus() } catch (e: Exception) { } } }
+                                    scope.launch {
+                                        repeat(8) {
+                                            delay(70)
+                                            if (guideFocused) return@launch
+                                            try { guideReq.requestFocus() } catch (e: Exception) { }
+                                        }
+                                    }
                                 },
                                 modifier = Modifier.fillMaxWidth().then(if (i == selIndex) Modifier.focusRequester(selReq) else Modifier),
                             )
@@ -125,9 +134,11 @@ fun LiveTvTab() {
 
         Box(
             Modifier.weight(1f).fillMaxHeight()
-                // While the list is open, the cursor belongs in the list (▼ from the tabs lands there).
-                .onFocusChanged { if (it.hasFocus && listOpen && !listFocused) openList() }
-                .focusRequester(guideReq),
+                .onFocusChanged {
+                    guideFocused = it.hasFocus
+                    // While the list is open, the cursor belongs in the list (▼ from the tabs lands there).
+                    if (it.hasFocus && listOpen && !listFocused) openList()
+                }
         ) {
             val g = shown
             if (g == null) {
@@ -143,6 +154,7 @@ fun LiveTvTab() {
                             channels = list,
                             startId = com.forbiddenstreams.tv.player.PlayerHolder.current?.channelId,
                             active = !listOpen,
+                            focusRequester = guideReq,
                             onCategories = { openList() },
                             onToggleFav = { ch ->
                                 val added = prefs.toggleFavorite(ch.id)
