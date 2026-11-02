@@ -305,7 +305,7 @@ private fun dayLabel(key: String): String = try {
 } catch (e: Exception) { key }
 
 @Composable
-private fun GameRow(game: Game, channels: GameChannels?, groupMissing: Boolean, loadingChannels: Boolean, fav: Boolean = false, onClick: () -> Unit) {
+internal fun GameRow(game: Game, channels: GameChannels?, groupMissing: Boolean, loadingChannels: Boolean, fav: Boolean = false, onClick: () -> Unit) {
     FocusCard(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().height(150.dp),

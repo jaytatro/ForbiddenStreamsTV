@@ -79,6 +79,7 @@ fun AppShell(onLogout: () -> Unit) {
     var tab by remember { mutableIntStateOf(0) } // always opens on Home
     var settings by remember { mutableStateOf(false) }
     var favTeams by remember { mutableStateOf(false) }
+    var sportsEnter by remember { mutableIntStateOf(0) }
     var sportsOpen by remember { mutableStateOf<Pair<com.forbiddenstreams.tv.sports.League, String>?>(null) }
     val tabReq = remember { List(TABS.size) { FocusRequester() } }
     var tabsFocused by remember { mutableStateOf(false) }
@@ -103,16 +104,19 @@ fun AppShell(onLogout: () -> Unit) {
         when (tab) {
             0 -> HomeTab(onOpenGame = { l, id -> sportsOpen = l to id; tab = 2 })
             1 -> LiveTvTab()
-            2 -> SportsTab(open = sportsOpen, onOpened = { sportsOpen = null })
+            2 -> SportsTab(open = sportsOpen, onOpened = { sportsOpen = null }, enter = sportsEnter)
             3 -> ComingNext("Movies")
             else -> ComingNext("TV Shows")
         }
         TopBar(
             tab = tab, reqs = tabReq,
             onTab = { tab = it },
+            onEnter = { if (it == 2) sportsEnter++ },
             onFocusChange = { tabsFocused = it },
             onSettings = { settings = true },
         )
+        // 1 minute before a favorite team's game: pop-up with the game; OK = its channels.
+        FavGameStartAlert(onWatch = { l, id -> sportsOpen = l to id; tab = 2 })
         if (exitHint) {
             Text(
                 "Click back one more time to close", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold,
@@ -145,7 +149,7 @@ fun AppShell(onLogout: () -> Unit) {
 /** Logo on the left, the tabs in the center, clock and ⚙ on the right. */
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
-private fun TopBar(tab: Int, reqs: List<FocusRequester>, onTab: (Int) -> Unit, onFocusChange: (Boolean) -> Unit, onSettings: () -> Unit) {
+private fun TopBar(tab: Int, reqs: List<FocusRequester>, onTab: (Int) -> Unit, onEnter: (Int) -> Unit, onFocusChange: (Boolean) -> Unit, onSettings: () -> Unit) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(20_000); now = System.currentTimeMillis() } }
     Box(Modifier.fillMaxWidth().height(70.dp).padding(horizontal = 36.dp)) {
@@ -161,7 +165,7 @@ private fun TopBar(tab: Int, reqs: List<FocusRequester>, onTab: (Int) -> Unit, o
         ) {
             TABS.forEachIndexed { i, name ->
                 Surface(
-                    onClick = { onTab(i) },
+                    onClick = { onTab(i); onEnter(i) },
                     modifier = Modifier.padding(horizontal = 4.dp).focusRequester(reqs[i]).onFocusChanged { if (it.isFocused) onTab(i) },
                     shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(50)),
                     colors = ClickableSurfaceDefaults.colors(
@@ -273,10 +277,13 @@ private fun HomeTab(onOpenGame: (com.forbiddenstreams.tv.sports.League, String) 
             Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            // A favorite team is playing right now: Live games goes first.
+            val favLive = liveGames.any { (l, g) -> com.forbiddenstreams.tv.sports.FavTeams.inGame(context, l, g) }
+            if (favLive) item { LiveGamesRow(liveGames, onOpenGame) }
             if (shows.isNotEmpty()) item { CardRow("Continue watching", "Shows", RailIcon.SHOWS, shows, { focused = it }, { menu = it }) }
             if (movies.isNotEmpty()) item { CardRow("Continue watching", "Movies", RailIcon.MOVIES, movies, { focused = it }, { menu = it }) }
             if (channels.isNotEmpty()) item { CardRow("Continue watching", "Live TV", RailIcon.CHANNELS, channels, { focused = it }, { menu = it }) }
-            if (liveGames.isNotEmpty()) item { LiveGamesRow(liveGames, onOpenGame) }
+            if (liveGames.isNotEmpty() && !favLive) item { LiveGamesRow(liveGames, onOpenGame) }
             if (shows.isEmpty() && movies.isEmpty() && channels.isEmpty() && liveGames.isEmpty()) {
                 item {
                     Text("Nothing here yet. TV shows and movies you start watching show up here so you can pick up where you left off.",

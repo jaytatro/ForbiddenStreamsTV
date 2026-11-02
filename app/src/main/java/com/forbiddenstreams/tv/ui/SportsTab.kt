@@ -49,7 +49,7 @@ import kotlinx.coroutines.delay
  * OK on a league pill switches league; OK on a game pops up the channels it's on.
  */
 @Composable
-fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}) {
+fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, enter: Int = 0) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val sp = remember { context.getSharedPreferences("forbidden_streams", android.content.Context.MODE_PRIVATE) }
     var leagueName by rememberSaveable { mutableStateOf(sp.getString("sports_league", null) ?: SPORTS_ORDER.first().name) }
@@ -59,10 +59,14 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}) {
 
     // From Home's "Live games": that league, and the game's channel pop-up.
     LaunchedEffect(open) { open?.let { leagueName = it.first.name } }
-    // Put the cursor on the picked league's pill when the tab opens.
-    LaunchedEffect(Unit) {
+    // Highlighting the Sports tab doesn't move the cursor; ▼ or OK on the tab goes in.
+    // (Coming from Home's Live games / the game alert goes straight in too.)
+    val entered = enter + (if (open != null) 1000 else 0)
+    val firstEnter = remember { enter }
+    LaunchedEffect(entered) {
+        if (open == null && enter == firstEnter) return@LaunchedEffect
         repeat(10) {
-            delay(150)
+            delay(120)
             if (inside) return@LaunchedEffect
             try { pillReq[league]?.requestFocus() } catch (e: Exception) { }
         }
