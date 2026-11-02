@@ -2,6 +2,7 @@ package com.forbiddenstreams.tv.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -54,7 +56,21 @@ fun SportsTab() {
 
     if (league != null) {
         BackHandler { lastPicked = league; leagueName = null }
-        Column(Modifier.fillMaxSize().padding(top = 76.dp)) {
+        // Put the cursor into the games right away (the tile that had it is gone now).
+        val gamesReq = remember { FocusRequester() }
+        var inGames by remember { mutableStateOf(false) }
+        LaunchedEffect(league) {
+            repeat(12) {
+                delay(150)
+                if (inGames) return@LaunchedEffect
+                try { gamesReq.requestFocus() } catch (e: Exception) { }
+            }
+        }
+        Column(
+            Modifier.fillMaxSize().padding(top = 76.dp)
+                .onFocusChanged { inGames = it.hasFocus }
+                .focusRequester(gamesReq).focusGroup(),
+        ) {
             Text("${league.icon}  ${league.label}", color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(start = 36.dp, bottom = 2.dp))
             SportsScreen(league, popup = true, onLeft = { lastPicked = league; leagueName = null })

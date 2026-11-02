@@ -35,6 +35,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -137,6 +139,7 @@ fun AppShell(onLogout: () -> Unit) {
 }
 
 /** Logo on the left, the tabs in the center, clock and ⚙ on the right. */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun TopBar(tab: Int, reqs: List<FocusRequester>, onTab: (Int) -> Unit, onFocusChange: (Boolean) -> Unit, onSettings: () -> Unit) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -144,7 +147,12 @@ private fun TopBar(tab: Int, reqs: List<FocusRequester>, onTab: (Int) -> Unit, o
     Box(Modifier.fillMaxWidth().height(70.dp).padding(horizontal = 36.dp)) {
         Image(painterResource(R.drawable.logo), null, Modifier.align(Alignment.CenterStart).size(52.dp))
         Row(
-            Modifier.align(Alignment.Center).onFocusChanged { onFocusChange(it.hasFocus) },
+            Modifier.align(Alignment.Center)
+                // Coming into the tabs from anywhere (▲, or after the highlighted thing disappears)
+                // always lands on the tab you're on, so it never jumps to another tab by itself.
+                .focusProperties { enter = { reqs[tab] } }
+                .focusGroup()
+                .onFocusChanged { onFocusChange(it.hasFocus) },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TABS.forEachIndexed { i, name ->
