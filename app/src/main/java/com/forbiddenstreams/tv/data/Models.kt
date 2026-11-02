@@ -43,7 +43,14 @@ data class VodDetails(
     val genre: String?,
     val cast: String?,
     val year: String?,
+    /** Wide background picture, release date ("2017-02-03"), length in minutes. */
+    val backdrop: String? = null,
+    val releaseDate: String? = null,
+    val minutes: Int? = null,
 )
+
+/** A show's own info from the provider. */
+data class SeriesInfo(val backdrop: String?, val plot: String?, val releaseDate: String?)
 
 data class SeriesItem(
     val id: String,
@@ -53,6 +60,9 @@ data class SeriesItem(
     val rating: String?,
     val categoryId: String,
     val directUrl: String? = null,
+    /** When the provider last updated it (seconds), for "New TV Shows". */
+    val lastModified: Long = 0L,
+    val backdrop: String? = null,
 )
 
 data class Episode(
@@ -64,6 +74,8 @@ data class Episode(
     val plot: String?,
     val image: String?,
     val directUrl: String? = null,
+    val airDate: String? = null,
+    val minutes: Int? = null,
 )
 
 sealed class LoginConfig {
@@ -95,6 +107,7 @@ interface ContentSource {
     suspend fun seriesCategories(): List<Category>
     suspend fun seriesItems(categoryId: String): List<SeriesItem>
     suspend fun episodes(series: SeriesItem): List<Episode>
+    suspend fun seriesInfo(series: SeriesItem): SeriesInfo? = null
     fun episodeUrl(episode: Episode): String
 
     /** Every show, for search. */

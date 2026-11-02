@@ -54,7 +54,7 @@ import com.forbiddenstreams.tv.data.RecentItem
 import com.forbiddenstreams.tv.data.Recents
 import com.forbiddenstreams.tv.data.SeriesItem
 import com.forbiddenstreams.tv.data.Session
-import com.forbiddenstreams.tv.data.Tmdb
+import com.forbiddenstreams.tv.data.ProviderArt
 import com.forbiddenstreams.tv.data.VodItem
 import com.forbiddenstreams.tv.player.PlayItem
 import com.forbiddenstreams.tv.player.Playback
@@ -75,8 +75,6 @@ fun AppShell(onLogout: () -> Unit) {
     val context = LocalContext.current
     var tab by remember { mutableIntStateOf(0) } // always opens on Home
     var settings by remember { mutableStateOf(false) }
-    var keyDialog by remember { mutableStateOf(false) }
-    var tmdbVersion by remember { mutableIntStateOf(0) }
     val tabReq = remember { List(TABS.size) { FocusRequester() } }
     var tabsFocused by remember { mutableStateOf(false) }
     var exitHint by remember { mutableStateOf(false) }
@@ -94,7 +92,7 @@ fun AppShell(onLogout: () -> Unit) {
 
     Box(Modifier.fillMaxSize()) {
         when (tab) {
-            0 -> HomeTab(tmdbVersion, onAddKey = { keyDialog = true })
+            0 -> HomeTab()
             1 -> ComingNext("Live TV")
             2 -> ComingNext("Sports")
             3 -> ComingNext("Movies")
@@ -119,7 +117,6 @@ fun AppShell(onLogout: () -> Unit) {
         ChoiceDialog(
             title = "Settings",
             options = listOf(
-                (if (Tmdb.key(context) == null) "🎬  Add TMDB key" else "🎬  Change TMDB key") to { settings = false; keyDialog = true },
                 "⬆  Check for updates" to {
                     settings = false
                     toast(context, "Checking for updates…")
@@ -131,7 +128,6 @@ fun AppShell(onLogout: () -> Unit) {
             onDismiss = { settings = false },
         )
     }
-    if (keyDialog) TmdbKeyDialog(onDone = { keyDialog = false; tmdbVersion++ })
     UpdatePrompt()
 }
 
@@ -219,7 +215,7 @@ private data class Card(
  * (Later: Continue watching · Live TV, then Favorite sports teams.)
  */
 @Composable
-private fun HomeTab(tmdbVersion: Int, onAddKey: () -> Unit) {
+private fun HomeTab() {
     val context = LocalContext.current
     var focused by remember { mutableStateOf<Card?>(null) }
     var menu by remember { mutableStateOf<Card?>(null) }
@@ -227,7 +223,6 @@ private fun HomeTab(tmdbVersion: Int, onAddKey: () -> Unit) {
     var seriesReady by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { libraryReady = MovieMatcher.load() }
     LaunchedEffect(Unit) { seriesReady = MovieMatcher.loadSeries() }
-    val hasKey = remember(tmdbVersion) { Tmdb.key(context) != null }
 
     val recents = remember(PlayerHolder.fullScreen, menu) { Recents.all(context) }
     val shows = remember(recents) {
@@ -249,11 +244,11 @@ private fun HomeTab(tmdbVersion: Int, onAddKey: () -> Unit) {
     val newMovies = remember(libraryReady) {
         MovieMatcher.newest(30).map { Card("v:${it.id}", "movie", MovieMatcher.cleanTitle(it.name), it.poster, year = MovieMatcher.yearOf(it.name), vod = it) }
     }
-    val popular by produceState(emptyList<Card>(), tmdbVersion, seriesReady) {
-        if (!hasKey || !seriesReady) return@produceState
-        value = Tmdb.popularShows(context).mapNotNull { (name, backdrop) ->
-            MovieMatcher.findSeries(name)?.let { s -> Card("s:${s.id}", "show", name, s.cover, series = s, backdrop = backdrop) }
-        }.distinctBy { it.key }.take(30)
+    // "New TV Shows": the shows the provider added or updated most recently.
+    val newShows = remember(seriesReady) {
+        MovieMatcher.newestSeries(30).map { s ->
+            Card("s:${s.id}", "show", MovieMatcher.cleanTitle(s.name), s.cover, series = s, backdrop = s.backdrop)
+        }
     }
     LaunchedEffect(shows, movies, newMovies) { if (focused == null) focused = shows.firstOrNull() ?: movies.firstOrNull() ?: newMovies.firstOrNull() }
 
@@ -267,34 +262,23 @@ private fun HomeTab(tmdbVersion: Int, onAddKey: () -> Unit) {
             if (movies.isNotEmpty()) item { CardRow("Continue watching", "Movies", RailIcon.MOVIES, movies, { focused = it }, { menu = it }) }
             if (newMovies.isNotEmpty()) item { CardRow("New Movies", null, RailIcon.MOVIES, newMovies, { focused = it }, { menu = it }) }
             else if (!libraryReady) item { Text("Loading new movies…", color = FS.TextDim, fontSize = 15.sp) }
-            if (popular.isNotEmpty()) item { CardRow("Popular TV Shows", null, RailIcon.SHOWS, popular, { focused = it }, { menu = it }) }
-            if (!hasKey) {
-                item {
-                    FocusCard(onClick = onAddKey, modifier = Modifier.padding(end = 36.dp)) {
-                        Column(Modifier.padding(horizontal = 22.dp, vertical = 14.dp)) {
-                            Text("🎬  Add your free TMDB key", color = FS.Green, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                            Text("Big pictures, episode details and Popular TV Shows come from The Movie Database.",
-                                color = FS.TextDim, fontSize = 14.sp)
-                        }
-                    }
-                }
-            }
+            if (newShows.isNotEmpty()) item { CardRow("New TV Shows", null, RailIcon.SHOWS, newShows, { focused = it }, { menu = it }) }
             item { Spacer(Modifier.height(30.dp)) }
         }
     }
     menu?.let { CardMenu(it, onClose = { menu = null }) }
 }
 
-/** TMDB artwork + details for a card (cached by TMDB lookups). */
+/** The provider's own picture and details for a card (cached). */
 @Composable
-private fun cardArt(c: Card?): Tmdb.Art? {
-    val context = LocalContext.current
-    val art by produceState<Tmdb.Art?>(null, c?.key) {
+private fun cardArt(c: Card?): ProviderArt.Art? {
+    val art by produceState<ProviderArt.Art?>(null, c?.key) {
         value = null
         if (c == null) return@produceState
-        value = when (c.kind) {
-            "movie" -> Tmdb.movieArt(context, c.title, c.year)
-            else -> Tmdb.showArt(context, c.title, c.season, c.episode)
+        value = when {
+            c.series != null -> ProviderArt.show(c.series)
+            c.kind == "episode" -> ProviderArt.episode(c.title, c.recent?.key?.removePrefix("e:"), c.season, c.episode)
+            else -> (c.vod?.id ?: c.recent?.key?.removePrefix("m:"))?.let { ProviderArt.movie(it, c.title) }
         }
     }
     return art
@@ -449,32 +433,4 @@ private fun CardMenu(c: Card, onClose: () -> Unit) {
         c.year,
     ).joinToString("  ·  ").ifBlank { null }
     ChoiceDialog(title = c.title, subtitle = sub, options = opts, onDismiss = onClose)
-}
-
-/** Settings › TMDB key: paste the free key from themoviedb.org (Settings › API). */
-@Composable
-private fun TmdbKeyDialog(onDone: () -> Unit) {
-    val context = LocalContext.current
-    var key by remember { mutableStateOf(Tmdb.key(context) ?: "") }
-    val box = remember { FocusRequester() }
-    LaunchedEffect(Unit) { delay(150); try { box.requestFocus() } catch (e: Exception) { } }
-    Dialog(onDismissRequest = onDone) {
-        Column(
-            Modifier.width(640.dp).background(FS.Panel, RoundedCornerShape(16.dp))
-                .border(2.dp, FS.GreenDeep, RoundedCornerShape(16.dp)).padding(28.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text("TMDB key", color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Text("Free at themoviedb.org → sign up → Settings → API. Paste the \"API Key\" (or the long \"Read Access Token\").",
-                color = FS.TextDim, fontSize = 15.sp)
-            Box(Modifier.fillMaxWidth().focusRequester(box)) {
-                FsTextField("TMDB key", key, { key = it }, androidx.compose.ui.text.input.KeyboardType.Text,
-                    done = { Tmdb.setKey(context, key); onDone() })
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Pill("Save", selected = true, onClick = { Tmdb.setKey(context, key); toast(context, "TMDB key saved"); onDone() })
-                Pill("Cancel", selected = false, onClick = onDone)
-            }
-        }
-    }
 }

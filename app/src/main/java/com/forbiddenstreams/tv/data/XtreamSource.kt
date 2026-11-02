@@ -209,11 +209,13 @@ class XtreamSource(
         }
 
     private suspend fun streamSeries(url: String, categoryId: String): List<SeriesItem> =
-        streamObjects(url, setOf("series_id", "name", "cover", "plot", "rating", "category_id")) { o ->
+        streamObjects(url, setOf("series_id", "name", "cover", "plot", "rating", "category_id", "last_modified", "backdrop_path")) { o ->
             val id = o["series_id"] ?: return@streamObjects null
             SeriesItem(
                 id = id, name = o["name"] ?: "Show", cover = o["cover"], plot = o["plot"]?.take(400),
                 rating = o["rating"], categoryId = o["category_id"] ?: categoryId,
+                lastModified = o["last_modified"]?.toLongOrNull() ?: 0L,
+                backdrop = o["backdrop_path"]?.takeIf { it.startsWith("http") },
             )
         }
 
@@ -236,6 +238,15 @@ class XtreamSource(
                             android.util.JsonToken.STRING, android.util.JsonToken.NUMBER -> r.nextString()
                             android.util.JsonToken.BOOLEAN -> r.nextBoolean().toString()
                             android.util.JsonToken.NULL -> { r.nextNull(); null }
+                            android.util.JsonToken.BEGIN_ARRAY -> {
+                                var first: String? = null
+                                r.beginArray()
+                                while (r.hasNext()) {
+                                    if (first == null && r.peek() == android.util.JsonToken.STRING) first = r.nextString() else r.skipValue()
+                                }
+                                r.endArray()
+                                first
+                            }
                             else -> { r.skipValue(); null }
                         }
                         val t = v?.trim()
@@ -282,7 +293,25 @@ class XtreamSource(
             genre = info.str("genre"),
             cast = info.str("cast") ?: info.str("actors"),
             year = info.str("releasedate")?.take(4) ?: info.str("year"),
+            backdrop = firstPic(info.opt("backdrop_path")),
+            releaseDate = info.str("releasedate") ?: info.str("release_date"),
+            minutes = minutesOf(info),
         )
+    }
+
+    /** backdrop_path can be a list of links or one link. */
+    private fun firstPic(v: Any?): String? = when (v) {
+        is org.json.JSONArray -> (0 until v.length()).asSequence().map { v.optString(it) }.firstOrNull { it.startsWith("http") }
+        is String -> v.takeIf { it.startsWith("http") }
+        else -> null
+    }
+
+    /** "duration_secs": 5400 or "duration": "01:30:00" → 90. */
+    private fun minutesOf(info: org.json.JSONObject): Int? {
+        info.optInt("duration_secs", 0).takeIf { it > 0 }?.let { return it / 60 }
+        val d = info.str("duration") ?: return null
+        val p = d.split(":").mapNotNull { it.trim().toIntOrNull() }
+        return when (p.size) { 3 -> p[0] * 60 + p[1]; 2 -> p[0]; 1 -> p[0].takeIf { it > 0 }; else -> null }
     }
 
     override fun vodUrl(item: VodItem): String = "$base/movie/$user/$pass/${item.id}.${item.ext}"
@@ -317,8 +346,22 @@ class XtreamSource(
         return out
     }
 
+    private val seriesInfoCache = java.util.concurrent.ConcurrentHashMap<String, org.json.JSONObject>()
+
+    private suspend fun seriesJson(series: SeriesItem): org.json.JSONObject? =
+        seriesInfoCache[series.id] ?: jsonObject(Http.get(api("get_series_info", "&series_id=${series.id}")))?.also { seriesInfoCache[series.id] = it }
+
+    override suspend fun seriesInfo(series: SeriesItem): SeriesInfo? {
+        val info = seriesJson(series)?.optJSONObject("info") ?: return null
+        return SeriesInfo(
+            backdrop = firstPic(info.opt("backdrop_path")),
+            plot = info.str("plot"),
+            releaseDate = info.str("releaseDate") ?: info.str("release_date"),
+        )
+    }
+
     override suspend fun episodes(series: SeriesItem): List<Episode> {
-        val j = jsonObject(Http.get(api("get_series_info", "&series_id=${series.id}"))) ?: return emptyList()
+        val j = seriesJson(series) ?: return emptyList()
         val eps = j.optJSONObject("episodes") ?: return emptyList()
         val out = ArrayList<Episode>()
         val keys = eps.keys()
@@ -337,6 +380,8 @@ class XtreamSource(
                     ext = o.str("container_extension") ?: "mp4",
                     plot = info?.str("plot"),
                     image = info?.str("movie_image"),
+                    airDate = info?.str("releasedate") ?: info?.str("air_date"),
+                    minutes = info?.let { minutesOf(it) },
                 )
             }
         }
