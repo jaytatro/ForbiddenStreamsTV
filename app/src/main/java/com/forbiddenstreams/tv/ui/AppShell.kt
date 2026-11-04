@@ -171,7 +171,7 @@ private fun TopBar(tab: Int, reqs: List<FocusRequester>, onTab: (Int) -> Unit, o
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(20_000); now = System.currentTimeMillis() } }
     Box(Modifier.fillMaxWidth().height(70.dp).padding(horizontal = 36.dp)) {
-        Image(painterResource(R.drawable.logo), null, Modifier.align(Alignment.CenterStart).size(52.dp))
+        Image(painterResource(R.drawable.logo), null, Modifier.align(Alignment.CenterStart).size(66.dp))
         Row(
             Modifier.align(Alignment.Center)
                 // Coming into the tabs from anywhere (▲, or after the highlighted thing disappears)
