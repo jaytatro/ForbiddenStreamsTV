@@ -86,6 +86,9 @@ fun AppShell(onLogout: () -> Unit) {
     var exitHint by remember { mutableStateOf(false) }
     val activity = context as? android.app.Activity
     LaunchedEffect(Unit) { delay(150); try { tabReq[0].requestFocus() } catch (e: Exception) { } }
+    // Movie and show categories load in the background so those tabs open fast.
+    LaunchedEffect(Session.source) { delay(4000); prefetchLibrary() }
+    var crashText by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(exitHint) { if (exitHint) { delay(2500); exitHint = false } }
     // Leaving Live TV (or coming back from the player to another tab) stops the live channel.
     LaunchedEffect(tab, PlayerHolder.fullScreen) {
@@ -137,6 +140,10 @@ fun AppShell(onLogout: () -> Unit) {
                     UpdateState.check(context, kotlinx.coroutines.MainScope(), manual = true)
                 },
                 "⭐  Favorite teams" to { settings = false; favTeams = true },
+                "🛠  Last crash report" to {
+                    settings = false
+                    crashText = java.io.File(context.filesDir, "last_crash.txt").takeIf { it.exists() }?.readText() ?: "No crashes saved."
+                },
                 "⎋  Log out" to { settings = false; onLogout() },
                 "Close" to { settings = false },
             ),
@@ -144,6 +151,11 @@ fun AppShell(onLogout: () -> Unit) {
         )
     }
     if (favTeams) FavoriteTeamsDialog(onClose = { favTeams = false })
+    crashText?.let { t ->
+        // Shown so it can be photographed and sent for fixing.
+        ChoiceDialog(title = "Last crash report", subtitle = t.lines().take(18).joinToString("\n"),
+            options = listOf("Close" to { crashText = null }), onDismiss = { crashText = null })
+    }
     UpdatePrompt()
 }
 

@@ -82,10 +82,13 @@ object MovieMatcher {
     fun cleanTitle(name: String): String {
         var t = name
         repeat(3) { t = t.replace(tagRx, "") }
-        t = t.replace(Regex("\\(.*?\\)|\\[.*?\\]"), " ").replace(Regex("\\b(19|20)\\d{2}\\b"), " ")
-            .replace(Regex("(?i)\\b(4k|uhd|fhd|hd|sd|hevc|x265|1080p|720p|2160p|multi)\\b"), " ")
-        return t.replace(Regex("\\s+"), " ").trim(' ', '-', ':', '|')
+        t = t.replace(bracketRx, " ").replace(yearWordRx, " ").replace(qualityRx, " ")
+        return t.replace(spaceRx, " ").trim(' ', '-', ':', '|')
     }
+    private val bracketRx = Regex("\\(.*?\\)|\\[.*?\\]")
+    private val yearWordRx = Regex("\\b(19|20)\\d{2}\\b")
+    private val qualityRx = Regex("(?i)\\b(4k|uhd|fhd|hd|sd|hevc|x265|1080p|720p|2160p|multi)\\b")
+    private val spaceRx = Regex("\\s+")
 
     private var seriesIndex: Map<String, List<SeriesItem>>? = null
     private var newestSeries: List<SeriesItem> = emptyList()

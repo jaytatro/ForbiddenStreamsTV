@@ -85,7 +85,7 @@ class MainActivity : ComponentActivity() {
                         AppShell(onLogout = {
                             PlayerHolder.stop()
                             Session.logout(context)
-                            com.forbiddenstreams.tv.data.MovieMatcher.reset()
+                            com.forbiddenstreams.tv.data.MovieMatcher.reset(); com.forbiddenstreams.tv.ui.resetLibrary()
                             loggedIn = false
                         })
                     }

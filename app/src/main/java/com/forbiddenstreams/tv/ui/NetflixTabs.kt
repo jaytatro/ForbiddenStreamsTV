@@ -58,6 +58,7 @@ import com.forbiddenstreams.tv.player.PlayItem
 import com.forbiddenstreams.tv.player.Playback
 import com.forbiddenstreams.tv.player.PlayerHolder
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.withPermit
 
 /** One poster in a row: a movie, a show, or something you're part-way through. */
 private data class Tile(
@@ -82,29 +83,82 @@ private class Shelf(val title: String, tiles: List<Tile>) { val tiles = tiles.di
  * then one row per provider category. OK on a poster = its page (Play / Resume / Start over /
  * Trailer; shows: seasons and episodes; More like this).
  */
+/**
+ * The movie / show lists, kept for the whole session so the tabs open instantly the second time.
+ * Fast start: only the category list is downloaded first; each row downloads its own (small)
+ * category when it comes on screen. The big full list (for "Recently added") loads afterwards
+ * in the background. Heavy sorting and name cleaning run off the screen thread.
+ */
+private object VodLib {
+    val cats = HashMap<Boolean, List<com.forbiddenstreams.tv.data.Category>>()
+    val rows = HashMap<String, List<Tile>>()
+    val recent = HashMap<Boolean, List<Tile>>()
+    private val gate = kotlinx.coroutines.sync.Semaphore(3)
+
+    fun reset() { cats.clear(); rows.clear(); recent.clear() }
+
+    fun tileOf(v: VodItem) = Tile("m:${v.id}", MovieMatcher.cleanTitle(v.name), v.poster, vod = v)
+    fun tileOf(s: SeriesItem) = Tile("s:${s.id}", MovieMatcher.cleanTitle(s.name), s.cover, series = s)
+
+    suspend fun cats(movies: Boolean): List<com.forbiddenstreams.tv.data.Category> {
+        cats[movies]?.let { return it }
+        val src = Session.source ?: return emptyList()
+        val c = (if (movies) src.vodCategories() else src.seriesCategories()).distinctBy { it.id }
+        cats[movies] = c
+        return c
+    }
+
+    suspend fun row(movies: Boolean, catId: String): List<Tile> {
+        val key = (if (movies) "m:" else "s:") + catId
+        rows[key]?.let { return it }
+        val src = Session.source ?: return emptyList()
+        val out = gate.withPermit {
+            rows[key] ?: try {
+                if (movies) { val l = src.vodItems(catId); kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { l.map { tileOf(it) }.distinctBy { it.key } } }
+                else { val l = src.seriesItems(catId); kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { l.map { tileOf(it) }.distinctBy { it.key } } }
+            } catch (e: Exception) { emptyList() }
+        }
+        rows[key] = out
+        return out
+    }
+
+    suspend fun recent(movies: Boolean): List<Tile> {
+        recent[movies]?.let { return it }
+        val src = Session.source ?: return emptyList()
+        val out = try {
+            if (movies) {
+                val all = src.allVod()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    all.filter { it.added > 0 }.sortedByDescending { it.added }.take(40).map { tileOf(it) }.distinctBy { it.key }
+                }
+            } else {
+                val all = src.allSeries()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    all.filter { it.lastModified > 0 }.sortedByDescending { it.lastModified }.take(40).map { tileOf(it) }.distinctBy { it.key }
+                }
+            }
+        } catch (e: Throwable) { emptyList() } // includes running out of memory on huge lists
+        recent[movies] = out
+        return out
+    }
+}
+
+/** Starts loading the movie and show categories in the background (called once the app is up). */
+suspend fun prefetchLibrary() {
+    try { VodLib.cats(true); VodLib.cats(false) } catch (e: Exception) { }
+}
+
+fun resetLibrary() = VodLib.reset()
+
 @Composable
 private fun BrowseTab(movies: Boolean) {
     val context = LocalContext.current
     val tick = PlayerHolder.fullScreen // refresh "Continue watching" after watching
-    val shelves by produceState<List<Shelf>?>(null, movies, Session.source) {
-        val src = Session.source ?: return@produceState
-        value = try {
-            if (movies) {
-                val cats = src.vodCategories()
-                val all = src.allVod()
-                val byCat = all.groupBy { it.categoryId }
-                fun t(v: VodItem) = Tile("m:${v.id}", MovieMatcher.cleanTitle(v.name), v.poster, vod = v)
-                listOf(Shelf("Recently added", all.filter { it.added > 0 }.sortedByDescending { it.added }.take(40).map(::t))) +
-                    cats.mapNotNull { c -> byCat[c.id]?.takeIf { it.isNotEmpty() }?.let { Shelf(c.name, it.map(::t)) } }
-            } else {
-                val cats = src.seriesCategories()
-                val all = src.allSeries()
-                val byCat = all.groupBy { it.categoryId }
-                fun t(s: SeriesItem) = Tile("s:${s.id}", MovieMatcher.cleanTitle(s.name), s.cover, series = s)
-                listOf(Shelf("Recently updated", all.filter { it.lastModified > 0 }.sortedByDescending { it.lastModified }.take(40).map(::t))) +
-                    cats.mapNotNull { c -> byCat[c.id]?.takeIf { it.isNotEmpty() }?.let { Shelf(c.name, it.map(::t)) } }
-            }.filter { it.tiles.isNotEmpty() }
-        } catch (e: Exception) { emptyList() }
+    val cats by produceState(VodLib.cats[movies], movies, Session.source) {
+        if (value == null) value = try { VodLib.cats(movies) } catch (e: Exception) { emptyList() }
+    }
+    val recentRow by produceState(VodLib.recent[movies], movies, Session.source) {
+        if (value == null) { delay(2500); value = VodLib.recent(movies) }
     }
     val continueRow = remember(movies, tick) {
         val r = Recents.all(context, if (movies) "movie" else "episode")
@@ -118,7 +172,7 @@ private fun BrowseTab(movies: Boolean) {
 
     var focused by remember { mutableStateOf<Tile?>(null) }
     var open by remember { mutableStateOf<Tile?>(null) }
-    val list = shelves
+    val list = cats
 
     Column(Modifier.fillMaxSize().background(Color.Black)) {
         BigPicture(focused, movies, Modifier.fillMaxWidth().height(360.dp))
@@ -134,21 +188,44 @@ private fun BrowseTab(movies: Boolean) {
                 if (continueRow.isNotEmpty()) item(key = "continue") {
                     PosterShelf(Shelf("Continue watching", continueRow), onFocus = { focused = it }, onOpen = { open = it })
                 }
-                itemsIndexed(list, key = { i, s -> "$i:${s.title}" }) { _, s ->
-                    PosterShelf(s, onFocus = { focused = it }, onOpen = { open = it })
+                item(key = "recent") {
+                    val r = recentRow
+                    if (r == null) LoadingShelf(if (movies) "Recently added" else "Recently updated")
+                    else if (r.isNotEmpty()) PosterShelf(Shelf(if (movies) "Recently added" else "Recently updated", r),
+                        onFocus = { focused = it }, onOpen = { open = it })
+                }
+                itemsIndexed(list, key = { i, c -> "$i:${c.id}" }) { _, c ->
+                    // Each row downloads its own category when it comes on screen.
+                    val tiles by produceState(VodLib.rows[(if (movies) "m:" else "s:") + c.id], c.id) {
+                        if (value == null) value = VodLib.row(movies, c.id)
+                    }
+                    val t = tiles
+                    if (t == null) LoadingShelf(c.name)
+                    else if (t.isNotEmpty()) PosterShelf(Shelf(c.name, t), onFocus = { focused = it }, onOpen = { open = it })
                 }
             }
         }
     }
-    LaunchedEffect(list, continueRow) { if (focused == null) focused = continueRow.firstOrNull() ?: list?.firstOrNull()?.tiles?.firstOrNull() }
+    LaunchedEffect(continueRow, recentRow) { if (focused == null) focused = continueRow.firstOrNull() ?: recentRow?.firstOrNull() }
 
     open?.let { t ->
-        val sameCat = remember(t.key, list) {
-            val cat = t.vod?.categoryId ?: t.series?.categoryId
-            list.orEmpty().flatMap { it.tiles }.filter { x -> cat != null && (x.vod?.categoryId ?: x.series?.categoryId) == cat && x.key != t.key }
-                .distinctBy { it.key }.take(30)
+        val cat = t.vod?.categoryId ?: t.series?.categoryId
+        val more = remember(t.key) {
+            VodLib.rows[(if (movies) "m:" else "s:") + cat].orEmpty().filter { it.key != t.key }.take(30)
         }
-        TitlePage(t, movies, sameCat, onOpen = { open = it }, onClose = { open = null })
+        TitlePage(t, movies, more, onOpen = { open = it }, onClose = { open = null })
+    }
+}
+
+/** A row's place while it downloads: its name and grey poster shapes (so the screen doesn't jump). */
+@Composable
+private fun LoadingShelf(title: String) {
+    Column {
+        Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 40.dp, top = 4.dp))
+        Row(Modifier.padding(horizontal = 40.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            repeat(7) { Box(Modifier.width(140.dp).height(210.dp).background(FS.Panel2, RoundedCornerShape(6.dp))) }
+        }
     }
 }
 
@@ -360,7 +437,7 @@ private fun EpisodeShelf(series: SeriesItem, all: List<Episode>) {
         }
         val inSeason = sorted.filter { it.season == season }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(horizontal = 48.dp, vertical = 10.dp)) {
-            itemsIndexed(inSeason, key = { _, e -> e.id }) { _, e ->
+            itemsIndexed(inSeason, key = { i, e -> "$i:${e.id}" }) { _, e ->
                 val saved = remember(e.id, PlayerHolder.fullScreen) { Recents.get(context, "e:${e.id}") }
                 val shape = RoundedCornerShape(6.dp)
                 Column(Modifier.width(280.dp)) {
