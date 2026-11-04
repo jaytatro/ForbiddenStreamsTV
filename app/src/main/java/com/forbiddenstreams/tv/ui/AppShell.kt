@@ -106,8 +106,8 @@ fun AppShell(onLogout: () -> Unit) {
             1 -> LiveChannelsTab()
             2 -> LiveTvTab()
             3 -> SportsTab(open = sportsOpen, onOpened = { sportsOpen = null }, enter = sportsEnter)
-            4 -> ComingNext("Movies")
-            else -> ComingNext("TV Shows")
+            4 -> MoviesTab()
+            else -> ShowsTab()
         }
         TopBar(
             tab = tab, reqs = tabReq,
@@ -505,7 +505,7 @@ private fun CardMenu(c: Card, onClose: () -> Unit, onSeasons: (SeriesItem) -> Un
 
 
 /** Opens the movie's trailer in YouTube: the provider's trailer if it has one, else a YouTube search. */
-private fun openTrailer(context: android.content.Context, vodId: String, title: String, year: String?) {
+internal fun openTrailer(context: android.content.Context, vodId: String, title: String, year: String?) {
     val src = Session.source ?: return
     kotlinx.coroutines.MainScope().launch {
         val t = try { src.vodDetails(VodItem(vodId, title, null, null, "", "mp4"))?.trailer } catch (e: Exception) { null }
