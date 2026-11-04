@@ -294,7 +294,7 @@ private fun HomeTab(onOpenGame: (com.forbiddenstreams.tv.sports.League, String) 
     val liveGames = liveGamesNow()
     var gamePick by remember { mutableStateOf<Pair<com.forbiddenstreams.tv.sports.League, com.forbiddenstreams.tv.sports.Game>?>(null) }
     gamePick?.let { (l, g) -> GameChannelsDialog(l, g, onClose = { gamePick = null }) }
-    LaunchedEffect(shows, movies, channels) { if (focused == null) focused = shows.firstOrNull() ?: movies.firstOrNull() ?: channels.firstOrNull() }
+    LaunchedEffect(shows, movies, channels) { if (focused == null) focused = channels.firstOrNull() ?: shows.firstOrNull() ?: movies.firstOrNull() }
 
     Column(Modifier.fillMaxSize()) {
         Hero(focused, Modifier.fillMaxWidth().height(330.dp))
@@ -302,11 +302,17 @@ private fun HomeTab(onOpenGame: (com.forbiddenstreams.tv.sports.League, String) 
             Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            if (shows.isNotEmpty()) item { CardRow("Continue watching", "Shows", RailIcon.SHOWS, shows, { focused = it }, { menu = it }) }
-            if (movies.isNotEmpty()) item { CardRow("Continue watching", "Movies", RailIcon.MOVIES, movies, { focused = it }, { menu = it }) }
             if (channels.isNotEmpty()) item { CardRow("Continue watching", "Live TV", RailIcon.CHANNELS, channels, { focused = it }, { menu = it }) }
             // Under the recent channels; OK on a game = its channels, right here on Home.
             if (liveGames.isNotEmpty()) item { LiveGamesRow(liveGames) { l, id -> gamePick = liveGames.firstOrNull { it.first == l && it.second.id == id } } }
+            // Keep watching (movies and shows you stopped part-way) under everything else.
+            if (shows.isNotEmpty() || movies.isNotEmpty()) item {
+                KeepWatchingRow(
+                    refresh = recents,
+                    onFocusKey = { k -> focused = (shows + movies).firstOrNull { it.key == k } ?: focused },
+                    onMore = { k -> (shows + movies).firstOrNull { it.key == k }?.let { menu = it } },
+                )
+            }
             if (shows.isEmpty() && movies.isEmpty() && channels.isEmpty() && liveGames.isEmpty()) {
                 item {
                     Text("Nothing here yet. TV shows and movies you start watching show up here so you can pick up where you left off.",

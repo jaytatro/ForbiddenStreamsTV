@@ -164,15 +164,9 @@ private fun BrowseTab(movies: Boolean) {
     val recentRow by produceState(VodLib.recent[movies], movies, Session.source) {
         if (value == null) { delay(2500); value = VodLib.recent(movies) }
     }
-    val continueRow = remember(movies, tick) {
-        val r = Recents.all(context, if (movies) "movie" else "episode")
-        val list = if (movies) r else r.distinctBy { it.title.substringBefore(" · ") }
-        list.map { x ->
-            Tile(x.key, if (movies) MovieMatcher.cleanTitle(x.title) else x.title.substringBefore(" · "), x.image, recent = x,
-                progress = if (x.durationMs > 0) x.positionMs.toFloat() / x.durationMs else null,
-                sub = if (movies) null else Regex("S\\d+E\\d+").find(x.title)?.value)
-        }
-    }
+    var ask by remember { mutableStateOf<RecentItem?>(null) }
+    val continueRow = remember(movies, tick, ask) { keepTiles(context, movies) }
+    ask?.let { r -> ResumeReplayDialog(r, onClose = { ask = null }) }
 
     var focused by remember { mutableStateOf<Tile?>(null) }
     var open by remember { mutableStateOf<Tile?>(null) }
@@ -217,7 +211,7 @@ private fun BrowseTab(movies: Boolean) {
                 contentPadding = PaddingValues(bottom = 40.dp),
             ) {
                 if (continueRow.isNotEmpty()) item(key = "continue") {
-                    PosterShelf(Shelf("Continue watching", continueRow), onFocus = { focused = it }, onOpen = { open = it })
+                    PosterShelf(Shelf("Keep watching", continueRow), onFocus = { focused = it }, onOpen = { open = it }, onRecent = { ask = it })
                 }
                 item(key = "recent") {
                     val r = recentRow
@@ -264,7 +258,7 @@ private fun LoadingShelf(title: String) {
 /** Row title + a sideways row of posters. */
 @Composable
 private fun PosterShelf(s: Shelf, onFocus: (Tile) -> Unit, onOpen: (Tile) -> Unit, firstReq: FocusRequester? = null, onFirstAttached: (Boolean) -> Unit = {},
-    rowState: androidx.compose.foundation.lazy.LazyListState? = null) {
+    rowState: androidx.compose.foundation.lazy.LazyListState? = null, onRecent: ((RecentItem) -> Unit)? = null) {
     val context = LocalContext.current
     Column {
         Text(s.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold,
@@ -280,7 +274,7 @@ private fun PosterShelf(s: Shelf, onFocus: (Tile) -> Unit, onOpen: (Tile) -> Uni
                 }
                 PosterCard(t, onFocus = { onFocus(t) },
                     modifier = if (i == 0 && firstReq != null) Modifier.focusRequester(firstReq) else Modifier,
-                    onClick = { if (t.recent != null) resume(context, t.recent) else onOpen(t) },
+                    onClick = { if (t.recent != null) (onRecent ?: { r -> resume(context, r) })(t.recent) else onOpen(t) },
                     onLongClick = { onOpen(t) })
             }
         }
@@ -517,4 +511,54 @@ private fun playEpisodes(context: android.content.Context, s: SeriesItem, sorted
     }
     val i = sorted.indexOf(from).coerceAtLeast(0)
     Playback.start(context, items.mapIndexed { j, it -> if (j == i && startMs != null) it.copy(startMs = startMs) else it }, i)
+}
+
+
+/** Movies (true), episodes (false) or both (null) you stopped part-way, newest first; one per show. */
+private fun keepTiles(context: android.content.Context, movies: Boolean?): List<Tile> {
+    val all = Recents.all(context, when (movies) { true -> "movie"; false -> "episode"; null -> null })
+        .filter { it.kind == "movie" || it.kind == "episode" }
+        .sortedByDescending { it.updatedAt }
+        .distinctBy { if (it.kind == "episode") "show:" + it.title.substringBefore(" · ") else it.key }
+    return all.map { x ->
+        val ep = x.kind == "episode"
+        Tile(x.key, if (ep) x.title.substringBefore(" · ") else MovieMatcher.cleanTitle(x.title), x.image, recent = x,
+            progress = if (x.durationMs > 0) x.positionMs.toFloat() / x.durationMs else null,
+            sub = if (ep) Regex("S\\d+E\\d+").find(x.title)?.value else null)
+    }
+}
+
+/** OK on something in Keep watching: Resume (where you stopped) or Replay (from the start). */
+@Composable
+fun ResumeReplayDialog(r: RecentItem, onClose: () -> Unit) {
+    val context = LocalContext.current
+    val left = if (r.durationMs > 0) ((r.durationMs - r.positionMs) / 60_000).coerceAtLeast(1) else null
+    val name = if (r.kind == "episode") r.title.replace(" · ", "  ·  ") else MovieMatcher.cleanTitle(r.title)
+    ChoiceDialog(
+        title = name,
+        subtitle = listOfNotNull(r.subtitle?.takeIf { r.kind == "episode" }, left?.let { "$it min left" }).joinToString("  ·  ").ifBlank { null },
+        options = listOf(
+            "▶  Resume" to { onClose(); resume(context, r) },
+            "⟲  Replay" to {
+                onClose()
+                Playback.one(context, PlayItem(r.title, r.url, live = false, subtitle = r.subtitle, resumeKey = r.key, kind = r.kind, image = r.image))
+            },
+            "Close" to onClose,
+        ),
+        onDismiss = onClose,
+    )
+}
+
+/**
+ * Home's Keep watching row: movies and episodes you stopped part-way (posters with the green bar).
+ * OK = Resume / Replay pop-up. Hold OK = [onMore] (Home's options).
+ */
+@Composable
+fun KeepWatchingRow(refresh: Any?, onFocusKey: (String) -> Unit, onMore: (String) -> Unit) {
+    val context = LocalContext.current
+    var ask by remember { mutableStateOf<RecentItem?>(null) }
+    val tiles = remember(refresh, ask, PlayerHolder.fullScreen) { keepTiles(context, null) }
+    if (tiles.isEmpty()) return
+    PosterShelf(Shelf("Keep watching", tiles), onFocus = { onFocusKey(it.key) }, onOpen = { onMore(it.key) }, onRecent = { ask = it })
+    ask?.let { r -> ResumeReplayDialog(r, onClose = { ask = null }) }
 }
