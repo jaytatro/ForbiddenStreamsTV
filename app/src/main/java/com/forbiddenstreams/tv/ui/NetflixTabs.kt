@@ -202,7 +202,7 @@ private fun BrowseTab(movies: Boolean) {
     val list = cats
 
     Column(Modifier.fillMaxSize().background(Color.Black)) {
-        BigPicture(focused, movies, Modifier.fillMaxWidth().height(360.dp))
+        BigPicture(focused, movies, Modifier.fillMaxWidth().height(330.dp))
         when {
             list == null -> LoadingBox(if (movies) "Loading movies" else "Loading TV shows")
             list.isEmpty() && continueRow.isEmpty() -> MessageBox(
@@ -255,8 +255,8 @@ private fun LoadingShelf(title: String) {
     Column {
         Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = 40.dp, top = 4.dp))
-        Row(Modifier.padding(horizontal = 40.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            repeat(7) { Box(Modifier.width(140.dp).height(210.dp).background(FS.Panel2, RoundedCornerShape(6.dp))) }
+        Row(Modifier.padding(horizontal = 40.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            repeat(7) { Box(Modifier.width(120.dp).height(180.dp).background(FS.Panel2, RoundedCornerShape(6.dp))) }
         }
     }
 }
@@ -272,7 +272,7 @@ private fun PosterShelf(s: Shelf, onFocus: (Tile) -> Unit, onOpen: (Tile) -> Uni
         LazyRow(
             state = rowState ?: androidx.compose.foundation.lazy.rememberLazyListState(),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(horizontal = 40.dp, vertical = 12.dp),
+            contentPadding = PaddingValues(horizontal = 40.dp, vertical = 16.dp),
         ) {
             itemsIndexed(s.tiles, key = { _, t -> t.key }) { i, t ->
                 if (i == 0 && firstReq != null) {
@@ -292,7 +292,7 @@ private fun PosterCard(t: Tile, onFocus: () -> Unit, onClick: () -> Unit, onLong
     val shape = RoundedCornerShape(6.dp)
     Surface(
         onClick = onClick, onLongClick = onLongClick,
-        modifier = modifier.width(140.dp).height(210.dp).onFocusChanged { if (it.isFocused) onFocus() },
+        modifier = modifier.width(120.dp).height(180.dp).onFocusChanged { if (it.isFocused) onFocus() },
         shape = ClickableSurfaceDefaults.shape(shape = shape),
         colors = ClickableSurfaceDefaults.colors(containerColor = FS.Panel2, focusedContainerColor = FS.Panel2),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, FS.Green), shape = shape)),
@@ -302,7 +302,7 @@ private fun PosterCard(t: Tile, onFocus: () -> Unit, onClick: () -> Unit, onLong
             // The name shows until the picture loads (or when there's no picture).
             Text(t.title, color = FS.TextDim, fontSize = 14.sp, maxLines = 4, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.align(Alignment.Center).padding(10.dp))
-            NetImage(t.poster, Modifier.fillMaxSize(), crop = true)
+            NetImage(t.poster, Modifier.fillMaxSize(), crop = false)
             t.sub?.let {
                 Text(it, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.align(Alignment.TopStart).padding(6.dp)
