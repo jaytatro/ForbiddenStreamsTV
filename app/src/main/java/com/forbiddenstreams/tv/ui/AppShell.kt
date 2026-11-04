@@ -68,7 +68,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 /** Tabs across the top, left to right, centered. */
-private val TABS = listOf("Home", "Live TV", "Sports", "Movies", "TV Shows")
+private val TABS = listOf("Home", "Live TV", "TV Guide", "Sports", "Movies", "TV Shows")
 
 /**
  * The new app (started from scratch, Nov 1 2026): tabs centered across the top, always opens on Home.
@@ -89,7 +89,7 @@ fun AppShell(onLogout: () -> Unit) {
     LaunchedEffect(exitHint) { if (exitHint) { delay(2500); exitHint = false } }
     // Leaving Live TV (or coming back from the player to another tab) stops the live channel.
     LaunchedEffect(tab, PlayerHolder.fullScreen) {
-        if (tab != 1 && !PlayerHolder.fullScreen && PlayerHolder.current?.live == true) PlayerHolder.stop()
+        if (tab != 1 && tab != 2 && !PlayerHolder.fullScreen && PlayerHolder.current?.live == true) PlayerHolder.stop()
     }
     // BACK: from a screen → the tabs; on the tabs → "click back one more time", then close.
     BackHandler {
@@ -102,21 +102,22 @@ fun AppShell(onLogout: () -> Unit) {
 
     Box(Modifier.fillMaxSize()) {
         when (tab) {
-            0 -> HomeTab(onOpenGame = { l, id -> sportsOpen = l to id; tab = 2 })
-            1 -> LiveTvTab()
-            2 -> SportsTab(open = sportsOpen, onOpened = { sportsOpen = null }, enter = sportsEnter)
-            3 -> ComingNext("Movies")
+            0 -> HomeTab(onOpenGame = { l, id -> sportsOpen = l to id; tab = 3 })
+            1 -> LiveChannelsTab()
+            2 -> LiveTvTab()
+            3 -> SportsTab(open = sportsOpen, onOpened = { sportsOpen = null }, enter = sportsEnter)
+            4 -> ComingNext("Movies")
             else -> ComingNext("TV Shows")
         }
         TopBar(
             tab = tab, reqs = tabReq,
             onTab = { tab = it },
-            onEnter = { if (it == 2) sportsEnter++ },
+            onEnter = { if (it == 3) sportsEnter++ },
             onFocusChange = { tabsFocused = it },
             onSettings = { settings = true },
         )
         // 1 minute before a favorite team's game: pop-up with the game; OK = its channels.
-        FavGameStartAlert(onWatch = { l, id -> sportsOpen = l to id; tab = 2 })
+        FavGameStartAlert(onWatch = { l, id -> sportsOpen = l to id; tab = 3 })
         if (exitHint) {
             Text(
                 "Click back one more time to close", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold,
