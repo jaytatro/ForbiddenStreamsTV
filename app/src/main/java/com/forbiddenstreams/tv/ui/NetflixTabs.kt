@@ -32,6 +32,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -150,6 +152,7 @@ suspend fun prefetchLibrary() {
 
 fun resetLibrary() = VodLib.reset()
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun BrowseTab(movies: Boolean) {
     val context = LocalContext.current
@@ -172,6 +175,8 @@ private fun BrowseTab(movies: Boolean) {
 
     var focused by remember { mutableStateOf<Tile?>(null) }
     var open by remember { mutableStateOf<Tile?>(null) }
+    val recentReq = remember { FocusRequester() }
+    var recentReady by remember { mutableStateOf(false) }
     val list = cats
 
     Column(Modifier.fillMaxSize().background(Color.Black)) {
@@ -181,7 +186,10 @@ private fun BrowseTab(movies: Boolean) {
             list.isEmpty() && continueRow.isEmpty() -> MessageBox(
                 if (movies) "No movies" else "No TV shows", "Your provider didn't send any.")
             else -> LazyColumn(
-                Modifier.weight(1f).fillMaxWidth(),
+                // ▼ from the tabs always lands on the first poster of Recently added / updated.
+                Modifier.weight(1f).fillMaxWidth()
+                    .focusProperties { enter = { if (recentReady) recentReq else FocusRequester.Default } }
+                    .focusGroup(),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = PaddingValues(bottom = 40.dp),
             ) {
@@ -192,7 +200,8 @@ private fun BrowseTab(movies: Boolean) {
                     val r = recentRow
                     if (r == null) LoadingShelf(if (movies) "Recently added" else "Recently updated")
                     else if (r.isNotEmpty()) PosterShelf(Shelf(if (movies) "Recently added" else "Recently updated", r),
-                        onFocus = { focused = it }, onOpen = { open = it })
+                        onFocus = { focused = it }, onOpen = { open = it },
+                        firstReq = recentReq, onFirstAttached = { recentReady = it })
                 }
                 itemsIndexed(list, key = { i, c -> "$i:${c.id}" }) { _, c ->
                     // Each row downloads its own category when it comes on screen.
@@ -231,7 +240,7 @@ private fun LoadingShelf(title: String) {
 
 /** Row title + a sideways row of posters. */
 @Composable
-private fun PosterShelf(s: Shelf, onFocus: (Tile) -> Unit, onOpen: (Tile) -> Unit) {
+private fun PosterShelf(s: Shelf, onFocus: (Tile) -> Unit, onOpen: (Tile) -> Unit, firstReq: FocusRequester? = null, onFirstAttached: (Boolean) -> Unit = {}) {
     val context = LocalContext.current
     Column {
         Text(s.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold,
@@ -240,8 +249,12 @@ private fun PosterShelf(s: Shelf, onFocus: (Tile) -> Unit, onOpen: (Tile) -> Uni
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             contentPadding = PaddingValues(horizontal = 40.dp, vertical = 12.dp),
         ) {
-            items(s.tiles, key = { it.key }) { t ->
+            itemsIndexed(s.tiles, key = { _, t -> t.key }) { i, t ->
+                if (i == 0 && firstReq != null) {
+                    androidx.compose.runtime.DisposableEffect(Unit) { onFirstAttached(true); onDispose { onFirstAttached(false) } }
+                }
                 PosterCard(t, onFocus = { onFocus(t) },
+                    modifier = if (i == 0 && firstReq != null) Modifier.focusRequester(firstReq) else Modifier,
                     onClick = { if (t.recent != null) resume(context, t.recent) else onOpen(t) },
                     onLongClick = { onOpen(t) })
             }
@@ -250,11 +263,11 @@ private fun PosterShelf(s: Shelf, onFocus: (Tile) -> Unit, onOpen: (Tile) -> Uni
 }
 
 @Composable
-private fun PosterCard(t: Tile, onFocus: () -> Unit, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun PosterCard(t: Tile, onFocus: () -> Unit, onClick: () -> Unit, onLongClick: () -> Unit, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(6.dp)
     Surface(
         onClick = onClick, onLongClick = onLongClick,
-        modifier = Modifier.width(140.dp).height(210.dp).onFocusChanged { if (it.isFocused) onFocus() },
+        modifier = modifier.width(140.dp).height(210.dp).onFocusChanged { if (it.isFocused) onFocus() },
         shape = ClickableSurfaceDefaults.shape(shape = shape),
         colors = ClickableSurfaceDefaults.colors(containerColor = FS.Panel2, focusedContainerColor = FS.Panel2),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, FS.Green), shape = shape)),
