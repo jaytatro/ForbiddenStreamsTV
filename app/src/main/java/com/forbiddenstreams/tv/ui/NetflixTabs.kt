@@ -3,6 +3,7 @@ package com.forbiddenstreams.tv.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -98,7 +99,20 @@ private object VodLib {
     val recent = HashMap<Boolean, List<Tile>>()
     private val gate = kotlinx.coroutines.sync.Semaphore(3)
 
-    fun reset() { cats.clear(); rows.clear(); recent.clear() }
+    fun reset() { cats.clear(); rows.clear(); recent.clear(); names.clear() }
+
+    /** Every title with a lower-case name to search (loaded once). */
+    val names = HashMap<Boolean, List<Pair<String, Any>>>()
+    suspend fun searchList(movies: Boolean): List<Pair<String, Any>> {
+        names[movies]?.let { return it }
+        val src = Session.source ?: return emptyList()
+        val out: List<Pair<String, Any>> = try {
+            if (movies) { val a = src.allVod(); kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { a.distinctBy { it.id }.map { it.name.lowercase() to it } } }
+            else { val a = src.allSeries(); kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { a.distinctBy { it.id }.map { it.name.lowercase() to it } } }
+        } catch (e: Throwable) { emptyList() }
+        if (out.isNotEmpty()) names[movies] = out
+        return out
+    }
 
     fun tileOf(v: VodItem) = Tile("m:${v.id}", MovieMatcher.cleanTitle(v.name), v.poster, vod = v)
     fun tileOf(s: SeriesItem) = Tile("s:${s.id}", MovieMatcher.cleanTitle(s.name), s.cover, series = s)
@@ -165,6 +179,7 @@ private fun BrowseTab(movies: Boolean) {
         if (value == null) { delay(2500); value = VodLib.recent(movies) }
     }
     var ask by remember { mutableStateOf<RecentItem?>(null) }
+    var searching by remember { mutableStateOf(false) }
     val continueRow = remember(movies, tick, ask) { keepTiles(context, movies) }
     ask?.let { r -> ResumeReplayDialog(r, onClose = { ask = null }) }
 
@@ -179,7 +194,7 @@ private fun BrowseTab(movies: Boolean) {
     val goRecent: () -> Boolean = {
         if (recentRow.isNullOrEmpty()) false else {
             scope.launch {
-                try { listState.scrollToItem(if (continueRow.isNotEmpty()) 1 else 0) } catch (e: Exception) { }
+                try { listState.scrollToItem(if (continueRow.isNotEmpty()) 2 else 1) } catch (e: Exception) { }
                 try { recentRowState.scrollToItem(0) } catch (e: Exception) { }
                 repeat(10) {
                     delay(60)
@@ -210,6 +225,12 @@ private fun BrowseTab(movies: Boolean) {
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = PaddingValues(bottom = 40.dp),
             ) {
+                item(key = "search") {
+                    Row(Modifier.padding(start = 40.dp, top = 6.dp, bottom = 2.dp)) {
+                        Pill(if (movies) "🔍  Search movies" else "🔍  Search TV shows", selected = false, outlined = true, fontSize = 16.sp,
+                            onClick = { searching = true })
+                    }
+                }
                 if (continueRow.isNotEmpty()) item(key = "continue") {
                     PosterShelf(Shelf("Keep watching", continueRow), onFocus = { focused = it }, onOpen = { open = it }, onRecent = { ask = it })
                 }
@@ -234,6 +255,7 @@ private fun BrowseTab(movies: Boolean) {
     }
     LaunchedEffect(continueRow, recentRow) { if (focused == null) focused = continueRow.firstOrNull() ?: recentRow?.firstOrNull() }
 
+    if (searching) SearchDialog(movies, onOpen = { open = it }, onClose = { searching = false })
     open?.let { t ->
         val cat = t.vod?.categoryId ?: t.series?.categoryId
         val more = remember(t.key) {
@@ -570,4 +592,96 @@ fun KeepWatchingRow(refresh: Any?, onFocusKey: (String) -> Unit, onMore: (String
     if (tiles.isEmpty()) return
     PosterShelf(Shelf("Keep watching", tiles), onFocus = { onFocusKey(it.key) }, onOpen = { onMore(it.key) }, onRecent = { ask = it })
     ask?.let { r -> ResumeReplayDialog(r, onClose = { ask = null }) }
+}
+
+
+/**
+ * Search (Movies / TV Shows): a search bar at the top; results show as you type (posters).
+ * OK on the bar opens the keyboard; ▼ goes to the results; OK on a poster = its page. BACK closes.
+ */
+@Composable
+private fun SearchDialog(movies: Boolean, onOpen: (Tile) -> Unit, onClose: () -> Unit) {
+    var query by remember { mutableStateOf("") }
+    val fieldReq = remember { FocusRequester() }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val all by produceState(VodLib.names[movies], movies) { if (value == null) value = VodLib.searchList(movies) }
+    val results by produceState<List<Tile>>(emptyList(), query, all) {
+        val q = query.trim().lowercase()
+        val list = all
+        if (q.length < 2 || list == null) { value = emptyList(); return@produceState }
+        delay(250) // wait for a pause in typing
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            val words = q.split(Regex("\\s+")).filter { it.isNotBlank() }
+            list.asSequence()
+                .filter { (n, _) -> words.all { n.contains(it) } }
+                .sortedBy { (n, _) -> val c = MovieMatcher.cleanTitle(n); if (c.startsWith(q)) 0 else if (n.contains(q)) 1 else 2 }
+                .take(120)
+                .map { (_, x) -> if (x is VodItem) VodLib.tileOf(x) else VodLib.tileOf(x as SeriesItem) }
+                .toList().distinctBy { it.key }
+        }
+    }
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        BackHandler { onClose() }
+        LaunchedEffect(Unit) {
+            repeat(8) { delay(120); try { fieldReq.requestFocus(); keyboard?.show(); return@LaunchedEffect } catch (e: Exception) { } }
+        }
+        Column(Modifier.fillMaxSize().background(Color.Black).padding(horizontal = 40.dp, vertical = 28.dp)) {
+            Text(if (movies) "Search movies" else "Search TV shows", color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(12.dp))
+            var fieldFocused by remember { mutableStateOf(false) }
+            val shape = RoundedCornerShape(50)
+            androidx.compose.foundation.text.BasicTextField(
+                value = query,
+                onValueChange = { query = it },
+                singleLine = true,
+                textStyle = androidx.compose.ui.text.TextStyle(color = FS.Text, fontSize = 22.sp),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(FS.Green),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Search, autoCorrectEnabled = false),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { keyboard?.hide() }),
+                modifier = Modifier.fillMaxWidth().focusRequester(fieldReq)
+                    .onFocusChanged { fieldFocused = it.isFocused }
+                    .background(if (fieldFocused) FS.GreenDim else FS.Panel, shape)
+                    .border(2.dp, if (fieldFocused) FS.Green else FS.Line, shape)
+                    .padding(horizontal = 24.dp, vertical = 14.dp),
+                decorationBox = { inner ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🔍", fontSize = 20.sp)
+                        Spacer(Modifier.width(12.dp))
+                        Box {
+                            if (query.isEmpty()) Text("Type a name…", color = FS.TextDim, fontSize = 22.sp)
+                            inner()
+                        }
+                    }
+                },
+            )
+            Spacer(Modifier.height(10.dp))
+            val q = query.trim()
+            Text(
+                when {
+                    all == null -> "Loading the list…"
+                    q.length < 2 -> "Type at least 2 letters"
+                    results.isEmpty() -> "No matches for \"$q\""
+                    else -> "${results.size}${if (results.size >= 120) "+" else ""} results · ▼ to pick one"
+                },
+                color = FS.TextDim, fontSize = 15.sp,
+            )
+            androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                columns = androidx.compose.foundation.lazy.grid.GridCells.Adaptive(134.dp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(vertical = 16.dp, horizontal = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                items(results.size, key = { results[it].key }) { i ->
+                    val t = results[i]
+                    Column {
+                        PosterCard(t, onFocus = {}, onClick = { onOpen(t) }, onLongClick = { onOpen(t) })
+                        Text(t.title, color = FS.Text, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.width(120.dp).padding(top = 6.dp))
+                    }
+                }
+            }
+        }
+    }
 }
