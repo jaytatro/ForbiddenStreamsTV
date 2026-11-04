@@ -543,6 +543,15 @@ fun ResumeReplayDialog(r: RecentItem, onClose: () -> Unit) {
                 onClose()
                 Playback.one(context, PlayItem(r.title, r.url, live = false, subtitle = r.subtitle, resumeKey = r.key, kind = r.kind, image = r.image))
             },
+            "✖  Remove from Keep watching" to {
+                // A show is removed as a whole (all its started episodes), so an older episode doesn't pop back up.
+                if (r.kind == "episode") {
+                    val show = r.title.substringBefore(" · ") + " · "
+                    Recents.all(context, "episode").filter { it.title.startsWith(show) }.forEach { Recents.remove(context, it.key) }
+                } else Recents.remove(context, r.key)
+                toast(context, "Removed from Keep watching")
+                onClose()
+            },
             "Close" to onClose,
         ),
         onDismiss = onClose,
