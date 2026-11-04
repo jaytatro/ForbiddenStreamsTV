@@ -247,7 +247,7 @@ private fun gameLengthMs(g: Game): Long = when {
 }
 
 /** Channel choices for a game: team feeds and the TV network. Finished games replay from catch-up. */
-private fun gameOptions(
+internal fun gameOptions(
     context: android.content.Context,
     g: Game,
     m: GameChannels?,
@@ -579,4 +579,38 @@ fun LiveGamesScreen(mine: Boolean, onLeft: () -> Unit = {}) {
             )
         }
     }
+}
+
+
+/**
+ * The channels a game can be watched on, as a pop-up on whatever screen you're on
+ * (Home's Live games, the 1-minute alert). Same list as OK on a game in the Sports tab.
+ */
+@Composable
+fun GameChannelsDialog(league: League, g: Game, onClose: () -> Unit) {
+    val context = LocalContext.current
+    val team = remember(league, Session.liveCats, Session.liveAll) {
+        val cats = Session.liveCats
+        val grp = cats?.let { GameMatcher.findGroup(it, league) }
+        if (grp == null) emptyList() else Session.channelsIn(grp.id)
+    }
+    val match by androidx.compose.runtime.produceState<GameChannels?>(SportsCache.matches[league]?.get(g.id), g.id, team) {
+        if (value == null) value = withContext(Dispatchers.Default) {
+            GameMatcher.match(g, league, team) { c -> Session.cachedEpg(c) ?: Session.epg(c) }
+        }
+    }
+    val options = remember(g.id, match, team, Session.liveAll) { gameOptions(context, g, match, team) }
+    val tv = g.networks.takeIf { it.isNotEmpty() }?.let { " · TV: ${it.joinToString(", ")}" } ?: ""
+    val sub = when {
+        options.isNotEmpty() && g.isFinal -> "Final ${g.away.score ?: ""}–${g.home.score ?: ""}. Pick a channel to replay the game$tv"
+        options.isNotEmpty() -> "Pick a channel to watch$tv"
+        match == null -> "Finding the channels…$tv"
+        else -> (match?.note ?: "No channel found") + tv
+    }
+    ChoiceDialog(
+        "${g.away.displayName} vs. ${g.home.displayName}", sub,
+        options.map { (label, action) -> label to { onClose(); action() } }
+            .ifEmpty { listOf<Pair<String, () -> Unit>>("OK" to onClose) },
+        onDismiss = onClose,
+    )
 }

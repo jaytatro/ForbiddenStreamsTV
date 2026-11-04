@@ -270,6 +270,8 @@ private fun HomeTab(onOpenGame: (com.forbiddenstreams.tv.sports.League, String) 
         }
     }
     val liveGames = liveGamesNow()
+    var gamePick by remember { mutableStateOf<Pair<com.forbiddenstreams.tv.sports.League, com.forbiddenstreams.tv.sports.Game>?>(null) }
+    gamePick?.let { (l, g) -> GameChannelsDialog(l, g, onClose = { gamePick = null }) }
     LaunchedEffect(shows, movies, channels) { if (focused == null) focused = shows.firstOrNull() ?: movies.firstOrNull() ?: channels.firstOrNull() }
 
     Column(Modifier.fillMaxSize()) {
@@ -278,13 +280,11 @@ private fun HomeTab(onOpenGame: (com.forbiddenstreams.tv.sports.League, String) 
             Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            // A favorite team is playing right now: Live games goes first.
-            val favLive = liveGames.any { (l, g) -> com.forbiddenstreams.tv.sports.FavTeams.inGame(context, l, g) }
-            if (favLive) item { LiveGamesRow(liveGames, onOpenGame) }
             if (shows.isNotEmpty()) item { CardRow("Continue watching", "Shows", RailIcon.SHOWS, shows, { focused = it }, { menu = it }) }
             if (movies.isNotEmpty()) item { CardRow("Continue watching", "Movies", RailIcon.MOVIES, movies, { focused = it }, { menu = it }) }
             if (channels.isNotEmpty()) item { CardRow("Continue watching", "Live TV", RailIcon.CHANNELS, channels, { focused = it }, { menu = it }) }
-            if (liveGames.isNotEmpty() && !favLive) item { LiveGamesRow(liveGames, onOpenGame) }
+            // Under the recent channels; OK on a game = its channels, right here on Home.
+            if (liveGames.isNotEmpty()) item { LiveGamesRow(liveGames) { l, id -> gamePick = liveGames.firstOrNull { it.first == l && it.second.id == id } } }
             if (shows.isEmpty() && movies.isEmpty() && channels.isEmpty() && liveGames.isEmpty()) {
                 item {
                     Text("Nothing here yet. TV shows and movies you start watching show up here so you can pick up where you left off.",

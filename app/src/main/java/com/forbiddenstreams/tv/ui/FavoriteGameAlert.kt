@@ -46,6 +46,9 @@ fun BoxScope.FavGameStartAlert(onWatch: (League, String) -> Unit) {
     val context = LocalContext.current
     var alert by remember { mutableStateOf<Pair<League, Game>?>(null) }
     val shown = remember { mutableSetOf<String>() }
+    // OK on the alert: the game's channels pop up right where you are.
+    var picked by remember { mutableStateOf<Pair<League, Game>?>(null) }
+    picked?.let { (pl, pg) -> GameChannelsDialog(pl, pg, onClose = { picked = null }) }
     LaunchedEffect(Unit) {
         while (true) {
             val favs = FavTeams.all(context)
@@ -89,7 +92,7 @@ fun BoxScope.FavGameStartAlert(onWatch: (League, String) -> Unit) {
         Box(Modifier.focusRequester(req)) {
             GameRow(g, null, groupMissing = false, loadingChannels = false, fav = true) {
                 alert = null
-                onWatch(l, g.id)
+                picked = l to g
             }
         }
     }
