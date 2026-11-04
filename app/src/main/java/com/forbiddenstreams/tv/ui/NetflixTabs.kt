@@ -60,6 +60,7 @@ import com.forbiddenstreams.tv.player.PlayItem
 import com.forbiddenstreams.tv.player.Playback
 import com.forbiddenstreams.tv.player.PlayerHolder
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withPermit
 
 /** One poster in a row: a movie, a show, or something you're part-way through. */
@@ -177,6 +178,27 @@ private fun BrowseTab(movies: Boolean) {
     var open by remember { mutableStateOf<Tile?>(null) }
     val recentReq = remember { FocusRequester() }
     var recentReady by remember { mutableStateOf(false) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val recentRowState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    // ▼ on the Movies / TV Shows tab: the newest title, far left of Recently added / updated.
+    val goRecent: () -> Boolean = {
+        if (recentRow.isNullOrEmpty()) false else {
+            scope.launch {
+                try { listState.scrollToItem(if (continueRow.isNotEmpty()) 1 else 0) } catch (e: Exception) { }
+                try { recentRowState.scrollToItem(0) } catch (e: Exception) { }
+                repeat(10) {
+                    delay(60)
+                    if (recentReady) try { recentReq.requestFocus(); return@launch } catch (e: Exception) { }
+                }
+            }
+            true
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(goRecent) {
+        TabDown.handler = goRecent
+        onDispose { if (TabDown.handler === goRecent) TabDown.handler = null }
+    }
     val list = cats
 
     Column(Modifier.fillMaxSize().background(Color.Black)) {
@@ -186,8 +208,9 @@ private fun BrowseTab(movies: Boolean) {
             list.isEmpty() && continueRow.isEmpty() -> MessageBox(
                 if (movies) "No movies" else "No TV shows", "Your provider didn't send any.")
             else -> LazyColumn(
+                state = listState,
                 // ▼ from the tabs always lands on the first poster of Recently added / updated.
-                Modifier.weight(1f).fillMaxWidth()
+                modifier = Modifier.weight(1f).fillMaxWidth()
                     .focusProperties { enter = { if (recentReady) recentReq else FocusRequester.Default } }
                     .focusGroup(),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -201,7 +224,7 @@ private fun BrowseTab(movies: Boolean) {
                     if (r == null) LoadingShelf(if (movies) "Recently added" else "Recently updated")
                     else if (r.isNotEmpty()) PosterShelf(Shelf(if (movies) "Recently added" else "Recently updated", r),
                         onFocus = { focused = it }, onOpen = { open = it },
-                        firstReq = recentReq, onFirstAttached = { recentReady = it })
+                        firstReq = recentReq, onFirstAttached = { recentReady = it }, rowState = recentRowState)
                 }
                 itemsIndexed(list, key = { i, c -> "$i:${c.id}" }) { _, c ->
                     // Each row downloads its own category when it comes on screen.
@@ -240,12 +263,14 @@ private fun LoadingShelf(title: String) {
 
 /** Row title + a sideways row of posters. */
 @Composable
-private fun PosterShelf(s: Shelf, onFocus: (Tile) -> Unit, onOpen: (Tile) -> Unit, firstReq: FocusRequester? = null, onFirstAttached: (Boolean) -> Unit = {}) {
+private fun PosterShelf(s: Shelf, onFocus: (Tile) -> Unit, onOpen: (Tile) -> Unit, firstReq: FocusRequester? = null, onFirstAttached: (Boolean) -> Unit = {},
+    rowState: androidx.compose.foundation.lazy.LazyListState? = null) {
     val context = LocalContext.current
     Column {
         Text(s.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(start = 40.dp, top = 4.dp))
         LazyRow(
+            state = rowState ?: androidx.compose.foundation.lazy.rememberLazyListState(),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             contentPadding = PaddingValues(horizontal = 40.dp, vertical = 12.dp),
         ) {

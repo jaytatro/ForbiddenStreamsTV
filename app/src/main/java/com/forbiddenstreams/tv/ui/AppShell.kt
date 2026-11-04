@@ -38,6 +38,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -66,6 +68,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
+
+/** A screen can take over ▼ on its tab (Movies / TV Shows: straight to the first Recently added poster). */
+object TabDown { var handler: (() -> Boolean)? = null }
 
 /** Tabs across the top, left to right, centered. */
 private val TABS = listOf("Home", "Live TV", "TV Guide", "Sports", "Movies", "TV Shows")
@@ -179,7 +184,12 @@ private fun TopBar(tab: Int, reqs: List<FocusRequester>, onTab: (Int) -> Unit, o
             TABS.forEachIndexed { i, name ->
                 Surface(
                     onClick = { onTab(i); onEnter(i) },
-                    modifier = Modifier.padding(horizontal = 4.dp).focusRequester(reqs[i]).onFocusChanged { if (it.isFocused) onTab(i) },
+                    modifier = Modifier.padding(horizontal = 4.dp).focusRequester(reqs[i]).onFocusChanged { if (it.isFocused) onTab(i) }
+                        .onPreviewKeyEvent { ev ->
+                            ev.type == androidx.compose.ui.input.key.KeyEventType.KeyDown &&
+                                ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN &&
+                                i == tab && TabDown.handler?.invoke() == true
+                        },
                     shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(50)),
                     colors = ClickableSurfaceDefaults.colors(
                         containerColor = if (i == tab) Color(0x33000000) else Color.Transparent,
