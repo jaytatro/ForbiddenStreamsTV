@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -169,7 +171,7 @@ class PlayerActivity : ComponentActivity() {
                         Box(
                             Modifier.fillMaxSize()
                                 .pointerInput(Unit) {
-                                    androidx.compose.foundation.gestures.detectTapGestures(onTap = {
+                                    detectTapGestures(onTap = {
                                         if (actionsVisible) { actionsVisible = false; infoVisible = false }
                                         else { showInfo(); actionsVisible = true }
                                     })
@@ -177,7 +179,7 @@ class PlayerActivity : ComponentActivity() {
                                 .pointerInput(Unit) {
                                     var dx = 0f
                                     var dy = 0f
-                                    androidx.compose.foundation.gestures.detectDragGestures(
+                                    detectDragGestures(
                                         onDragStart = { dx = 0f; dy = 0f },
                                         onDragEnd = {
                                             val far = 60.dp.toPx()
