@@ -9,6 +9,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -109,6 +111,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        com.forbiddenstreams.tv.ui.fullScreen(this) // phones: video edge to edge, no status/navigation bars
         volumeControlStream = android.media.AudioManager.STREAM_MUSIC // remote volume keys = media volume
         if (PlayerHolder.current == null) { PlayerHolder.fullScreen = false; finish(); return }
         PlayerHolder.fullScreen = true
@@ -159,6 +162,37 @@ class PlayerActivity : ComponentActivity() {
                 val prog = epg?.firstOrNull { it.isLive(now) }
                 Box(Modifier.fillMaxSize().background(Color.Black)) {
                     AndroidView(factory = { view }, modifier = Modifier.fillMaxSize())
+                    // Phones (Nov 6 2026), live TV: finger controls over the video (movies use the player's own).
+                    //  tap = the buttons (Last Channel, Record, …) · swipe up/down = next/previous channel
+                    //  swipe right = channel list · swipe left = TV guide
+                    if (item?.live == true && !guideVisible && !panelVisible && !multiVisible) {
+                        Box(
+                            Modifier.fillMaxSize()
+                                .pointerInput(Unit) {
+                                    androidx.compose.foundation.gestures.detectTapGestures(onTap = {
+                                        if (actionsVisible) { actionsVisible = false; infoVisible = false }
+                                        else { showInfo(); actionsVisible = true }
+                                    })
+                                }
+                                .pointerInput(Unit) {
+                                    var dx = 0f
+                                    var dy = 0f
+                                    androidx.compose.foundation.gestures.detectDragGestures(
+                                        onDragStart = { dx = 0f; dy = 0f },
+                                        onDragEnd = {
+                                            val far = 60.dp.toPx()
+                                            val ax = kotlin.math.abs(dx)
+                                            val ay = kotlin.math.abs(dy)
+                                            when {
+                                                ay > ax && ay > far -> { PlayerHolder.zap(this@PlayerActivity, if (dy < 0) 1 else -1); showInfo() }
+                                                ax > far && dx > 0 -> { actionsVisible = false; infoVisible = false; panelVisible = true }
+                                                ax > far -> { actionsVisible = false; guideVisible = true }
+                                            }
+                                        },
+                                    ) { change, amount -> change.consume(); dx += amount.x; dy += amount.y }
+                                },
+                        )
+                    }
                     if ((infoVisible || actionsVisible) && item != null && !guideVisible) {
                       // Bottom bar: channel info, and under it (after OK) Last Channel · Record · Multi-View.
                       Column(
@@ -216,9 +250,17 @@ class PlayerActivity : ComponentActivity() {
                                 }
                             }
                             Row(
-                                Modifier.fillMaxWidth().padding(top = 10.dp),
+                                // Slides sideways if the buttons don't all fit (phones).
+                                Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(top = 10.dp),
                                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
                             ) {
+                            if (com.forbiddenstreams.tv.ui.isTouch()) {
+                                // Phones: the channel list and the guide (◀ and the guide button on the remote).
+                                com.forbiddenstreams.tv.ui.Pill("☰  Channels", selected = false, fontSize = 18.sp,
+                                    onClick = { actionsVisible = false; infoVisible = false; panelVisible = true })
+                                com.forbiddenstreams.tv.ui.Pill("▦  Guide", selected = false, fontSize = 18.sp,
+                                    onClick = { actionsVisible = false; guideVisible = true })
+                            }
                             com.forbiddenstreams.tv.ui.Pill(
                                 "⏮  Last Channel", selected = false, fontSize = 18.sp,
                                 // Round robin: ◀ on Last Channel goes to CC (the last button).
@@ -380,7 +422,8 @@ class PlayerActivity : ComponentActivity() {
                     }
                     PlayerHolder.error?.let {
                         Text(
-                            it + if (item?.live == true) "\nPress up/down to try another channel or BACK to return." else "\nPress BACK to return.",
+                            it + if (item?.live == true) com.forbiddenstreams.tv.ui.hint("\nPress up/down to try another channel or BACK to return.", "\nSwipe up/down to try another channel, or go back to return.")
+                                else com.forbiddenstreams.tv.ui.hint("\nPress BACK to return.", "\nGo back to return."),
                             color = FS.Text, fontSize = 20.sp,
                             modifier = Modifier.align(Alignment.Center)
                                 .background(Color(0xDD0C140D), RoundedCornerShape(12.dp)).padding(24.dp),
@@ -522,6 +565,16 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        lastKeyAt = android.os.SystemClock.uptimeMillis() // touching the buttons keeps them open
+        return super.dispatchTouchEvent(ev)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) com.forbiddenstreams.tv.ui.fullScreen(this)
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         lastKeyAt = android.os.SystemClock.uptimeMillis()
         if (!::view.isInitialized || guideVisible || actionsVisible || multiVisible || panelVisible) return super.dispatchKeyEvent(event)
@@ -594,7 +647,7 @@ class PlayerActivity : ComponentActivity() {
 @androidx.compose.runtime.Composable
 private fun CcButton(on: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(50)
-    androidx.tv.material3.Surface(
+    com.forbiddenstreams.tv.ui.Surface(
         onClick = onClick,
         modifier = modifier,
         shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(shape = shape),

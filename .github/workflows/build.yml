@@ -1,7 +1,7 @@
 name: Build APK
 on:
   push:
-    branches: [main]
+    branches: [main, phone]
     paths: ['app/**', 'build.gradle.kts', 'settings.gradle.kts', 'gradle/**', 'gradle.properties', '.github/workflows/build.yml']
   workflow_dispatch:
 
@@ -37,6 +37,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="build-${{ github.run_number }}"
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            # Test builds from other branches (e.g. phone): a pre-release with its own link,
+            # never "latest", so the TV boxes and the in-app updater don't pick it up.
+            TAG="${{ github.ref_name }}-build-${{ github.run_number }}"
+            if ! out=$(gh release create "$TAG" ForbiddenStreamsTV.apk --prerelease --latest=false --target "${{ github.sha }}" --title "Forbidden Streams TV — ${{ github.ref_name }} test (build ${{ github.run_number }})" --notes "Test build from the ${{ github.ref_name }} branch. Direct link: https://github.com/${{ github.repository }}/releases/download/$TAG/ForbiddenStreamsTV.apk" 2>&1); then
+              echo "::error::release failed: $out"
+              exit 1
+            fi
+            echo "::notice::Published $TAG"
+            exit 0
+          fi
           if ! out=$(gh release create "$TAG" ForbiddenStreamsTV.apk --latest --title "Forbidden Streams TV (build ${{ github.run_number }})" --notes "Install on your Android TV box with the Downloader app: https://github.com/${{ github.repository }}/releases/latest/download/ForbiddenStreamsTV.apk" 2>&1); then
             echo "::error::release failed: $out"
             exit 1

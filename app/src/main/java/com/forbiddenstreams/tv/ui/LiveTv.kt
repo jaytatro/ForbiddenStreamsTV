@@ -110,6 +110,9 @@ fun LiveTvTab() {
         }
     }
 
+    // Phones: BACK in the guide brings the category list back (◀ does it on the remote).
+    androidx.activity.compose.BackHandler(enabled = isTouch() && !listOpen) { openList() }
+
     Row(Modifier.fillMaxSize().padding(top = 76.dp)) {
         if (listOpen || listW > 0.dp) {
             Box(
@@ -158,7 +161,7 @@ fun LiveTvTab() {
             } else {
                 val list = remember(g.key, Session.liveAll) { channelsOf(prefs, g) }
                 if (list.isEmpty()) {
-                    MessageBox("No channels in this category", "Press ◀ for the categories.")
+                    MessageBox("No channels in this category", hint("Press ◀ for the categories.", "Go back for the categories."))
                 } else {
                     androidx.compose.runtime.key(g.key) {
                         GuideView(

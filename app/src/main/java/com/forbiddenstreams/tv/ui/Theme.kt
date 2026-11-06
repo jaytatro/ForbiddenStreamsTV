@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,7 +31,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Surface
+import com.forbiddenstreams.tv.ui.Surface
 import androidx.tv.material3.Text
 import androidx.tv.material3.darkColorScheme
 import coil.compose.AsyncImage
@@ -65,9 +66,25 @@ object FS {
 fun ForbiddenTheme(content: @Composable () -> Unit) {
     // Everything drawn ~15% smaller than the default TV size.
     val d = androidx.compose.ui.platform.LocalDensity.current
-    androidx.compose.runtime.CompositionLocalProvider(
-        androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(d.density * 0.85f, d.fontScale),
-    ) { ThemeInner(content) }
+    // Phones (Nov 6 2026): the screens are laid out for a TV about 635 units tall, and a phone
+    // held sideways is much shorter, so on a short screen everything shrinks until ~600 units fit.
+    // A TV always takes the first number (its own size), so nothing changes there.
+    // The notch/camera cut-out is kept clear too (no cut-out on a TV).
+    androidx.compose.foundation.layout.BoxWithConstraints(
+        Modifier.fillMaxSize().background(Color.Black)
+            .windowInsetsPadding(androidx.compose.foundation.layout.WindowInsets.displayCutout),
+    ) {
+        val tv = d.density * 0.85f
+        val fit = constraints.maxHeight.toFloat() / 600f
+        val small = constraints.hasBoundedHeight && fit < tv
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(
+                if (small) fit else tv,
+                // A big phone font setting would push words out of the TV layout.
+                if (small) d.fontScale.coerceAtMost(1f) else d.fontScale,
+            ),
+        ) { ThemeInner(content) }
+    }
 }
 
 @Composable

@@ -531,7 +531,7 @@ private fun RailButton(
     onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(14.dp)
-    androidx.tv.material3.Surface(
+    com.forbiddenstreams.tv.ui.Surface(
         onClick = onClick,
         modifier = (if (expanded) Modifier.fillMaxWidth().height(46.dp) else Modifier.size(42.dp))
             .focusRequester(req)
@@ -847,7 +847,7 @@ private fun SportsDockList(
                         )
                         // ⇅ move button
                         val shape = RoundedCornerShape(8.dp)
-                        androidx.tv.material3.Surface(
+                        com.forbiddenstreams.tv.ui.Surface(
                             onClick = {
                                 moving = if (isMoving) null else lg
                                 if (!isMoving) toast(context, "▲ ▼ to move ${lg.label} · OK when done")

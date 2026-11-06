@@ -118,6 +118,11 @@ fun LiveCategoryPanel(
             )
         }
         Column(Modifier.width(620.dp).fillMaxHeight().padding(start = 16.dp, top = 20.dp, bottom = 20.dp)) {
+            // Phones: a button for the categories (◀ opens them on the remote).
+            if (isTouch() && !showCats) {
+                Pill("☰  Categories", selected = false, outlined = true, fontSize = 16.sp, onClick = { showCats = true },
+                    modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
+            }
             Text(group.title, color = FS.Green, fontSize = 22.sp, fontWeight = FontWeight.Bold, style = shadow,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp, bottom = 6.dp))
             if (channels.isEmpty()) {
@@ -154,6 +159,8 @@ fun LiveCategoryPanel(
                 }
             }
         }
+        // Phones: tapping the video next to the list closes it.
+        Box(Modifier.weight(1f).fillMaxHeight().onTap { onClose() })
     }
 }
 

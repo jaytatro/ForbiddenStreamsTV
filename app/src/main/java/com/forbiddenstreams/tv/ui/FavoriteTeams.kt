@@ -50,7 +50,7 @@ fun FavoriteTeamsScreen() {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("⭐ Favorite Teams", color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.size(24.dp))
-            Text("OK on a team switches it on or off · ${favs.size} on", color = FS.TextDim, fontSize = 15.sp)
+            Text(hint("OK on a team switches it on or off", "Tap a team to switch it on or off") + " · ${favs.size} on", color = FS.TextDim, fontSize = 15.sp)
         }
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -175,7 +175,7 @@ fun FavoriteTeamsDialog(onClose: () -> Unit) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("${l.icon}  ${l.label}", color = FS.Green, fontSize = 28.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.size(24.dp))
-                        Text("OK switches a team on or off · BACK = sports", color = FS.TextDim, fontSize = 15.sp)
+                        Text(hint("OK switches a team on or off · BACK = sports", "Tap a team to switch it on or off · Back = sports"), color = FS.TextDim, fontSize = 15.sp)
                     }
                     Spacer(Modifier.height(14.dp))
                     val teams by produceState<List<TeamInfo>?>(null, l) {

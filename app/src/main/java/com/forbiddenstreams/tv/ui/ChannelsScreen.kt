@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -218,7 +219,7 @@ fun ChannelsScreen(groupKey: String?, onGroup: (String?) -> Unit, active: Boolea
                         Group.Search -> "No channels found"
                         else -> "No channels in this category"
                     },
-                    if (group == Group.Favorites) "In the guide, hold OK on a show and pick Add to favorites." else "Press BACK for categories.",
+                    if (group == Group.Favorites) hint("In the guide, hold OK on a show and pick Add to favorites.", "In the guide, press and hold a show and pick Add to favorites.") else hint("Press BACK for categories.", "Go back for categories."),
                 )
                 else -> GuideView(
                     group = group,
@@ -498,6 +499,22 @@ fun GuideView(
         }
     }
 
+    // ---- Phones (Nov 6 2026): finger controls for the guide.
+    // Tap a show = same as OK on it (watch / catch-up / options), press and hold = the options,
+    // tap a channel = watch it, drag sideways = through time, drag up/down = through the channels,
+    // tap a date = that day.
+    val touch = isTouch()
+    val dragging by hState.interactionSource.collectIsDraggedAsState()
+    LaunchedEffect(dragging) { if (dragging) followNow = false } // stop sliding with the clock while you look around
+    fun tapCell(r: Int, cellStart: Long, cellEnd: Long, long: Boolean) {
+        row = r
+        val t = System.currentTimeMillis()
+        val onNow = dayOffset == 0 && t >= cellStart && t < cellEnd
+        cursor = if (onNow) t else cellStart
+        followNow = onNow
+        if (long) openMenu() else click()
+    }
+
     // First layout: jump to the time line and the starting channel, then take focus.
     LaunchedEffect(group.key, dayOffset) {
         snapshotFlow { hState.maxValue }.first { it > 0 }
@@ -627,6 +644,7 @@ fun GuideView(
                         color = if (sel && dateMode) androidx.compose.ui.graphics.Color.Black else if (sel) FS.Green else FS.TextDim,
                         fontSize = 14.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
                         modifier = Modifier
+                            .onTap { changeDay(d - dayOffset) }
                             .then(if (sel && dateMode) Modifier.background(FS.Green, RoundedCornerShape(50)) else Modifier)
                             .then(if (sel) Modifier.border(2.dp, FS.Green, RoundedCornerShape(50)) else Modifier)
                             .padding(horizontal = 14.dp, vertical = 3.dp),
@@ -635,8 +653,8 @@ fun GuideView(
             }
         }
         Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)) {
-            TimeHeader(if (overlay) "" else group.title, ws, we, now, hState, overlay) { gridWidthPx = it }
-            LazyColumn(state = listState, userScrollEnabled = false) {
+            TimeHeader(if (overlay) "" else group.title, ws, we, now, hState, overlay, touch) { gridWidthPx = it }
+            LazyColumn(state = listState, userScrollEnabled = touch) {
                 itemsIndexed(channels, key = { _, ch -> ch.id }) { i, ch ->
                     GuideRow(
                         ch = ch, ws = ws, we = we, now = now, hState = hState,
@@ -644,6 +662,9 @@ fun GuideView(
                         playing = PlayerHolder.current?.channelId == ch.id,
                         overlay = overlay,
                         onEpg = { epgTick++ },
+                        touch = touch,
+                        onTapChannel = { row = i; playCh(channels, i) },
+                        onTapCell = { a, b, long -> tapCell(i, a, b, long) },
                     )
                 }
             }
@@ -737,11 +758,11 @@ private fun GuideInfoPanel(ch: LiveChannel?, p: Program?, previewReq: FocusReque
 }
 
 @Composable
-private fun TimeHeader(title: String, ws: Long, we: Long, now: Long, hState: ScrollState, overlay: Boolean, onWidth: (Int) -> Unit) {
+private fun TimeHeader(title: String, ws: Long, we: Long, now: Long, hState: ScrollState, overlay: Boolean, touch: Boolean, onWidth: (Int) -> Unit) {
     Row(Modifier.fillMaxWidth().height(32.dp).background(if (overlay) Color.Transparent else FS.Panel2), verticalAlignment = Alignment.CenterVertically) {
         Text(title, color = FS.Green, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1,
             overflow = TextOverflow.Ellipsis, modifier = Modifier.width(CH_COL.dp).padding(horizontal = 10.dp))
-        Box(Modifier.weight(1f).fillMaxHeight().onSizeChanged { onWidth(it.width) }.horizontalScroll(hState, enabled = false)) {
+        Box(Modifier.weight(1f).fillMaxHeight().onSizeChanged { onWidth(it.width) }.horizontalScroll(hState, enabled = touch)) {
             Box(Modifier.width(widthDp(we - ws)).fillMaxHeight()) {
                 var t = ws
                 while (t < we) {
@@ -768,6 +789,9 @@ private fun GuideRow(
     playing: Boolean,
     overlay: Boolean,
     onEpg: () -> Unit,
+    touch: Boolean = false,
+    onTapChannel: () -> Unit = {},
+    onTapCell: (Long, Long, Boolean) -> Unit = { _, _, _ -> },
 ) {
     val epg by produceState(Session.cachedEpg(ch), ch.id) { value = Session.epg(ch); onEpg() }
     val cells = remember(epg, ws) { buildCells(epg, ws, we) }
@@ -779,6 +803,7 @@ private fun GuideRow(
     Row(Modifier.fillMaxWidth().height(ROW_H.dp)) {
         Row(
             Modifier.width(CH_COL.dp).fillMaxHeight().padding(1.dp)
+                .onTap { onTapChannel() }
                 .then(
                     if (overlay) Modifier.border(if (rowSel) 2.dp else 1.dp, if (rowSel) FS.Green else line, shape)
                     // The highlighted channel stands out: green fill with a bright green outline.
@@ -801,7 +826,7 @@ private fun GuideRow(
             if (isFav) Text("★", color = FS.Green, fontSize = 14.sp)
             if (ch.hasArchive) Text("⟲", color = FS.Text, fontSize = 15.sp)
         }
-        Box(Modifier.weight(1f).fillMaxHeight().horizontalScroll(hState, enabled = false)) {
+        Box(Modifier.weight(1f).fillMaxHeight().horizontalScroll(hState, enabled = touch)) {
             Row(Modifier.width(widthDp(we - ws)).fillMaxHeight()) {
                 cells.forEach { cell ->
                     val p = cell.program
@@ -814,6 +839,7 @@ private fun GuideRow(
                     val shift = if (startDp < scrolledDp && endDp > scrolledDp + 60.dp) scrolledDp - startDp else 0.dp
                     Row(
                         Modifier.width(widthDp(cell.end - cell.start)).fillMaxHeight().padding(1.dp)
+                            .onTap(onLong = { onTapCell(cell.start, cell.end, true) }) { onTapCell(cell.start, cell.end, false) }
                             .then(
                                 if (overlay) Modifier.border(if (sel) 3.dp else 1.dp, if (sel) FS.Green else line, shape)
                                 else Modifier.background(if (sel) FS.GreenDeep else if (live) FS.Panel2 else FS.Panel, shape)

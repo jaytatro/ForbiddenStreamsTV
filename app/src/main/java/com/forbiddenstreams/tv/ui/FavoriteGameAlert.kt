@@ -86,7 +86,7 @@ fun BoxScope.FavGameStartAlert(onWatch: (League, String) -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("⭐ ${l.icon} ${l.label} · Game starting in 1 minute", color = FS.Green, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
-            Text("OK = channels to watch it on · BACK = dismiss", color = FS.TextDim, fontSize = 15.sp)
+            Text(hint("OK = channels to watch it on · BACK = dismiss", "Tap = channels to watch it on · Back = dismiss"), color = FS.TextDim, fontSize = 15.sp)
         }
         Spacer(Modifier.height(10.dp))
         Box(Modifier.focusRequester(req)) {

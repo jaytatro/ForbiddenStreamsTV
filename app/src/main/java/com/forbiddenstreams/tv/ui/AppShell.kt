@@ -51,7 +51,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
-import androidx.tv.material3.Surface
+import com.forbiddenstreams.tv.ui.Surface
 import androidx.tv.material3.Text
 import com.forbiddenstreams.tv.R
 import com.forbiddenstreams.tv.data.MovieMatcher
@@ -100,9 +100,11 @@ fun AppShell(onLogout: () -> Unit) {
         if (tab != 1 && tab != 2 && !PlayerHolder.fullScreen && PlayerHolder.current?.live == true) PlayerHolder.stop()
     }
     // BACK: from a screen → the tabs; on the tabs → "click back one more time", then close.
+    // Phones: there's no cursor to send up to the tabs, so BACK goes straight to "one more time".
+    val touch = isTouch()
     BackHandler {
         when {
-            !tabsFocused -> try { tabReq[tab].requestFocus() } catch (e: Exception) { }
+            !tabsFocused && !touch -> try { tabReq[tab].requestFocus() } catch (e: Exception) { }
             exitHint -> { PlayerHolder.stop(); activity?.finish() }
             else -> exitHint = true
         }
@@ -128,7 +130,7 @@ fun AppShell(onLogout: () -> Unit) {
         FavGameStartAlert(onWatch = { l, id -> sportsOpen = l to id; tab = 3 })
         if (exitHint) {
             Text(
-                "Click back one more time to close", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                hint("Click back one more time to close", "Go back once more to close"), color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp)
                     .background(FS.Green, RoundedCornerShape(50)).padding(horizontal = 28.dp, vertical = 12.dp),
             )
@@ -395,7 +397,7 @@ private fun CardRow(title: String, sub: String?, icon: RailIcon, cards: List<Car
             Text(title, color = FS.Text, fontSize = 19.sp, fontWeight = FontWeight.Bold)
             sub?.let { Text("  ·  $it", color = FS.TextDim, fontSize = 16.sp) }
             Spacer(Modifier.weight(1f))
-            Text("Press and hold \"OK\" for more", color = FS.TextDim, fontSize = 13.sp)
+            Text(hint("Press and hold \"OK\" for more", "Press and hold a card for more"), color = FS.TextDim, fontSize = 13.sp)
         }
         // Room around the cards so the green outline (and the slight zoom) of a highlighted card
         // isn't cut off at the screen edge.

@@ -47,7 +47,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
-import androidx.tv.material3.Surface
+import com.forbiddenstreams.tv.ui.Surface
 import androidx.tv.material3.Text
 import com.forbiddenstreams.tv.data.Episode
 import com.forbiddenstreams.tv.data.MovieMatcher
@@ -384,7 +384,7 @@ private fun BigPicture(t: Tile?, movies: Boolean, modifier: Modifier) {
                 art?.overview?.takeIf { it.isNotBlank() }?.let {
                     Text(it, color = FS.Text, fontSize = 15.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 20.sp)
                 }
-                Text(if (t.recent != null) "OK = resume  ·  Hold OK = details" else "OK = details", color = FS.TextDim, fontSize = 13.sp)
+                Text(if (t.recent != null) hint("OK = resume  ·  Hold OK = details", "Tap = resume  ·  Press and hold = details") else hint("OK = details", "Tap = details"), color = FS.TextDim, fontSize = 13.sp)
             }
         }
     }

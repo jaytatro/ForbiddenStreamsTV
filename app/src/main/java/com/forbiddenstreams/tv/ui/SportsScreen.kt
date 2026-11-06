@@ -330,9 +330,10 @@ internal fun GameRow(game: Game, channels: GameChannels?, groupMissing: Boolean,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
                 game.venue?.let { Text(it, color = FS.Green, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                val okFor = hint("OK for channels", "tap for channels")
                 val chText = when {
-                    groupMissing -> if (game.networks.isNotEmpty()) "📡 " + game.networks.joinToString(" · ") + " · OK for channels"
-                        else "No team channels on your provider · OK for channels"
+                    groupMissing -> if (game.networks.isNotEmpty()) "📡 " + game.networks.joinToString(" · ") + " · $okFor"
+                        else "No team channels on your provider · $okFor"
                     channels == null -> if (loadingChannels) "Finding team channels…" else ""
                     channels.options.isEmpty() -> channels.note ?: "No team channel found"
                     else -> "📺 " + channels.options.joinToString("   |   ") { it.name }

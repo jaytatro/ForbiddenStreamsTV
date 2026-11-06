@@ -54,7 +54,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
-import androidx.tv.material3.Surface
+import com.forbiddenstreams.tv.ui.Surface
 import androidx.tv.material3.Text
 import com.forbiddenstreams.tv.data.CategoryPrefs
 import com.forbiddenstreams.tv.data.LiveChannel
@@ -145,6 +145,8 @@ fun LiveChannelsTab() {
             focus(chReq)
         }
         fun backToCategories() { step = 1; focus(catReq) }
+        // Phones: BACK on the channels (step 2) brings the categories back (◀ does it on the remote).
+        androidx.activity.compose.BackHandler(enabled = isTouch() && step == 2) { step = 1 }
 
         val catW by animateDpAsState(if (step == 1) 300.dp else 0.dp, tween(240), label = "cats")
 
@@ -193,7 +195,8 @@ fun LiveChannelsTab() {
                     if (channels.isNotEmpty()) Text("${chIndex + 1}/${channels.size}", color = FS.TextDim, fontSize = 16.sp)
                 }
                 if (channels.isEmpty()) {
-                    Text(if (shown == Group.Favorites) "No favorite channels yet. Hold OK on a channel to add it."
+                    Text(if (shown == Group.Favorites) hint("No favorite channels yet. Hold OK on a channel to add it.",
+                            "No favorite channels yet. Press and hold a channel to add it.")
                         else "No channels in this category.",
                         color = FS.TextDim, fontSize = 17.sp, modifier = Modifier.padding(24.dp))
                 } else {
@@ -208,6 +211,8 @@ fun LiveChannelsTab() {
                             ListPill(
                                 selected = i == chIndex && step == 2,
                                 onClick = {
+                                    // A tap also picks the channel (the remote does that by moving onto it).
+                                    chIndex = i; if (step == 1) step = 2
                                     if (playing) PlayerHolder.openFullScreen(context)
                                     else playChannels(context, channels, i, fullScreen = false)
                                 },

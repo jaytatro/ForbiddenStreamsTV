@@ -46,7 +46,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
-import androidx.tv.material3.Surface
+import com.forbiddenstreams.tv.ui.Surface
 import androidx.tv.material3.Text
 import com.forbiddenstreams.tv.data.CategoryPrefs
 import com.forbiddenstreams.tv.data.LiveChannel
@@ -200,7 +200,7 @@ fun MultiViewScreen(onExit: (LiveChannel?) -> Unit) {
             tiles.size <= 1 -> Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                 tile(0, Modifier.width(820.dp).aspectRatio(16f / 9f))
                 Spacer(Modifier.height(18.dp))
-                Text("Press OK to show menu", color = FS.Green, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text(hint("Press OK to show menu", "Tap the screen to show the menu"), color = FS.Green, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 Text("Your IPTV provider may limit the number of concurrent connections", color = FS.TextDim, fontSize = 13.sp)
             }
             tiles.size == 2 -> Row(Modifier.fillMaxSize().padding(12.dp), verticalAlignment = Alignment.CenterVertically,

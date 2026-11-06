@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
-import androidx.tv.material3.Surface
+import com.forbiddenstreams.tv.ui.Surface
 import androidx.tv.material3.Text
 import com.forbiddenstreams.tv.sports.Espn
 import com.forbiddenstreams.tv.sports.FavTeams
@@ -76,7 +76,7 @@ fun LiveGamesRow(games: List<Pair<League, Game>>, onOpen: (League, String) -> Un
             Text("Live games", color = FS.Text, fontSize = 19.sp, fontWeight = FontWeight.Bold)
             Text("  ·  Sports", color = FS.TextDim, fontSize = 16.sp)
             Spacer(Modifier.weight(1f))
-            Text("\"OK\" for the channels", color = FS.TextDim, fontSize = 13.sp)
+            Text(hint("\"OK\" for the channels", "Tap for the channels"), color = FS.TextDim, fontSize = 13.sp)
         }
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
