@@ -320,6 +320,8 @@ private class ShelfHandle(val rowState: androidx.compose.foundation.lazy.LazyLis
  */
 private class ShelfNav(val list: androidx.compose.foundation.lazy.LazyListState, val scope: kotlinx.coroutines.CoroutineScope) {
     val handles = HashMap<String, ShelfHandle>()
+    /** Last poster per row; kept here because a row's own state is dropped when it scrolls off screen. */
+    val lastIndex = HashMap<String, Int>()
     /** Rows in screen order: row key → its place in the page list. */
     var order: List<Pair<String, Int>> = emptyList()
 
@@ -336,9 +338,9 @@ private class ShelfNav(val list: androidx.compose.foundation.lazy.LazyListState,
                 for (t in 0 until 15) { h = handles[target.first]; if (h != null) break; delay(40) }
                 val handle = h
                 if (handle != null) {
-                    val idx = if (dir > 0) 0 else handle.last
+                    val idx = if (dir > 0) 0 else (lastIndex[target.first] ?: 0)
                     try { handle.rowState.scrollToItem((idx - 1).coerceAtLeast(0)) } catch (e: Exception) { }
-                    for (t in 0 until 12) {
+                    for (t in 0 until 20) {
                         delay(35)
                         val r = handle.reqs[idx] ?: continue
                         try { r.requestFocus(); return@launch } catch (e: Exception) { }
@@ -387,7 +389,7 @@ private fun PosterShelf(s: Shelf, onFocus: (Tile) -> Unit, onOpen: (Tile) -> Uni
                 }
                 val req = if (i == 0 && firstReq != null) firstReq else handle.reqs.getOrPut(i) { FocusRequester() }
                 if (i == 0 && firstReq != null) handle.reqs[0] = firstReq
-                PosterCard(t, onFocus = { handle.last = i; onFocus(t) },
+                PosterCard(t, onFocus = { handle.last = i; nav?.lastIndex?.set(rowKey, i); onFocus(t) },
                     modifier = Modifier.focusRequester(req).onPreviewKeyEvent { ev ->
                         if (ev.nativeKeyEvent.action != android.view.KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
                         when (ev.nativeKeyEvent.keyCode) {

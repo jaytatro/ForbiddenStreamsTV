@@ -73,7 +73,8 @@ fun LiveTvTab() {
     val scope = rememberCoroutineScope()
 
     var listOpen by remember { mutableStateOf(true) }
-    var picked by remember { mutableStateOf(groups.firstOrNull { it.key == prefs.lastGroup } ?: groups.firstOrNull()) }
+    // Always starts at History (Nov 8).
+    var picked by remember { mutableStateOf(groups.firstOrNull { it == Group.History } ?: groups.firstOrNull()) }
     var shown by remember { mutableStateOf(picked) }          // the guide on the right
     var pending by remember { mutableStateOf<Group?>(null) }  // highlighted, shown after a short pause
     val selReq = remember { FocusRequester() }
@@ -131,6 +132,7 @@ fun LiveTvTab() {
                         modifier = Modifier.padding(start = 14.dp, bottom = 8.dp))
                     val selIndex = groups.indexOfFirst { it.key == picked?.key }.coerceAtLeast(0)
                     val state = rememberLazyListState(selIndex)
+                    val topReq = remember { FocusRequester() }
                     LazyColumn(state = state, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         itemsIndexed(groups, key = { _, g -> g.key }) { i, g ->
                             SideItem(
@@ -140,12 +142,24 @@ fun LiveTvTab() {
                                 onClick = { pick(g) },
                                 onLongClick = { if (g is Group.Cat) hideAsk = g },
                                 modifier = Modifier.fillMaxWidth().then(if (i == selIndex) Modifier.focusRequester(selReq) else Modifier)
-                                    // ▶ on a category does the same as OK.
+                                    .then(if (i == 0) Modifier.focusRequester(topReq) else Modifier)
+                                    // ▶ on a category does the same as OK; ▼ on the last one goes back to the top.
                                     .onPreviewKeyEvent { ev ->
-                                        if (ev.type == KeyEventType.KeyDown && ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) {
-                                            if (ev.nativeKeyEvent.repeatCount == 0) pick(g)
-                                            true
-                                        } else false
+                                        if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                                        when {
+                                            ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                                if (ev.nativeKeyEvent.repeatCount == 0) pick(g)
+                                                true
+                                            }
+                                            ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN && i == groups.size - 1 -> {
+                                                scope.launch {
+                                                    try { state.scrollToItem(0) } catch (e: Exception) { }
+                                                    repeat(5) { delay(30); try { topReq.requestFocus(); return@launch } catch (e: Exception) { } }
+                                                }
+                                                true
+                                            }
+                                            else -> false
+                                        }
                                     },
                             )
                         }

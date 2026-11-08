@@ -117,7 +117,8 @@ fun LiveChannelsTab() {
         }
         var favTick by remember { mutableIntStateOf(0) }
         var step by remember { mutableIntStateOf(1) }
-        var shown by remember { mutableStateOf(groups.firstOrNull { it.key == prefs.lastGroup } ?: groups.getOrNull(2) ?: groups.firstOrNull()) }
+        // Always starts at History (Nov 8).
+        var shown by remember { mutableStateOf(groups.firstOrNull { it == Group.History } ?: groups.firstOrNull()) }
         var pending by remember { mutableStateOf<Group?>(null) }
         LaunchedEffect(pending) { val g = pending ?: return@LaunchedEffect; delay(250); shown = g }
 
@@ -174,9 +175,11 @@ fun LiveChannelsTab() {
                         fieldModifier = Modifier.weight(1f),
                         onSearch = { if (chQuery.trim().length >= 2) openChannels(Group.Search) })
                     val sel = groups.indexOfFirst { it.key == shown?.key }.coerceAtLeast(0)
+                    val catState = rememberLazyListState((sel - 3).coerceAtLeast(0))
+                    val topReq = remember { FocusRequester() }
                     LazyColumn(
                         Modifier.width(300.dp).fillMaxHeight(),
-                        state = rememberLazyListState((sel - 3).coerceAtLeast(0)),
+                        state = catState,
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                         contentPadding = PaddingValues(vertical = 10.dp, horizontal = 6.dp),
                     ) {
@@ -187,11 +190,23 @@ fun LiveChannelsTab() {
                                 onLongClick = { if (g is Group.Cat) hideAsk = g },
                                 modifier = Modifier.fillMaxWidth()
                                     .then(if (i == sel) Modifier.focusRequester(catReq) else Modifier)
+                                    .then(if (i == 0) Modifier.focusRequester(topReq) else Modifier)
                                     .onFocusChanged { if (it.isFocused && step == 1) pending = g }
                                     .onPreviewKeyEvent { ev ->
-                                        if (keyIs(ev, android.view.KeyEvent.KEYCODE_DPAD_RIGHT)) {
-                                            if (ev.nativeKeyEvent.repeatCount == 0) openChannels(g); true
-                                        } else false
+                                        when {
+                                            keyIs(ev, android.view.KeyEvent.KEYCODE_DPAD_RIGHT) -> {
+                                                if (ev.nativeKeyEvent.repeatCount == 0) openChannels(g); true
+                                            }
+                                            // ▼ on the last category → back to the top (round robin).
+                                            keyIs(ev, android.view.KeyEvent.KEYCODE_DPAD_DOWN) && i == groups.size - 1 -> {
+                                                scope.launch {
+                                                    try { catState.scrollToItem(0) } catch (e: Exception) { }
+                                                    repeat(5) { delay(30); try { topReq.requestFocus(); return@launch } catch (e: Exception) { } }
+                                                }
+                                                true
+                                            }
+                                            else -> false
+                                        }
                                     },
                             ) {
                                 Text(g.title, color = FS.Green, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,

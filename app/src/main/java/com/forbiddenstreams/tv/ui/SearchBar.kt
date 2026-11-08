@@ -81,7 +81,17 @@ fun SearchBar(
         } else {
             var hadFocus by remember { mutableStateOf(false) }
             androidx.compose.runtime.LaunchedEffect(Unit) {
-                repeat(6) { kotlinx.coroutines.delay(60); try { editReq.requestFocus(); keyboard?.show(); return@LaunchedEffect } catch (e: Exception) { } }
+                for (t in 0 until 8) {
+                    kotlinx.coroutines.delay(50)
+                    val ok = try { editReq.requestFocus(); true } catch (e: Exception) { false }
+                    if (ok) {
+                        // The keyboard can ignore the first request while the text box is still connecting: ask a few times.
+                        keyboard?.show()
+                        kotlinx.coroutines.delay(120); keyboard?.show()
+                        kotlinx.coroutines.delay(250); keyboard?.show()
+                        break
+                    }
+                }
             }
             BasicTextField(
                 value = query,
