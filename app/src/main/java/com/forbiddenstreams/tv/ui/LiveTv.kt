@@ -94,6 +94,20 @@ fun LiveTvTab() {
     val listA by animateFloatAsState(if (listOpen) 1f else 0f, tween(200), label = "listAlpha")
 
     var hideAsk by remember { mutableStateOf<Group.Cat?>(null) }
+    // ▼ from the tabs goes back to where you were: the category list, or the channel you were on in the guide.
+    val goBackIn: () -> Boolean = {
+        scope.launch {
+            repeat(6) {
+                delay(40)
+                try { if (listOpen) selReq.requestFocus() else guideReq.requestFocus(); return@launch } catch (e: Exception) { }
+            }
+        }
+        true
+    }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        TabDown.handler = goBackIn
+        onDispose { if (TabDown.handler === goBackIn) TabDown.handler = null }
+    }
     var searching by remember { mutableStateOf(false) }
     if (searching) ChannelSearchDialog(onClose = { searching = false })
 

@@ -514,10 +514,17 @@ fun GuideView(
     val curCh = channels.getOrNull(row)
     val curProg = remember(row, cursor, epgTick, ws) { if (curCh != null) cellAt(row)?.program else null }
 
+    // Nov 8: BACK in the guide → the live preview (top left); BACK again (handled by the app) → the tabs.
+    var guideHasFocus by remember { mutableStateOf(false) }
+    BackHandler(enabled = !overlay && guideHasFocus && !previewFocused && PlayerHolder.isMiniActive) {
+        try { previewReq.requestFocus() } catch (e: Exception) { }
+    }
+
     Column(
         Modifier
             .fillMaxSize()
             .focusRequester(focus)
+            .onFocusChanged { guideHasFocus = it.hasFocus }
             .onPreviewKeyEvent { ev ->
                 val ne = ev.nativeKeyEvent
                 val down = ev.type == KeyEventType.KeyDown
