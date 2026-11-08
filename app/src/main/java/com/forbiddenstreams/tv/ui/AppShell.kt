@@ -85,6 +85,7 @@ fun AppShell(onLogout: () -> Unit) {
     var settings by remember { mutableStateOf(false) }
     var favTeams by remember { mutableStateOf(false) }
     var parental by remember { mutableStateOf(false) }
+    var reorder by remember { mutableStateOf(false) }
     var sportsEnter by remember { mutableIntStateOf(0) }
     var sportsOpen by remember { mutableStateOf<Pair<com.forbiddenstreams.tv.sports.League, String>?>(null) }
     val tabReq = remember { List(TABS.size) { FocusRequester() } }
@@ -146,6 +147,7 @@ fun AppShell(onLogout: () -> Unit) {
                     UpdateState.check(context, kotlinx.coroutines.MainScope(), manual = true)
                 },
                 "⭐  Favorite teams" to { settings = false; favTeams = true },
+                "↕  Re-order and hide categories" to { settings = false; reorder = true },
                 "🔒  Parental code" to { settings = false; parental = true },
                 "🛠  Last crash report" to {
                     settings = false
@@ -159,6 +161,7 @@ fun AppShell(onLogout: () -> Unit) {
     }
     if (favTeams) FavoriteTeamsDialog(onClose = { favTeams = false })
     if (parental) ParentalSettings(onClose = { parental = false })
+    if (reorder) ReorderCategories(onClose = { reorder = false })
     crashText?.let { t ->
         // Shown so it can be photographed and sent for fixing.
         ChoiceDialog(title = "Last crash report", subtitle = t.lines().take(18).joinToString("\n"),
