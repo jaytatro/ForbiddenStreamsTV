@@ -198,7 +198,10 @@ private fun TopBar(tab: Int, reqs: List<FocusRequester>, onTab: (Int) -> Unit, o
                 // always lands on the tab you're on, so it never jumps to another tab by itself.
                 .focusProperties { enter = { reqs[tab] } }
                 .focusGroup()
-                .onFocusChanged { onFocusChange(it.hasFocus) },
+                .onFocusChanged { onFocusChange(it.hasFocus) }
+                // Round dock behind the tabs and ⚙ (Nov 8): grey at 20%.
+                .background(Color(0x33808080), RoundedCornerShape(50))
+                .padding(horizontal = 8.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TABS.forEachIndexed { i, name ->
@@ -652,6 +655,9 @@ private fun ListDialog(
     onBack: () -> Unit,
 ) {
     val first = remember(title) { FocusRequester() }
+    val reqs = remember(title, items.size) { List(items.size) { if (it == 0) first else FocusRequester() } }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     LaunchedEffect(title, items.size) { delay(120); try { first.requestFocus() } catch (e: Exception) { } }
     Dialog(onDismissRequest = onBack) {
         Column(
@@ -661,11 +667,17 @@ private fun ListDialog(
         ) {
             Text(title, color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
             subtitle?.let { Text(it, color = FS.TextDim, fontSize = 15.sp) }
-            LazyColumn(Modifier.heightIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            LazyColumn(Modifier.heightIn(max = 460.dp), state = listState, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 itemsIndexed(items) { i, (label, note, action) ->
                     FocusCard(
                         onClick = action,
-                        modifier = Modifier.fillMaxWidth().then(if (i == 0) Modifier.focusRequester(first) else Modifier),
+                        modifier = Modifier.fillMaxWidth().focusRequester(reqs[i])
+                            .roundRobin(i, items.size) { to ->
+                                scope.launch {
+                                    try { listState.scrollToItem(to) } catch (e: Exception) { }
+                                    repeat(5) { delay(30); try { reqs[to].requestFocus(); return@launch } catch (e: Exception) { } }
+                                }
+                            },
                         focusedScale = 1.02f,
                     ) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {

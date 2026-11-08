@@ -309,7 +309,7 @@ private fun PosterShelf(s: Shelf, onFocus: (Tile) -> Unit, onOpen: (Tile) -> Uni
             Text(s.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             if (onExpand != null) {
                 Spacer(Modifier.width(14.dp))
-                Pill("⤢  See all ${s.tiles.size}", selected = false, outlined = true, fontSize = 13.sp, hPad = 12.dp, onClick = onExpand)
+                Pill("⤢  Expand Row", selected = false, outlined = true, fontSize = 13.sp, hPad = 12.dp, onClick = onExpand)
             }
         }
         LazyRow(
@@ -651,12 +651,12 @@ private fun SearchDialog(movies: Boolean, onOpen: (Tile) -> Unit, onClose: () ->
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         BackHandler { onClose() }
         LaunchedEffect(Unit) {
-            repeat(8) { delay(120); try { fieldReq.requestFocus(); keyboard?.show(); return@LaunchedEffect } catch (e: Exception) { } }
+            repeat(8) { delay(120); try { fieldReq.requestFocus(); return@LaunchedEffect } catch (e: Exception) { } }
         }
         Column(Modifier.fillMaxSize().background(Color.Black).padding(horizontal = 40.dp, vertical = 28.dp)) {
             Text(if (movies) "Search movies" else "Search TV shows", color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
-            SearchBar(query, { query = it }, "Type or say a name…",
+            SearchBar(query, { query = it }, "Press OK to type a name",
                 modifier = Modifier.fillMaxWidth(),
                 fieldModifier = Modifier.weight(1f).focusRequester(fieldReq),
                 onSearch = { keyboard?.hide() })

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -737,20 +738,51 @@ fun ChoiceDialog(
                 .padding(28.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(title, color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            if (subtitle != null) Text(subtitle, color = FS.TextDim, fontSize = 16.sp, maxLines = 4)
+            Text(title, color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            if (subtitle != null) Text(subtitle, color = FS.TextDim, fontSize = 15.sp, maxLines = 8,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             Spacer(Modifier.size(6.dp))
-            options.forEachIndexed { i, (label, action) ->
-                FocusCard(
-                    onClick = action,
-                    modifier = Modifier.fillMaxWidth().then(if (i == 0) Modifier.focusRequester(first) else Modifier),
-                ) {
-                    Text(label, fontSize = 19.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp))
+            // Nov 8: long lists scroll inside the pop-up, and ▼ on the last choice goes back to the first
+            // (▲ on the first goes to the last).
+            val reqs = remember(options.size) { List(options.size) { if (it == 0) first else FocusRequester() } }
+            val state = androidx.compose.foundation.lazy.rememberLazyListState()
+            val scope = androidx.compose.runtime.rememberCoroutineScope()
+            androidx.compose.foundation.lazy.LazyColumn(
+                state = state,
+                modifier = Modifier.heightIn(max = 400.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp),
+            ) {
+                items(options.size) { i ->
+                    val (label, action) = options[i]
+                    FocusCard(
+                        onClick = action,
+                        modifier = Modifier.fillMaxWidth().focusRequester(reqs[i])
+                            .roundRobin(i, options.size) { to ->
+                                scope.launch {
+                                    try { state.scrollToItem(to) } catch (e: Exception) { }
+                                    repeat(5) { delay(30); try { reqs[to].requestFocus(); return@launch } catch (e: Exception) { } }
+                                }
+                            },
+                    ) {
+                        Text(label, fontSize = 19.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp))
+                    }
                 }
             }
         }
     }
     LaunchedEffect(Unit) { delay(100); try { first.requestFocus() } catch (e: Exception) { } }
+}
+
+/** In a list of [size]: ▼ on the last item → first, ▲ on the first → last ([go] moves the cursor). */
+fun Modifier.roundRobin(i: Int, size: Int, go: (Int) -> Unit): Modifier = onPreviewKeyEvent { ev ->
+    if (size < 2 || ev.nativeKeyEvent.action != android.view.KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
+    when {
+        ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN && i == size - 1 -> { go(0); true }
+        ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP && i == 0 -> { go(size - 1); true }
+        else -> false
+    }
 }
 
 
