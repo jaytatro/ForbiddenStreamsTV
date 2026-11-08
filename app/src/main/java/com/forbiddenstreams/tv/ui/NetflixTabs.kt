@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -97,7 +98,7 @@ private object VodLib {
     val cats = HashMap<Boolean, List<com.forbiddenstreams.tv.data.Category>>()
     val rows = HashMap<String, List<Tile>>()
     val recent = HashMap<Boolean, List<Tile>>()
-    private val gate = kotlinx.coroutines.sync.Semaphore(3)
+    private val gate = kotlinx.coroutines.sync.Semaphore(4)
 
     fun reset() { cats.clear(); rows.clear(); recent.clear(); names.clear() }
 
@@ -129,14 +130,28 @@ private object VodLib {
         val key = (if (movies) "m:" else "s:") + catId
         rows[key]?.let { return it }
         val src = Session.source ?: return emptyList()
-        val out = gate.withPermit {
-            rows[key] ?: try {
-                if (movies) { val l = src.vodItems(catId); kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { l.map { tileOf(it) }.distinctBy { it.key } } }
-                else { val l = src.seriesItems(catId); kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { l.map { tileOf(it) }.distinctBy { it.key } } }
-            } catch (e: Exception) { emptyList() }
+        // Nov 8: some categories came up missing — a busy server answering a row with an error made it
+        // vanish for good. Now: up to 3 tries, and an empty answer falls back to the full list.
+        var out: List<Tile>? = null
+        for (attempt in 0 until 3) {
+            out = gate.withPermit {
+                rows[key] ?: try {
+                    if (movies) { val l = src.vodItems(catId); kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { l.map { tileOf(it) }.distinctBy { it.key } } }
+                    else { val l = src.seriesItems(catId); kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { l.map { tileOf(it) }.distinctBy { it.key } } }
+                } catch (e: Exception) { null }
+            }
+            if (out != null) break
+            delay(800L * (attempt + 1))
         }
-        rows[key] = out
-        return out
+        if (out.isNullOrEmpty()) {
+            out = try {
+                if (movies) { val a = src.allVod(); kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { a.filter { it.categoryId == catId }.map { tileOf(it) }.distinctBy { it.key } } }
+                else { val a = src.allSeries(); kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { a.filter { it.categoryId == catId }.map { tileOf(it) }.distinctBy { it.key } } }
+            } catch (e: Throwable) { out ?: emptyList() }
+        }
+        val result = out ?: emptyList()
+        if (result.isNotEmpty()) rows[key] = result
+        return result
     }
 
     suspend fun recent(movies: Boolean): List<Tile> {
@@ -180,6 +195,7 @@ private fun BrowseTab(movies: Boolean) {
     }
     var ask by remember { mutableStateOf<RecentItem?>(null) }
     var searching by remember { mutableStateOf(false) }
+    var expand by remember { mutableStateOf<Shelf?>(null) }
     val continueRow = remember(movies, tick, ask) { keepTiles(context, movies) }
     ask?.let { r -> ResumeReplayDialog(r, onClose = { ask = null }) }
 
@@ -241,7 +257,8 @@ private fun BrowseTab(movies: Boolean) {
                     if (r == null) LoadingShelf(if (movies) "Recently added" else "Recently updated")
                     else if (r.isNotEmpty()) PosterShelf(Shelf(if (movies) "Recently added" else "Recently updated", r),
                         onFocus = { focused = it }, onOpen = { open = it },
-                        firstReq = recentReq, onFirstAttached = { recentReady = it }, rowState = recentRowState)
+                        firstReq = recentReq, onFirstAttached = { recentReady = it }, rowState = recentRowState,
+                        onExpand = { expand = Shelf(if (movies) "Recently added" else "Recently updated", r) })
                 }
                 itemsIndexed(list, key = { i, c -> "$i:${c.id}" }) { _, c ->
                     // Each row downloads its own category when it comes on screen.
@@ -250,7 +267,8 @@ private fun BrowseTab(movies: Boolean) {
                     }
                     val t = tiles?.safe(adult)
                     if (t == null) LoadingShelf(c.name)
-                    else if (t.isNotEmpty()) PosterShelf(Shelf(c.name, t), onFocus = { focused = it }, onOpen = { open = it })
+                    else if (t.isNotEmpty()) PosterShelf(Shelf(c.name, t), onFocus = { focused = it }, onOpen = { open = it },
+                        onExpand = { expand = Shelf(c.name, t) })
                 }
             }
         }
@@ -258,6 +276,7 @@ private fun BrowseTab(movies: Boolean) {
     LaunchedEffect(continueRow, recentRow) { if (focused == null) focused = continueRow.firstOrNull() ?: recentRow?.firstOrNull() }
 
     if (searching) SearchDialog(movies, onOpen = { open = it }, onClose = { searching = false })
+    expand?.let { sh -> CategoryGrid(sh, onOpen = { open = it }, onClose = { expand = null }) }
     open?.let { t ->
         val cat = t.vod?.categoryId ?: t.series?.categoryId
         val more = remember(t.key) {
@@ -282,11 +301,17 @@ private fun LoadingShelf(title: String) {
 /** Row title + a sideways row of posters. */
 @Composable
 private fun PosterShelf(s: Shelf, onFocus: (Tile) -> Unit, onOpen: (Tile) -> Unit, firstReq: FocusRequester? = null, onFirstAttached: (Boolean) -> Unit = {},
-    rowState: androidx.compose.foundation.lazy.LazyListState? = null, onRecent: ((RecentItem) -> Unit)? = null) {
+    rowState: androidx.compose.foundation.lazy.LazyListState? = null, onRecent: ((RecentItem) -> Unit)? = null,
+    onExpand: (() -> Unit)? = null) {
     val context = LocalContext.current
     Column {
-        Text(s.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(start = 40.dp, top = 4.dp))
+        Row(Modifier.padding(start = 40.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(s.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            if (onExpand != null) {
+                Spacer(Modifier.width(14.dp))
+                Pill("⤢  See all ${s.tiles.size}", selected = false, outlined = true, fontSize = 13.sp, hPad = 12.dp, onClick = onExpand)
+            }
+        }
         LazyRow(
             state = rowState ?: androidx.compose.foundation.lazy.rememberLazyListState(),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -693,3 +718,48 @@ private fun SearchDialog(movies: Boolean, onOpen: (Tile) -> Unit, onClose: () ->
 /** Leaves out titles named 18+ / XXX / Adult while the parental code is on. */
 private fun List<Tile>.safe(block: Boolean): List<Tile> =
     if (!block) this else filter { !com.forbiddenstreams.tv.data.CategoryPrefs.isAdult(it.vod?.name ?: it.series?.name ?: it.recent?.title ?: it.title) }
+
+
+/**
+ * "See all" on a row (Nov 8, from the user's photo): the whole category as a grid,
+ * 6 posters across and 2 rows on screen, with the name and "rating · year" small under each.
+ */
+@Composable
+private fun CategoryGrid(s: Shelf, onOpen: (Tile) -> Unit, onClose: () -> Unit) {
+    val firstReq = remember { FocusRequester() }
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        BackHandler { onClose() }
+        LaunchedEffect(Unit) { repeat(8) { delay(120); try { firstReq.requestFocus(); return@LaunchedEffect } catch (e: Exception) { } } }
+        Column(Modifier.fillMaxSize().background(Color.Black).padding(start = 60.dp, end = 60.dp, top = 22.dp)) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(s.title, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(14.dp))
+                Text("${s.tiles.size} titles · BACK to go back", color = FS.TextDim, fontSize = 14.sp)
+            }
+            androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(6),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(top = 14.dp, bottom = 30.dp, start = 4.dp, end = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                items(s.tiles.size, key = { s.tiles[it].key }) { i ->
+                    val t = s.tiles[i]
+                    Column {
+                        PosterCard(t, onFocus = {}, onClick = { onOpen(t) }, onLongClick = { onOpen(t) },
+                            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
+                                .then(if (i == 0) Modifier.focusRequester(firstReq) else Modifier))
+                        Text(t.title, color = FS.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 5.dp))
+                        val year = (t.vod?.releaseDate ?: t.series?.releaseDate)?.take(4)?.takeIf { it.matches(Regex("\\d{4}")) }
+                            ?: MovieMatcher.yearOf(t.vod?.name ?: t.series?.name ?: "")
+                        val rating = (t.vod?.rating ?: t.series?.rating)?.toDoubleOrNull()?.takeIf { it > 0 }
+                            ?.let { String.format(java.util.Locale.US, "%.1f", it) }
+                        val sub = listOfNotNull(rating, year).joinToString(" · ")
+                        if (sub.isNotEmpty()) Text(sub, color = FS.TextDim, fontSize = 11.sp, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+}

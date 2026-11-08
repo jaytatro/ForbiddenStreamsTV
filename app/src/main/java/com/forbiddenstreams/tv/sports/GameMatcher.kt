@@ -74,11 +74,11 @@ object GameMatcher {
         val out = ArrayList<Pair<String, LiveChannel>>()
         val seen = HashSet<String>(exclude)
         for (net in game.networks) {
-            val key = norm(net.replace("+", " plus").replace("Prime Video", "Prime")).trim()
-            if (key.isEmpty()) continue
+            val keys = networkNames(net)
+            if (keys.isEmpty()) continue
             val hits = all.filter { c ->
                 val n = norm(c.name)
-                c.id !in seen && n.contains(" $key ") && excluded.none { n.contains(" $it ") }
+                c.id !in seen && keys.any { k -> n.contains(" $k ") } && excluded.none { n.contains(" $it ") }
             }.sortedWith(compareBy(
                 { if (norm(it.name).let { n -> n.startsWith(" us ") || n.startsWith(" usa ") }) 0 else 1 },
                 { it.name.length },
@@ -87,6 +87,35 @@ object GameMatcher {
             if (out.size >= 8) break
         }
         return out
+    }
+
+    /**
+     * The names a TV network goes by on channel lists. ESPN shortens some ("NFL Net", "NFLN",
+     * "CBSSN"), so those are spelled out too (Nov 8: NFL Network wasn't found for Bengals–Falcons).
+     */
+    private fun networkNames(net: String): List<String> {
+        val base = norm(net.replace("+", " plus").replace("Prime Video", "Prime")).trim()
+        val u = net.uppercase().replace(" ", "").replace("+", "PLUS")
+        val extra = when {
+            u.startsWith("NFLNET") || u == "NFLN" || u == "NFLNETWORK" -> listOf("nfl network", "nfl net", "nfln", "nfl hd")
+            u == "NFLPLUS" -> listOf("nfl plus", "nfl network")
+            u.startsWith("NBATV") -> listOf("nba tv", "nbatv")
+            u.startsWith("MLBN") || u.startsWith("MLBNET") -> listOf("mlb network", "mlbn")
+            u.startsWith("NHLN") || u.startsWith("NHLNET") -> listOf("nhl network")
+            u == "CBSSN" || u.startsWith("CBSSPORTSNET") -> listOf("cbs sports network", "cbssn", "cbs sports")
+            u == "BTN" || u.startsWith("BIGTEN") -> listOf("big ten network", "btn", "big ten", "b1g")
+            u == "ACCN" || u.startsWith("ACCNETWORK") -> listOf("acc network", "accn")
+            u == "SECN" || u.startsWith("SECNETWORK") -> listOf("sec network", "secn")
+            u == "FS1" -> listOf("fs1", "fox sports 1")
+            u == "FS2" -> listOf("fs2", "fox sports 2")
+            u.startsWith("ESPNPLUS") -> listOf("espn plus", "espn+")
+            u.startsWith("PRIME") || u.startsWith("AMAZON") -> listOf("prime", "prime video", "amazon prime", "tnf", "thursday night football")
+            u.startsWith("PEACOCK") -> listOf("peacock")
+            u.startsWith("NETFLIX") -> listOf("netflix")
+            u.startsWith("TRUTV") -> listOf("trutv", "tru tv")
+            else -> emptyList()
+        }
+        return (listOf(base) + extra.map { norm(it).trim() }).filter { it.isNotEmpty() }.distinct()
     }
 
     suspend fun match(
