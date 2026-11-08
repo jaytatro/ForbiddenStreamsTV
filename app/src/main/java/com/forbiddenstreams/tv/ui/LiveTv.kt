@@ -67,7 +67,9 @@ fun LiveTvTab() {
         }
         return
     }
-    val groups = remember(cats, CategoryPrefs.version) { groupsFor(CategoryPrefs.visible(context, cats)).filter { it != Group.Search } }
+    val groups = remember(cats, CategoryPrefs.version) { groupsFor(CategoryPrefs.visible(context, cats)).filter { it != Group.Search && it != Group.All } }
+    // Search bar above the categories (Nov 8): matching channels from every category.
+    var chQuery by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
     var listOpen by remember { mutableStateOf(true) }
@@ -79,6 +81,7 @@ fun LiveTvTab() {
     var listFocused by remember { mutableStateOf(false) }
     var guideFocused by remember { mutableStateOf(false) }
 
+    LaunchedEffect(chQuery) { if (chQuery.trim().length >= 2) { delay(300); shown = Group.Search } }
     LaunchedEffect(pending) {
         val g = pending ?: return@LaunchedEffect
         delay(300) // smooth while scrolling through the categories
@@ -121,6 +124,9 @@ fun LiveTvTab() {
                     .onFocusChanged { listFocused = it.hasFocus },
             ) {
                 Column(Modifier.width(320.dp).fillMaxHeight().padding(start = 16.dp, end = 12.dp, top = 6.dp)) {
+                    SearchBar(chQuery, { chQuery = it }, "Search channels", fontSize = 16.sp,
+                        modifier = Modifier.padding(bottom = 8.dp), fieldModifier = Modifier.weight(1f),
+                        onSearch = { if (chQuery.trim().length >= 2) pick(Group.Search) })
                     Text("CATEGORIES", color = FS.GreenMid, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp,
                         modifier = Modifier.padding(start = 14.dp, bottom = 8.dp))
                     val selIndex = groups.indexOfFirst { it.key == picked?.key }.coerceAtLeast(0)
@@ -160,11 +166,14 @@ fun LiveTvTab() {
             if (g == null) {
                 MessageBox("No channels", "Your provider didn't send any live categories.")
             } else {
-                val list = remember(g.key, Session.liveAll) { channelsOf(prefs, g) }
+                val list = remember(g.key, Session.liveAll, if (g == Group.Search) chQuery else "") {
+                    if (g == Group.Search) chQuery.trim().let { q -> if (q.length < 2) emptyList() else channelsOf(prefs, g).filter { channelMatches(it.name, q) } }
+                    else channelsOf(prefs, g)
+                }
                 if (list.isEmpty()) {
                     MessageBox("No channels in this category", "Press ◀ for the categories.")
                 } else {
-                    androidx.compose.runtime.key(g.key) {
+                    androidx.compose.runtime.key(g.key + if (g == Group.Search) chQuery else "") {
                         GuideView(
                             group = g,
                             channels = list,

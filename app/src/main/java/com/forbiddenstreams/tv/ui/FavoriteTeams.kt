@@ -76,7 +76,7 @@ fun FavoriteTeamsScreen() {
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(list, key = { it.id }) { t ->
+                items(list.distinctBy { it.id + it.abbreviation }, key = { it.id + ":" + it.abbreviation }) { t ->
                     val fav = "${league.name}:${t.abbreviation.uppercase()}" in favs
                     // OK flips the on/off switch next to the team.
                     FocusCard(
@@ -197,7 +197,7 @@ fun FavoriteTeamsDialog(onClose: () -> Unit) {
                                 verticalArrangement = Arrangement.spacedBy(10.dp),
                                 contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp),
                             ) {
-                                items(list.size, key = { list[it].id + list[it].abbreviation }) { i ->
+                                items(list.size, key = { "$it:" + list[it].id }) { i ->
                                     val t = list[i]
                                     val fav = "${l.name}:${t.abbreviation.uppercase()}" in favs
                                     FocusCard(

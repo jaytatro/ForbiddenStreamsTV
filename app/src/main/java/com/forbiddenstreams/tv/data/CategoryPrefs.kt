@@ -102,6 +102,12 @@ object CategoryPrefs {
         version++
     }
 
+    /** Saves the whole order at once (Re-order screen). */
+    fun setOrder(context: Context, ids: List<String>) {
+        sp(context).edit().putString("cat_order", ids.joinToString("\u0001")).apply()
+        version++
+    }
+
     fun toggleHidden(context: Context, id: String) {
         val h = hidden(context).toMutableSet()
         if (!h.add(id)) h.remove(id)

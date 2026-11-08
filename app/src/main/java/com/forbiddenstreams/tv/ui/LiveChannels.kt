@@ -121,7 +121,16 @@ fun LiveChannelsTab() {
         var pending by remember { mutableStateOf<Group?>(null) }
         LaunchedEffect(pending) { val g = pending ?: return@LaunchedEffect; delay(250); shown = g }
 
-        val channels = remember(shown?.key, Session.liveAll, favTick) { shown?.let { channelsOf(prefs, it) }.orEmpty() }
+        // Search bar above the categories: typing shows matching channels from every category.
+        var chQuery by remember { mutableStateOf("") }
+        LaunchedEffect(chQuery) { if (chQuery.trim().length >= 2) { delay(250); shown = Group.Search } }
+        val channels = remember(shown?.key, Session.liveAll, favTick, if (shown == Group.Search) chQuery else "") {
+            val g = shown ?: return@remember emptyList<LiveChannel>()
+            if (g == Group.Search) {
+                val q = chQuery.trim()
+                if (q.length < 2) emptyList() else channelsOf(prefs, g).filter { channelMatches(it.name, q) }
+            } else channelsOf(prefs, g)
+        }
         var chIndex by remember(shown?.key) {
             mutableIntStateOf(channels.indexOfFirst { it.id == PlayerHolder.current?.channelId }.coerceAtLeast(0))
         }
@@ -159,6 +168,11 @@ fun LiveChannelsTab() {
             // ---- Categories ----
             if (catW > 0.dp) {
                 Box(Modifier.width(catW).fillMaxHeight().clipToBounds()) {
+                  Column(Modifier.width(300.dp).fillMaxHeight()) {
+                    SearchBar(chQuery, { chQuery = it }, "Search channels", fontSize = 16.sp,
+                        modifier = Modifier.padding(start = 6.dp, end = 6.dp, top = 6.dp, bottom = 4.dp),
+                        fieldModifier = Modifier.weight(1f),
+                        onSearch = { if (chQuery.trim().length >= 2) openChannels(Group.Search) })
                     val sel = groups.indexOfFirst { it.key == shown?.key }.coerceAtLeast(0)
                     LazyColumn(
                         Modifier.width(300.dp).fillMaxHeight(),
@@ -185,13 +199,14 @@ fun LiveChannelsTab() {
                             }
                         }
                     }
+                  }
                 }
             }
 
             // ---- Channels ----
             Column(Modifier.then(if (step == 1) Modifier.weight(1f) else Modifier.width(560.dp)).fillMaxHeight()) {
                 Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 20.dp, top = 6.dp, bottom = 4.dp)) {
-                    Text(shown?.title ?: "", color = FS.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f),
+                    Text(if (shown == Group.Search) "🔍 \"${chQuery.trim()}\"" else shown?.title ?: "", color = FS.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f),
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (channels.isNotEmpty()) Text("${chIndex + 1}/${channels.size}", color = FS.TextDim, fontSize = 16.sp)
                 }
@@ -328,7 +343,7 @@ private fun ProgramList(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
                 contentPadding = PaddingValues(vertical = 6.dp),
             ) {
-                itemsIndexed(day, key = { _, p -> p.start }) { i, p ->
+                itemsIndexed(day, key = { i, p -> "$i:${p.start}" }) { i, p ->
                     val live = p.isLive(now)
                     val past = p.end <= now
                     ListPill(

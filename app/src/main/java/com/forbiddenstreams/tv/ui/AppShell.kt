@@ -95,6 +95,15 @@ fun AppShell(onLogout: () -> Unit) {
     LaunchedEffect(Unit) { delay(150); try { tabReq[0].requestFocus() } catch (e: Exception) { } }
     // Movie and show categories load in the background so those tabs open fast.
     LaunchedEffect(Session.source) { delay(4000); prefetchLibrary() }
+    // The playlist refreshes by itself every 24 hours (checked every 30 minutes while the app is open).
+    LaunchedEffect(Session.source) {
+        val sp = context.getSharedPreferences("forbidden_streams", android.content.Context.MODE_PRIVATE)
+        if (sp.getLong("playlist_refreshed", 0L) == 0L) sp.edit().putLong("playlist_refreshed", System.currentTimeMillis()).apply()
+        while (true) {
+            if (Session.source != null && System.currentTimeMillis() - sp.getLong("playlist_refreshed", 0L) >= 24 * 3_600_000L) refreshPlaylist(context)
+            delay(30 * 60_000L)
+        }
+    }
     var crashText by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(exitHint) { if (exitHint) { delay(2500); exitHint = false } }
     // Leaving Live TV (or coming back from the player to another tab) stops the live channel.
@@ -147,6 +156,11 @@ fun AppShell(onLogout: () -> Unit) {
                     UpdateState.check(context, kotlinx.coroutines.MainScope(), manual = true)
                 },
                 "⭐  Favorite teams" to { settings = false; favTeams = true },
+                "🔄  Refresh playlist" to {
+                    settings = false
+                    refreshPlaylist(context)
+                    toast(context, "Refreshing the playlist…")
+                },
                 "↕  Re-order and hide categories" to { settings = false; reorder = true },
                 "🔒  Parental code" to { settings = false; parental = true },
                 "🛠  Last crash report" to {
@@ -414,7 +428,7 @@ private fun CardRow(title: String, sub: String?, icon: RailIcon, cards: List<Car
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 36.dp, vertical = 8.dp),
         ) {
-            itemsIndexed(cards, key = { _, c -> c.key }) { _, c ->
+            itemsIndexed(cards.distinctBy { it.key }, key = { _, c -> c.key }) { _, c ->
                 WideCard(c, onFocus = { onFocus(c) }, onClick = { playCard(context, c) }, onLongClick = { onMore(c) })
             }
         }
@@ -731,4 +745,14 @@ private fun ChannelHero(ch: com.forbiddenstreams.tv.data.LiveChannel, modifier: 
             }
         }
     }
+}
+
+
+/** Settings › Refresh playlist (and every 24 hours): channels, guide, movies and shows load fresh. */
+fun refreshPlaylist(context: android.content.Context) {
+    context.getSharedPreferences("forbidden_streams", android.content.Context.MODE_PRIVATE).edit()
+        .putLong("playlist_refreshed", System.currentTimeMillis()).apply()
+    Session.refresh(context)
+    MovieMatcher.reset()
+    resetLibrary()
 }

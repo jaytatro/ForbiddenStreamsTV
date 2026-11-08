@@ -143,22 +143,21 @@ fun ReorderCategories(onClose: () -> Unit) {
         return
     }
     val cats = Session.liveCats.orEmpty().distinctBy { it.id }
-    val list = remember(cats, CategoryPrefs.version) { CategoryPrefs.ordered(context, cats) }
+    // Moves happen in this list right away (smooth, animated); the order is saved when OK puts it down.
+    val list = remember(cats) { androidx.compose.runtime.mutableStateListOf(*CategoryPrefs.ordered(context, cats).toTypedArray()) }
     val hidden = remember(CategoryPrefs.version) { CategoryPrefs.hidden(context) }
     var moving by remember { mutableStateOf<String?>(null) }
-    val reqs = remember(list.size) { List(list.size) { androidx.compose.ui.focus.FocusRequester() } }
+    val firstReq = remember { androidx.compose.ui.focus.FocusRequester() }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val state = androidx.compose.foundation.lazy.rememberLazyListState()
-    fun focusAt(i: Int) {
-        scope.launch {
-            try { state.scrollToItem((i - 3).coerceAtLeast(0)) } catch (e: Exception) { }
-            repeat(6) { kotlinx.coroutines.delay(40); try { reqs[i].requestFocus(); return@launch } catch (e: Exception) { } }
-        }
-    }
-    androidx.compose.ui.window.Dialog(onDismissRequest = { if (moving != null) moving = null else onClose() },
+    fun save() = CategoryPrefs.setOrder(context, list.map { it.id })
+    fun stop() { if (moving != null) { moving = null; save() } }
+    androidx.compose.ui.window.Dialog(onDismissRequest = { if (moving != null) stop() else onClose() },
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-        androidx.activity.compose.BackHandler { if (moving != null) moving = null else onClose() }
-        androidx.compose.runtime.LaunchedEffect(Unit) { if (list.isNotEmpty()) focusAt(0) }
+        androidx.activity.compose.BackHandler { if (moving != null) stop() else onClose() }
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            repeat(8) { kotlinx.coroutines.delay(100); try { firstReq.requestFocus(); return@LaunchedEffect } catch (e: Exception) { } }
+        }
         Column(Modifier.fillMaxSize().background(FS.Bg).padding(horizontal = 80.dp, vertical = 26.dp)) {
             Text("Re-order and hide categories", color = FS.Green, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             Text(
@@ -170,20 +169,21 @@ fun ReorderCategories(onClose: () -> Unit) {
             if (list.isEmpty()) { Text("No categories loaded yet.", color = FS.TextDim, fontSize = 17.sp); return@Column }
             androidx.compose.foundation.lazy.LazyColumn(state = state, verticalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 30.dp)) {
-                // Rows are kept by position (not by category) so the cursor stays put while names move.
-                items(list.size) { i ->
+                // Keyed by category: the picked-up row slides to its new place and keeps the cursor.
+                items(list.size, key = { list[it].id }) { i ->
                     val c = list[i]
                     val shown = c.id !in hidden
                     val isMoving = moving == c.id
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.animateItem(), verticalAlignment = Alignment.CenterVertically) {
                         FocusCard(
                             onClick = {
-                                if (isMoving) { moving = null; toast(context, "${c.name} set at #${i + 1}") }
+                                if (isMoving) { stop(); toast(context, "${c.name} set at #${i + 1}") }
                                 else moving = c.id
                             },
                             selected = isMoving,
                             focusedScale = 1.01f,
-                            modifier = Modifier.weight(1f).height(54.dp).focusRequester(reqs[i])
+                            modifier = Modifier.weight(1f).height(54.dp)
+                                .then(if (i == 0) Modifier.focusRequester(firstReq) else Modifier)
                                 .onPreviewKeyEvent { ev ->
                                     if (!isMoving || ev.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@onPreviewKeyEvent false
                                     val step = when (ev.nativeKeyEvent.keyCode) {
@@ -192,10 +192,16 @@ fun ReorderCategories(onClose: () -> Unit) {
                                         android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> 0
                                         else -> return@onPreviewKeyEvent false
                                     }
-                                    val j = i + step
-                                    if (step != 0 && j in list.indices) {
-                                        CategoryPrefs.move(context, cats, c.id, step)
-                                        focusAt(j)
+                                    val from = list.indexOfFirst { it.id == c.id }
+                                    val to = from + step
+                                    if (step != 0 && from >= 0 && to in list.indices) {
+                                        list.add(to, list.removeAt(from))
+                                        // Keep it on screen with a little room above/below.
+                                        val first = state.firstVisibleItemIndex
+                                        val last = state.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: first
+                                        if (to <= first || to >= last) scope.launch {
+                                            try { state.animateScrollToItem((to - 3).coerceAtLeast(0)) } catch (e: Exception) { }
+                                        }
                                     }
                                     true
                                 },

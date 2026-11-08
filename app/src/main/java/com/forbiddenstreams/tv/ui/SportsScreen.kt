@@ -195,7 +195,7 @@ fun SportsScreen(league: League, openGameId: String? = null, onOpened: () -> Uni
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 6.dp, bottom = 24.dp),
                     ) {
-                        items(sorted, key = { it.id }) { g ->
+                        items(sorted.distinctBy { it.id }, key = { it.id }) { g ->
                             GameRow(g, matches[g.id], groupMissing, teamChannels == null,
                                 fav = com.forbiddenstreams.tv.sports.FavTeams.inGame(context, league, g)) { picker = g }
                         }

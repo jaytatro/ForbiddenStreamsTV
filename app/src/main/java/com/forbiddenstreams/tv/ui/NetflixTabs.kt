@@ -656,33 +656,10 @@ private fun SearchDialog(movies: Boolean, onOpen: (Tile) -> Unit, onClose: () ->
         Column(Modifier.fillMaxSize().background(Color.Black).padding(horizontal = 40.dp, vertical = 28.dp)) {
             Text(if (movies) "Search movies" else "Search TV shows", color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
-            var fieldFocused by remember { mutableStateOf(false) }
-            val shape = RoundedCornerShape(50)
-            androidx.compose.foundation.text.BasicTextField(
-                value = query,
-                onValueChange = { query = it },
-                singleLine = true,
-                textStyle = androidx.compose.ui.text.TextStyle(color = FS.Text, fontSize = 22.sp),
-                cursorBrush = androidx.compose.ui.graphics.SolidColor(FS.Green),
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                    imeAction = androidx.compose.ui.text.input.ImeAction.Search, autoCorrectEnabled = false),
-                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { keyboard?.hide() }),
-                modifier = Modifier.fillMaxWidth().focusRequester(fieldReq)
-                    .onFocusChanged { fieldFocused = it.isFocused }
-                    .background(if (fieldFocused) FS.GreenDim else FS.Panel, shape)
-                    .border(2.dp, if (fieldFocused) FS.Green else FS.Line, shape)
-                    .padding(horizontal = 24.dp, vertical = 14.dp),
-                decorationBox = { inner ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("🔍", fontSize = 20.sp)
-                        Spacer(Modifier.width(12.dp))
-                        Box {
-                            if (query.isEmpty()) Text("Type a name…", color = FS.TextDim, fontSize = 22.sp)
-                            inner()
-                        }
-                    }
-                },
-            )
+            SearchBar(query, { query = it }, "Type or say a name…",
+                modifier = Modifier.fillMaxWidth(),
+                fieldModifier = Modifier.weight(1f).focusRequester(fieldReq),
+                onSearch = { keyboard?.hide() })
             Spacer(Modifier.height(10.dp))
             val q = query.trim()
             Text(
