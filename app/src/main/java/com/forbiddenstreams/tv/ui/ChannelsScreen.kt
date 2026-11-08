@@ -691,16 +691,17 @@ fun GuideView(
 
 @Composable
 private fun GuideInfoPanel(ch: LiveChannel?, p: Program?, previewReq: FocusRequester, onPreviewFocus: (Boolean) -> Unit) {
+    // Nov 8: live preview on the left (10% bigger), the channel's info on the right.
     Row(
-        Modifier.fillMaxWidth().height(150.dp).padding(horizontal = 24.dp, vertical = 6.dp),
+        Modifier.fillMaxWidth().height(160.dp).padding(horizontal = 24.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(width = 150.dp, height = 84.dp), contentAlignment = Alignment.Center) {
-            NetImage(ch?.logo, Modifier.fillMaxSize())
-        }
-        Spacer(Modifier.width(18.dp))
-        // v2: the show is the headline; channel, time, quality and catch-up underneath.
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        MiniPlayer(
+            231.dp, focusable = true,
+            cardModifier = Modifier.focusRequester(previewReq).onFocusChanged { onPreviewFocus(it.isFocused) },
+        )
+        Spacer(Modifier.width(24.dp))
+        Column(Modifier.weight(1f), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 (ch?.let { "${it.num}  ·  ${it.name}" } ?: "TV Guide").uppercase(),
                 color = FS.TextDim, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, maxLines = 1,
@@ -725,16 +726,16 @@ private fun GuideInfoPanel(ch: LiveChannel?, p: Program?, previewReq: FocusReque
                 }
             }
             if (p != null && p.description.isNotBlank()) {
-                Text(p.description, color = FS.TextDim, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(p.description, color = FS.TextDim, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End)
             } else if (p == null && ch != null) {
                 Text("No program information", color = FS.TextDim, fontSize = 14.sp)
             }
         }
-        // Live preview, top-right.
-        MiniPlayer(
-            210.dp, focusable = true,
-            cardModifier = Modifier.focusRequester(previewReq).onFocusChanged { onPreviewFocus(it.isFocused) },
-        )
+        Spacer(Modifier.width(18.dp))
+        Box(Modifier.size(width = 150.dp, height = 84.dp), contentAlignment = Alignment.Center) {
+            NetImage(ch?.logo, Modifier.fillMaxSize())
+        }
     }
 }
 

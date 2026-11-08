@@ -94,6 +94,8 @@ fun LiveTvTab() {
     val listA by animateFloatAsState(if (listOpen) 1f else 0f, tween(200), label = "listAlpha")
 
     var hideAsk by remember { mutableStateOf<Group.Cat?>(null) }
+    var searching by remember { mutableStateOf(false) }
+    if (searching) ChannelSearchDialog(onClose = { searching = false })
 
     fun openList() {
         listOpen = true
@@ -125,9 +127,10 @@ fun LiveTvTab() {
                     .onFocusChanged { listFocused = it.hasFocus },
             ) {
                 Column(Modifier.width(320.dp).fillMaxHeight().padding(start = 16.dp, end = 12.dp, top = 6.dp)) {
-                    SearchBar(chQuery, { chQuery = it }, "Search channels", fontSize = 16.sp,
-                        modifier = Modifier.padding(bottom = 8.dp), fieldModifier = Modifier.weight(1f),
-                        onSearch = { if (chQuery.trim().length >= 2) pick(Group.Search) })
+                    // Nov 8: a 🔍 button; OK opens the search with the keyboard up right away.
+                    Row(Modifier.padding(bottom = 8.dp)) {
+                        Pill("🔍", selected = false, outlined = true, fontSize = 18.sp, hPad = 16.dp, onClick = { searching = true })
+                    }
                     Text("CATEGORIES", color = FS.GreenMid, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp,
                         modifier = Modifier.padding(start = 14.dp, bottom = 8.dp))
                     val selIndex = groups.indexOfFirst { it.key == picked?.key }.coerceAtLeast(0)

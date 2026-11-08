@@ -156,6 +156,8 @@ fun LiveChannelsTab() {
         }
         fun backToCategories() { step = 1; focus(catReq) }
         var hideAsk by remember { mutableStateOf<Group.Cat?>(null) }
+        var searching by remember { mutableStateOf(false) }
+        if (searching) ChannelSearchDialog(onClose = { searching = false })
         hideAsk?.let { g -> HideCategoryDialog(g, onClose = { hideAsk = null; focus(catReq) }) }
 
         val catW by animateDpAsState(if (step == 1) 300.dp else 0.dp, tween(240), label = "cats")
@@ -170,10 +172,10 @@ fun LiveChannelsTab() {
             if (catW > 0.dp) {
                 Box(Modifier.width(catW).fillMaxHeight().clipToBounds()) {
                   Column(Modifier.width(300.dp).fillMaxHeight()) {
-                    SearchBar(chQuery, { chQuery = it }, "Search channels", fontSize = 16.sp,
-                        modifier = Modifier.padding(start = 6.dp, end = 6.dp, top = 6.dp, bottom = 4.dp),
-                        fieldModifier = Modifier.weight(1f),
-                        onSearch = { if (chQuery.trim().length >= 2) openChannels(Group.Search) })
+                    // Nov 8: a 🔍 button; OK opens the search with the keyboard up right away.
+                    Row(Modifier.padding(start = 6.dp, top = 6.dp, bottom = 2.dp)) {
+                        Pill("🔍", selected = false, outlined = true, fontSize = 18.sp, hPad = 16.dp, onClick = { searching = true })
+                    }
                     val sel = groups.indexOfFirst { it.key == shown?.key }.coerceAtLeast(0)
                     val catState = rememberLazyListState((sel - 3).coerceAtLeast(0))
                     val topReq = remember { FocusRequester() }

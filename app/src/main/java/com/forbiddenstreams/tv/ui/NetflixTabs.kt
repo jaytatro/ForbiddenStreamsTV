@@ -328,6 +328,15 @@ private class ShelfNav(val list: androidx.compose.foundation.lazy.LazyListState,
     fun move(from: String, dir: Int): Boolean {
         val at = order.indexOfFirst { it.first == from }
         if (at < 0 || order.getOrNull(at + dir) == null) return false
+        order[at + dir].let { (key, _) ->
+            val h = handles[key]
+            val idx = if (dir > 0) 0 else (lastIndex[key] ?: 0)
+            val r = h?.reqs?.get(idx)
+            if (r != null) {
+                val ok = try { r.requestFocus(); true } catch (e: Exception) { false }
+                if (ok) return true
+            }
+        }
         scope.launch {
             var k = at + dir
             // Skip rows that turn out empty (up to 4).
@@ -339,9 +348,9 @@ private class ShelfNav(val list: androidx.compose.foundation.lazy.LazyListState,
                 val handle = h
                 if (handle != null) {
                     val idx = if (dir > 0) 0 else (lastIndex[target.first] ?: 0)
-                    try { handle.rowState.scrollToItem((idx - 1).coerceAtLeast(0)) } catch (e: Exception) { }
+                    try { handle.rowState.animateScrollToItem((idx - 1).coerceAtLeast(0)) } catch (e: Exception) { }
                     for (t in 0 until 20) {
-                        delay(35)
+                        if (t > 0) delay(25)
                         val r = handle.reqs[idx] ?: continue
                         try { r.requestFocus(); return@launch } catch (e: Exception) { }
                     }
@@ -471,6 +480,14 @@ private fun metaLine(t: Tile, art: ProviderArt.Art?): String {
 /** Top of the screen: the highlighted title's wide picture fading into black, with its name and story. */
 @Composable
 private fun BigPicture(t: Tile?, movies: Boolean, modifier: Modifier) {
+    // Nov 8: the big picture fades from one title to the next instead of jumping.
+    androidx.compose.animation.Crossfade(targetState = t, animationSpec = androidx.compose.animation.core.tween(350), modifier = modifier, label = "hero") { tt ->
+        BigPictureBody(tt, movies, Modifier.fillMaxSize())
+    }
+}
+
+@Composable
+private fun BigPictureBody(t: Tile?, movies: Boolean, modifier: Modifier) {
     val art = tileArt(t)
     Box(modifier) {
         val pic = art?.backdrop ?: t?.series?.backdrop

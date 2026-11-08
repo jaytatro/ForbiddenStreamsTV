@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -117,3 +120,113 @@ fun channelMatches(name: String, query: String): Boolean {
     val n = name.lowercase()
     return query.trim().lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }.all { n.contains(it) }
 }
+
+/**
+ * Live TV / TV Guide (Nov 8): the 🔍 button opens this. The text box takes the cursor and the keyboard
+ * opens right away; matching channels (every word) list underneath as you type. OK on one plays it.
+ */
+@Composable
+fun ChannelSearchDialog(onClose: () -> Unit) {
+    val context = LocalContext.current
+    val prefs = remember { com.forbiddenstreams.tv.data.Prefs(context) }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val view = androidx.compose.ui.platform.LocalView.current
+    var query by remember { mutableStateOf("") }
+    val fieldReq = remember { FocusRequester() }
+    val firstResult = remember { FocusRequester() }
+    val all = remember(com.forbiddenstreams.tv.data.Session.liveAll, com.forbiddenstreams.tv.data.CategoryPrefs.version) {
+        channelsOf(prefs, Group.Search)
+    }
+    val q = query.trim()
+    val results = remember(q, all) { if (q.length < 2) emptyList() else all.filter { channelMatches(it.name, q) }.take(200) }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onClose,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        androidx.activity.compose.BackHandler { onClose() }
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            for (t in 0 until 10) {
+                kotlinx.coroutines.delay(60)
+                val ok = try { fieldReq.requestFocus(); true } catch (e: Exception) { false }
+                if (ok) {
+                    // Some boxes ignore the first request while the box is connecting: ask a few times.
+                    repeat(4) {
+                        keyboard?.show()
+                        try {
+                            val imm = context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                            imm.showSoftInput(view.findFocus() ?: view, 0)
+                        } catch (e: Exception) { }
+                        kotlinx.coroutines.delay(150)
+                    }
+                    break
+                }
+            }
+        }
+        androidx.compose.foundation.layout.Column(
+            Modifier.fillMaxSize().background(FS.Bg).padding(horizontal = 80.dp, vertical = 28.dp),
+        ) {
+            Text("Search channels", color = FS.Green, fontSize = 26.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+            Spacer(Modifier.size(12.dp))
+            val shape = RoundedCornerShape(50)
+            BasicTextField(
+                value = query,
+                onValueChange = { query = it },
+                singleLine = true,
+                textStyle = TextStyle(color = FS.Text, fontSize = 22.sp),
+                cursorBrush = SolidColor(FS.Green),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search, autoCorrectEnabled = false),
+                keyboardActions = KeyboardActions(onSearch = {
+                    keyboard?.hide()
+                    if (results.isNotEmpty()) try { firstResult.requestFocus() } catch (e: Exception) { }
+                }),
+                modifier = Modifier.fillMaxWidth().focusRequester(fieldReq)
+                    .background(FS.GreenDim, shape).border(2.dp, FS.Green, shape)
+                    .padding(horizontal = 22.dp, vertical = 12.dp),
+                decorationBox = { inner ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🔍", fontSize = 20.sp)
+                        Spacer(Modifier.width(12.dp))
+                        Box {
+                            if (query.isEmpty()) Text("Type a channel name…", color = FS.TextDim, fontSize = 22.sp)
+                            inner()
+                        }
+                    }
+                },
+            )
+            Spacer(Modifier.size(8.dp))
+            Text(
+                when {
+                    q.length < 2 -> "Type at least 2 letters"
+                    results.isEmpty() -> "No channels match \"$q\""
+                    else -> "${results.size} channels · ▼ to pick one · OK to watch"
+                },
+                color = FS.TextDim, fontSize = 15.sp,
+            )
+            Spacer(Modifier.size(8.dp))
+            androidx.compose.foundation.lazy.LazyColumn(
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 6.dp, horizontal = 4.dp),
+            ) {
+                items(results.size, key = { results[it].id }) { i ->
+                    val c = results[i]
+                    FocusCard(
+                        onClick = { onClose(); playChannels(context, results, i) },
+                        focusedScale = 1.01f,
+                        modifier = Modifier.fillMaxWidth().height(64.dp)
+                            .then(if (i == 0) Modifier.focusRequester(firstResult) else Modifier),
+                    ) {
+                        Row(Modifier.padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("${c.num}", color = FS.TextDim, fontSize = 16.sp, modifier = Modifier.width(60.dp))
+                            Box(Modifier.size(width = 76.dp, height = 44.dp), contentAlignment = Alignment.Center) { NetImage(c.logo, Modifier.size(width = 76.dp, height = 44.dp)) }
+                            Spacer(Modifier.width(16.dp))
+                            val on = com.forbiddenstreams.tv.data.Session.cachedEpg(c)?.firstOrNull { it.isLive(System.currentTimeMillis()) }?.title
+                            androidx.compose.foundation.layout.Column {
+                                Text(c.name, color = FS.Green, fontSize = 19.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, maxLines = 1)
+                                if (on != null) Text(on, color = FS.TextDim, fontSize = 14.sp, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
