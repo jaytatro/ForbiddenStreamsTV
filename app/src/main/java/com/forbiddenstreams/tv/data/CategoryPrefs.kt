@@ -3,6 +3,7 @@ package com.forbiddenstreams.tv.data
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
 /**
@@ -31,14 +32,32 @@ object CategoryPrefs {
             .map { it.value }
     }
 
-    /** What the Channels tab shows: user's order, hidden and parental-locked ones removed. */
+    /** What the Channels tab shows: user's order, hidden and parental-locked ones removed (and 18+ while the code is on). */
     fun visible(context: Context, cats: List<Category>): List<Category> {
         val h = hidden(context) + locked(context)
-        return ordered(context, cats).filter { it.id !in h }
+        val adult = adultBlocked(context)
+        return ordered(context, cats).filter { it.id !in h && !(adult && isAdult(it.name)) }
     }
 
     /** Hidden or locked: left out of the main screens (and All / Search). */
-    fun excluded(context: Context): Set<String> = hidden(context) + locked(context)
+    fun excluded(context: Context): Set<String> {
+        val base = hidden(context) + locked(context)
+        if (!adultBlocked(context)) return base
+        return base + com.forbiddenstreams.tv.data.Session.liveCats.orEmpty().filter { isAdult(it.name) }.map { it.id }
+    }
+
+    // ---- 18+ (Nov 8 2026): while a parental code is on, anything named 18+ / XXX / Adult is hidden ----
+
+    /** Entered the code this session ("Show 18+ until the app closes"). */
+    var adultUnlocked by mutableStateOf(false)
+
+    private val adultRx = Regex("18\\s*\\+|\\bxxx\\b|\\badults?\\b|\\bporn", RegexOption.IGNORE_CASE)
+    fun isAdult(name: String?): Boolean = name != null && adultRx.containsMatchIn(name)
+
+    /** True while 18+ things should be hidden. Reads [version] so screens refresh when it changes. */
+    fun adultBlocked(context: Context): Boolean { version; return pin(context) != null && !adultUnlocked }
+
+    fun setAdultUnlocked(on: Boolean) { adultUnlocked = on; version++ }
 
     // ---- Parental lock ----
 

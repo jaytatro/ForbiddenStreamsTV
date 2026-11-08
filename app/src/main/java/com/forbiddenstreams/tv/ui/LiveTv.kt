@@ -89,6 +89,8 @@ fun LiveTvTab() {
     val listW by animateDpAsState(if (listOpen) 320.dp else 0.dp, tween(260), label = "list")
     val listA by animateFloatAsState(if (listOpen) 1f else 0f, tween(200), label = "listAlpha")
 
+    var hideAsk by remember { mutableStateOf<Group.Cat?>(null) }
+
     fun openList() {
         listOpen = true
         scope.launch { repeat(4) { delay(90); if (listFocused) return@launch; try { selReq.requestFocus() } catch (e: Exception) { } } }
@@ -110,6 +112,7 @@ fun LiveTvTab() {
         }
     }
 
+    hideAsk?.let { g -> HideCategoryDialog(g, onClose = { hideAsk = null; openList() }) }
     Row(Modifier.fillMaxSize().padding(top = 76.dp)) {
         if (listOpen || listW > 0.dp) {
             Box(
@@ -129,6 +132,7 @@ fun LiveTvTab() {
                                 textColor = FS.Green,
                                 onFocus = { if (listOpen) pending = g },
                                 onClick = { pick(g) },
+                                onLongClick = { if (g is Group.Cat) hideAsk = g },
                                 modifier = Modifier.fillMaxWidth().then(if (i == selIndex) Modifier.focusRequester(selReq) else Modifier)
                                     // ▶ on a category does the same as OK.
                                     .onPreviewKeyEvent { ev ->

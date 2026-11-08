@@ -208,7 +208,9 @@ private fun BrowseTab(movies: Boolean) {
         TabDown.handler = goRecent
         onDispose { if (TabDown.handler === goRecent) TabDown.handler = null }
     }
-    val list = cats
+    // While a parental code is on, anything named 18+ is left out.
+    val adult = com.forbiddenstreams.tv.data.CategoryPrefs.adultBlocked(context)
+    val list = cats?.let { c -> if (adult) c.filter { !com.forbiddenstreams.tv.data.CategoryPrefs.isAdult(it.name) } else c }
 
     Column(Modifier.fillMaxSize().background(Color.Black)) {
         BigPicture(focused, movies, Modifier.fillMaxWidth().height(330.dp))
@@ -232,10 +234,10 @@ private fun BrowseTab(movies: Boolean) {
                     }
                 }
                 if (continueRow.isNotEmpty()) item(key = "continue") {
-                    PosterShelf(Shelf("Keep watching", continueRow), onFocus = { focused = it }, onOpen = { open = it }, onRecent = { ask = it })
+                    PosterShelf(Shelf("Keep watching", continueRow.safe(adult)), onFocus = { focused = it }, onOpen = { open = it }, onRecent = { ask = it })
                 }
                 item(key = "recent") {
-                    val r = recentRow
+                    val r = recentRow?.safe(adult)
                     if (r == null) LoadingShelf(if (movies) "Recently added" else "Recently updated")
                     else if (r.isNotEmpty()) PosterShelf(Shelf(if (movies) "Recently added" else "Recently updated", r),
                         onFocus = { focused = it }, onOpen = { open = it },
@@ -246,7 +248,7 @@ private fun BrowseTab(movies: Boolean) {
                     val tiles by produceState(VodLib.rows[(if (movies) "m:" else "s:") + c.id], c.id) {
                         if (value == null) value = VodLib.row(movies, c.id)
                     }
-                    val t = tiles
+                    val t = tiles?.safe(adult)
                     if (t == null) LoadingShelf(c.name)
                     else if (t.isNotEmpty()) PosterShelf(Shelf(c.name, t), onFocus = { focused = it }, onOpen = { open = it })
                 }
@@ -605,7 +607,8 @@ private fun SearchDialog(movies: Boolean, onOpen: (Tile) -> Unit, onClose: () ->
     val fieldReq = remember { FocusRequester() }
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val all by produceState(VodLib.names[movies], movies) { if (value == null) value = VodLib.searchList(movies) }
-    val results by produceState<List<Tile>>(emptyList(), query, all) {
+    val adult = com.forbiddenstreams.tv.data.CategoryPrefs.adultBlocked(LocalContext.current)
+    val results by produceState<List<Tile>>(emptyList(), query, all, adult) {
         val q = query.trim().lowercase()
         val list = all
         if (q.length < 2 || list == null) { value = emptyList(); return@produceState }
@@ -613,7 +616,7 @@ private fun SearchDialog(movies: Boolean, onOpen: (Tile) -> Unit, onClose: () ->
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             val words = q.split(Regex("\\s+")).filter { it.isNotBlank() }
             list.asSequence()
-                .filter { (n, _) -> words.all { n.contains(it) } }
+                .filter { (n, _) -> words.all { n.contains(it) } && !(adult && com.forbiddenstreams.tv.data.CategoryPrefs.isAdult(n)) }
                 .sortedBy { (n, _) -> val c = MovieMatcher.cleanTitle(n); if (c.startsWith(q)) 0 else if (n.contains(q)) 1 else 2 }
                 .take(120)
                 .map { (_, x) -> if (x is VodItem) VodLib.tileOf(x) else VodLib.tileOf(x as SeriesItem) }
@@ -685,3 +688,8 @@ private fun SearchDialog(movies: Boolean, onOpen: (Tile) -> Unit, onClose: () ->
         }
     }
 }
+
+
+/** Leaves out titles named 18+ / XXX / Adult while the parental code is on. */
+private fun List<Tile>.safe(block: Boolean): List<Tile> =
+    if (!block) this else filter { !com.forbiddenstreams.tv.data.CategoryPrefs.isAdult(it.vod?.name ?: it.series?.name ?: it.recent?.title ?: it.title) }

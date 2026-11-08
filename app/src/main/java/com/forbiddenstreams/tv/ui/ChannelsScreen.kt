@@ -99,7 +99,9 @@ fun channelsOf(prefs: Prefs, g: Group): List<LiveChannel> = channelsOfRaw(prefs,
 private fun channelsOfRaw(prefs: Prefs, g: Group): List<LiveChannel> {
     // Channels in hidden categories are left out of All and Search too.
     val hidden = CategoryPrefs.excluded(prefs.context)
+    val adult = CategoryPrefs.adultBlocked(prefs.context)
     val all = Session.liveAll.orEmpty().let { l -> if (hidden.isEmpty()) l else l.filter { it.categoryId !in hidden } }
+        .let { l -> if (adult) l.filter { !CategoryPrefs.isAdult(it.name) } else l }
     return when (g) {
         Group.Search, Group.All -> all
         Group.History -> {
@@ -110,7 +112,7 @@ private fun channelsOfRaw(prefs: Prefs, g: Group): List<LiveChannel> {
             val f = prefs.favorites
             all.filter { it.id in f }
         }
-        is Group.Cat -> Session.channelsIn(g.cat.id)
+        is Group.Cat -> Session.channelsIn(g.cat.id).let { l -> if (adult) l.filter { !CategoryPrefs.isAdult(it.name) } else l }
     }
 }
 

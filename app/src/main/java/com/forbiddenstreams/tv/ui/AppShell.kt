@@ -84,6 +84,7 @@ fun AppShell(onLogout: () -> Unit) {
     var tab by remember { mutableIntStateOf(0) } // always opens on Home
     var settings by remember { mutableStateOf(false) }
     var favTeams by remember { mutableStateOf(false) }
+    var parental by remember { mutableStateOf(false) }
     var sportsEnter by remember { mutableIntStateOf(0) }
     var sportsOpen by remember { mutableStateOf<Pair<com.forbiddenstreams.tv.sports.League, String>?>(null) }
     val tabReq = remember { List(TABS.size) { FocusRequester() } }
@@ -145,6 +146,7 @@ fun AppShell(onLogout: () -> Unit) {
                     UpdateState.check(context, kotlinx.coroutines.MainScope(), manual = true)
                 },
                 "⭐  Favorite teams" to { settings = false; favTeams = true },
+                "🔒  Parental code" to { settings = false; parental = true },
                 "🛠  Last crash report" to {
                     settings = false
                     crashText = java.io.File(context.filesDir, "last_crash.txt").takeIf { it.exists() }?.readText() ?: "No crashes saved."
@@ -156,6 +158,7 @@ fun AppShell(onLogout: () -> Unit) {
         )
     }
     if (favTeams) FavoriteTeamsDialog(onClose = { favTeams = false })
+    if (parental) ParentalSettings(onClose = { parental = false })
     crashText?.let { t ->
         // Shown so it can be photographed and sent for fixing.
         ChoiceDialog(title = "Last crash report", subtitle = t.lines().take(18).joinToString("\n"),
@@ -294,7 +297,12 @@ private fun HomeTab(onOpenGame: (com.forbiddenstreams.tv.sports.League, String) 
     val liveGames = liveGamesNow()
     var gamePick by remember { mutableStateOf<Pair<com.forbiddenstreams.tv.sports.League, com.forbiddenstreams.tv.sports.Game>?>(null) }
     gamePick?.let { (l, g) -> GameChannelsDialog(l, g, onClose = { gamePick = null }) }
-    LaunchedEffect(shows, movies, channels) { if (focused == null) focused = channels.firstOrNull() ?: shows.firstOrNull() ?: movies.firstOrNull() }
+    LaunchedEffect(shows, movies, channels) {
+        if (focused == null) {
+            val newest = Recents.all(context).firstOrNull { it.kind == "movie" || it.kind == "episode" }?.key
+            focused = (shows + movies).firstOrNull { it.key == newest } ?: shows.firstOrNull() ?: movies.firstOrNull() ?: channels.firstOrNull()
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         Hero(focused, Modifier.fillMaxWidth().height(330.dp))
@@ -302,10 +310,7 @@ private fun HomeTab(onOpenGame: (com.forbiddenstreams.tv.sports.League, String) 
             Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            if (channels.isNotEmpty()) item { CardRow("Continue watching", "Live TV", RailIcon.CHANNELS, channels, { focused = it }, { menu = it }) }
-            // Under the recent channels; OK on a game = its channels, right here on Home.
-            if (liveGames.isNotEmpty()) item { LiveGamesRow(liveGames) { l, id -> gamePick = liveGames.firstOrNull { it.first == l && it.second.id == id } } }
-            // Keep watching (movies and shows you stopped part-way) under everything else.
+            // Keep watching (movies and shows you stopped part-way) at the top (Nov 8).
             if (shows.isNotEmpty() || movies.isNotEmpty()) item {
                 KeepWatchingRow(
                     refresh = recents,
@@ -313,6 +318,9 @@ private fun HomeTab(onOpenGame: (com.forbiddenstreams.tv.sports.League, String) 
                     onMore = { k -> (shows + movies).firstOrNull { it.key == k }?.let { menu = it } },
                 )
             }
+            if (channels.isNotEmpty()) item { CardRow("Continue watching", "Live TV", RailIcon.CHANNELS, channels, { focused = it }, { menu = it }) }
+            // OK on a game = its channels, right here on Home.
+            if (liveGames.isNotEmpty()) item { LiveGamesRow(liveGames) { l, id -> gamePick = liveGames.firstOrNull { it.first == l && it.second.id == id } } }
             if (shows.isEmpty() && movies.isEmpty() && channels.isEmpty() && liveGames.isEmpty()) {
                 item {
                     Text("Nothing here yet. TV shows and movies you start watching show up here so you can pick up where you left off.",

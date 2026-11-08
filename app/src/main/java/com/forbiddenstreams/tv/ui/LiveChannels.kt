@@ -145,6 +145,8 @@ fun LiveChannelsTab() {
             focus(chReq)
         }
         fun backToCategories() { step = 1; focus(catReq) }
+        var hideAsk by remember { mutableStateOf<Group.Cat?>(null) }
+        hideAsk?.let { g -> HideCategoryDialog(g, onClose = { hideAsk = null; focus(catReq) }) }
 
         val catW by animateDpAsState(if (step == 1) 300.dp else 0.dp, tween(240), label = "cats")
 
@@ -168,6 +170,7 @@ fun LiveChannelsTab() {
                             ListPill(
                                 selected = g.key == shown?.key,
                                 onClick = { openChannels(g) },
+                                onLongClick = { if (g is Group.Cat) hideAsk = g },
                                 modifier = Modifier.fillMaxWidth()
                                     .then(if (i == sel) Modifier.focusRequester(catReq) else Modifier)
                                     .onFocusChanged { if (it.isFocused && step == 1) pending = g }
@@ -177,7 +180,7 @@ fun LiveChannelsTab() {
                                         } else false
                                     },
                             ) {
-                                Text(g.title, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                Text(g.title, color = FS.Green, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp))
                             }
                         }
