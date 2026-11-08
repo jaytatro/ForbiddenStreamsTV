@@ -50,6 +50,7 @@ object CategoryPrefs {
 
     /** Entered the code this session ("Show 18+ until the app closes"). */
     var adultUnlocked by mutableStateOf(false)
+        private set
 
     private val adultRx = Regex("18\\s*\\+|\\bxxx\\b|\\badults?\\b|\\bporn", RegexOption.IGNORE_CASE)
     fun isAdult(name: String?): Boolean = name != null && adultRx.containsMatchIn(name)
@@ -57,7 +58,7 @@ object CategoryPrefs {
     /** True while 18+ things should be hidden. Reads [version] so screens refresh when it changes. */
     fun adultBlocked(context: Context): Boolean { version; return pin(context) != null && !adultUnlocked }
 
-    fun setAdultUnlocked(on: Boolean) { adultUnlocked = on; version++ }
+    fun unlockAdult(on: Boolean) { adultUnlocked = on; version++ }
 
     // ---- Parental lock ----
 

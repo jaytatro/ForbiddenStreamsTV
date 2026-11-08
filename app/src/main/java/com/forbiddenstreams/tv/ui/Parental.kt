@@ -51,7 +51,7 @@ fun ParentalSettings(onClose: () -> Unit) {
                 firstCode == null -> firstCode = code
                 code == firstCode -> {
                     CategoryPrefs.setPin(context, code)
-                    CategoryPrefs.setAdultUnlocked(false)
+                    CategoryPrefs.unlockAdult(false)
                     toast(context, "Parental code is on · 18+ is hidden")
                     firstCode = null; step = "menu"
                 }
@@ -83,13 +83,13 @@ fun ParentalSettings(onClose: () -> Unit) {
             } else {
                 opts += "🔑  Change code" to { step = "set" }
                 opts += (if (CategoryPrefs.adultUnlocked) "🔞  Hide 18+ again" else "🔞  Show 18+ until the app closes") to {
-                    CategoryPrefs.setAdultUnlocked(!CategoryPrefs.adultUnlocked)
+                    CategoryPrefs.unlockAdult(!CategoryPrefs.adultUnlocked)
                     toast(context, if (CategoryPrefs.adultUnlocked) "18+ shown until the app closes" else "18+ hidden")
                     onClose()
                 }
                 opts += "🔓  Turn off parental code" to {
                     CategoryPrefs.setPin(context, null)
-                    CategoryPrefs.setAdultUnlocked(false)
+                    CategoryPrefs.unlockAdult(false)
                     toast(context, "Parental code is off")
                     onClose()
                 }
