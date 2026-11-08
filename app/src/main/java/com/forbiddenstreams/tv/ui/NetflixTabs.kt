@@ -37,6 +37,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -206,6 +207,7 @@ private fun BrowseTab(movies: Boolean) {
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val recentRowState = androidx.compose.foundation.lazy.rememberLazyListState()
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val nav = remember(listState) { ShelfNav(listState, scope) }
     // ▼ on the Movies / TV Shows tab: the newest title, far left of Recently added / updated.
     val goRecent: () -> Boolean = {
         if (recentRow.isNullOrEmpty()) false else {
@@ -250,7 +252,8 @@ private fun BrowseTab(movies: Boolean) {
                     }
                 }
                 if (continueRow.isNotEmpty()) item(key = "continue") {
-                    PosterShelf(Shelf("Keep watching", continueRow.safe(adult)), onFocus = { focused = it }, onOpen = { open = it }, onRecent = { ask = it })
+                    PosterShelf(Shelf("Keep watching", continueRow.safe(adult)), onFocus = { focused = it }, onOpen = { open = it }, onRecent = { ask = it },
+                        nav = nav, rowKey = "continue")
                 }
                 item(key = "recent") {
                     val r = recentRow?.safe(adult)
@@ -258,9 +261,10 @@ private fun BrowseTab(movies: Boolean) {
                     else if (r.isNotEmpty()) PosterShelf(Shelf(if (movies) "Recently added" else "Recently updated", r),
                         onFocus = { focused = it }, onOpen = { open = it },
                         firstReq = recentReq, onFirstAttached = { recentReady = it }, rowState = recentRowState,
-                        onExpand = { expand = Shelf(if (movies) "Recently added" else "Recently updated", r) })
+                        onExpand = { expand = Shelf(if (movies) "Recently added" else "Recently updated", r) },
+                        nav = nav, rowKey = "recent")
                 }
-                itemsIndexed(list, key = { i, c -> "$i:${c.id}" }) { _, c ->
+                itemsIndexed(list, key = { i, c -> "$i:${c.id}" }) { ci, c ->
                     // Each row downloads its own category when it comes on screen.
                     val tiles by produceState(VodLib.rows[(if (movies) "m:" else "s:") + c.id], c.id) {
                         if (value == null) value = VodLib.row(movies, c.id)
@@ -268,13 +272,19 @@ private fun BrowseTab(movies: Boolean) {
                     val t = tiles?.safe(adult)
                     if (t == null) LoadingShelf(c.name)
                     else if (t.isNotEmpty()) PosterShelf(Shelf(c.name, t), onFocus = { focused = it }, onOpen = { open = it },
-                        onExpand = { expand = Shelf(c.name, t) })
+                        onExpand = { expand = Shelf(c.name, t) }, nav = nav, rowKey = "cat:$ci")
                 }
             }
         }
     }
     LaunchedEffect(continueRow, recentRow) { if (focused == null) focused = continueRow.firstOrNull() ?: recentRow?.firstOrNull() }
 
+    nav.order = buildList {
+        var at = 1
+        if (continueRow.isNotEmpty()) add("continue" to at++)
+        add("recent" to at++)
+        list.orEmpty().indices.forEach { add("cat:$it" to at++) }
+    }
     if (searching) SearchDialog(movies, onOpen = { open = it }, onClose = { searching = false })
     expand?.let { sh -> CategoryGrid(sh, onOpen = { open = it }, onClose = { expand = null }) }
     open?.let { t ->
@@ -298,22 +308,76 @@ private fun LoadingShelf(title: String) {
     }
 }
 
+/** One row's place for up/down moves: its sideways scroll, a cursor target per poster, and the last poster you were on. */
+private class ShelfHandle(val rowState: androidx.compose.foundation.lazy.LazyListState) {
+    val reqs = HashMap<Int, FocusRequester>()
+    var last = 0
+}
+
+/**
+ * ▼ / ▲ between rows (Nov 8): ▼ always lands on the first poster of the next row (scrolled to its start);
+ * ▲ goes back to the poster you were on in the row above.
+ */
+private class ShelfNav(val list: androidx.compose.foundation.lazy.LazyListState, val scope: kotlinx.coroutines.CoroutineScope) {
+    val handles = HashMap<String, ShelfHandle>()
+    /** Rows in screen order: row key → its place in the page list. */
+    var order: List<Pair<String, Int>> = emptyList()
+
+    fun move(from: String, dir: Int): Boolean {
+        val at = order.indexOfFirst { it.first == from }
+        if (at < 0 || order.getOrNull(at + dir) == null) return false
+        scope.launch {
+            var k = at + dir
+            // Skip rows that turn out empty (up to 4).
+            repeat(4) {
+                val target = order.getOrNull(k) ?: return@launch
+                try { list.animateScrollToItem(target.second) } catch (e: Exception) { }
+                var h: ShelfHandle? = null
+                for (t in 0 until 15) { h = handles[target.first]; if (h != null) break; delay(40) }
+                val handle = h
+                if (handle != null) {
+                    val idx = if (dir > 0) 0 else handle.last
+                    try { handle.rowState.scrollToItem((idx - 1).coerceAtLeast(0)) } catch (e: Exception) { }
+                    for (t in 0 until 12) {
+                        delay(35)
+                        val r = handle.reqs[idx] ?: continue
+                        try { r.requestFocus(); return@launch } catch (e: Exception) { }
+                    }
+                    return@launch
+                }
+                k += dir
+            }
+        }
+        return true
+    }
+}
+
 /** Row title + a sideways row of posters. */
 @Composable
 private fun PosterShelf(s: Shelf, onFocus: (Tile) -> Unit, onOpen: (Tile) -> Unit, firstReq: FocusRequester? = null, onFirstAttached: (Boolean) -> Unit = {},
     rowState: androidx.compose.foundation.lazy.LazyListState? = null, onRecent: ((RecentItem) -> Unit)? = null,
-    onExpand: (() -> Unit)? = null) {
+    onExpand: (() -> Unit)? = null, nav: ShelfNav? = null, rowKey: String = s.title) {
     val context = LocalContext.current
+    val state = rowState ?: androidx.compose.foundation.lazy.rememberLazyListState()
+    val handle = remember(state) { ShelfHandle(state) }
+    if (nav != null) {
+        androidx.compose.runtime.DisposableEffect(nav, rowKey) {
+            nav.handles[rowKey] = handle
+            onDispose { if (nav.handles[rowKey] === handle) nav.handles.remove(rowKey) }
+        }
+    }
+    val expandReq = remember { FocusRequester() }
     Column {
         Row(Modifier.padding(start = 40.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(s.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             if (onExpand != null) {
                 Spacer(Modifier.width(14.dp))
-                Pill("⤢  Expand Row", selected = false, outlined = true, fontSize = 13.sp, hPad = 12.dp, onClick = onExpand)
+                Pill("⤢  Expand Row", selected = false, outlined = true, fontSize = 13.sp, hPad = 12.dp, onClick = onExpand,
+                    modifier = Modifier.focusRequester(expandReq))
             }
         }
         LazyRow(
-            state = rowState ?: androidx.compose.foundation.lazy.rememberLazyListState(),
+            state = state,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             contentPadding = PaddingValues(horizontal = 40.dp, vertical = 16.dp),
         ) {
@@ -321,8 +385,21 @@ private fun PosterShelf(s: Shelf, onFocus: (Tile) -> Unit, onOpen: (Tile) -> Uni
                 if (i == 0 && firstReq != null) {
                     androidx.compose.runtime.DisposableEffect(Unit) { onFirstAttached(true); onDispose { onFirstAttached(false) } }
                 }
-                PosterCard(t, onFocus = { onFocus(t) },
-                    modifier = if (i == 0 && firstReq != null) Modifier.focusRequester(firstReq) else Modifier,
+                val req = if (i == 0 && firstReq != null) firstReq else handle.reqs.getOrPut(i) { FocusRequester() }
+                if (i == 0 && firstReq != null) handle.reqs[0] = firstReq
+                PosterCard(t, onFocus = { handle.last = i; onFocus(t) },
+                    modifier = Modifier.focusRequester(req).onPreviewKeyEvent { ev ->
+                        if (ev.nativeKeyEvent.action != android.view.KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
+                        when (ev.nativeKeyEvent.keyCode) {
+                            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> nav?.move(rowKey, 1) ?: false
+                            android.view.KeyEvent.KEYCODE_DPAD_UP -> nav?.move(rowKey, -1) ?: false
+                            // ◀ on the first poster reaches the row's Expand Row button.
+                            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> if (i == 0 && onExpand != null) {
+                                try { expandReq.requestFocus() } catch (e: Exception) { }; true
+                            } else false
+                            else -> false
+                        }
+                    },
                     onClick = { if (t.recent != null) (onRecent ?: { r -> resume(context, r) })(t.recent) else onOpen(t) },
                     onLongClick = { onOpen(t) })
             }
