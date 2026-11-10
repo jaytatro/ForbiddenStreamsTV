@@ -576,8 +576,7 @@ private fun TitlePage(t: Tile, movies: Boolean, more: List<Tile>, onOpen: (Tile)
                                     selected = true, fontSize = 18.sp, modifier = Modifier.focusRequester(playReq),
                                     onClick = { if (list.isNotEmpty()) playEpisodes(context, series, list, lastEp ?: list[0], last?.positionMs) },
                                 )
-                                Pill("🎬  Trailer", selected = false, fontSize = 17.sp,
-                                    onClick = { openTrailer(context, "", MovieMatcher.cleanTitle(series.name), null) })
+                                // No trailer button for TV shows (Nov 10).
                             } else {
                                 Pill("▶  Resume", selected = true, fontSize = 18.sp, modifier = Modifier.focusRequester(playReq),
                                     onClick = { t.recent?.let { resume(context, it) } })

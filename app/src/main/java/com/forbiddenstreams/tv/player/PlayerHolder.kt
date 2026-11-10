@@ -176,7 +176,8 @@ object PlayerHolder {
                 else bufferingSince = 0L
                 if (state == Player.STATE_ENDED) {
                     // A live channel never really "ends": the provider closed the connection. Reconnect.
-                    if (current?.live == true) reconnect(p, false) else saveProgress()
+                    if (current?.live == true) reconnect(p, false)
+                    else { saveProgress(); if (current?.kind == "episode") playNextEpisode() }
                 }
                 updateQuality(p)
             }
@@ -406,6 +407,47 @@ object PlayerHolder {
                 while (true) { kotlinx.coroutines.delay(10_000); saveProgress() }
             }
         }
+    }
+
+    /**
+     * An episode finished (Nov 10): the next one plays by itself — the next in the list if the
+     * player has one, otherwise the next episode of the show is looked up (e.g. after Resume
+     * from Keep watching, which plays one episode).
+     */
+    private fun playNextEpisode() {
+        val ctx = appContext ?: return
+        val item = current ?: return
+        if (index < items.size - 1 && items[index + 1].kind == "episode") {
+            index += 1
+            note(ctx, "Next: " + items[index].title.substringAfter(" · ", items[index].title))
+            load(ctx)
+            return
+        }
+        val show = item.title.substringBefore(" · ")
+        val src = com.forbiddenstreams.tv.data.Session.source ?: return
+        scope.launch {
+            try {
+                com.forbiddenstreams.tv.data.MovieMatcher.loadSeries()
+                val s = com.forbiddenstreams.tv.data.MovieMatcher.findSeries(show) ?: return@launch
+                val eps = src.episodes(s).sortedWith(compareBy({ it.season }, { it.episodeNum }))
+                val at = eps.indexOfFirst { "e:${it.id}" == item.resumeKey }
+                if (at < 0 || at >= eps.size - 1) return@launch
+                val list = eps.drop(at + 1).map {
+                    PlayItem("$show · S${it.season}E${it.episodeNum}", src.episodeUrl(it), live = false, subtitle = it.title,
+                        resumeKey = "e:${it.id}", kind = "episode", image = item.image ?: s.cover ?: it.image)
+                }
+                // Still on the same finished episode (nothing else was started meanwhile)?
+                if (current !== item) return@launch
+                items = list
+                index = 0
+                note(ctx, "Next: " + list[0].title.substringAfter(" · "))
+                load(ctx)
+            } catch (e: Exception) { }
+        }
+    }
+
+    private fun note(ctx: Context, msg: String) {
+        try { android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_SHORT).show() } catch (e: Exception) { }
     }
 
     /** Saves the current movie/episode position (no-op for live TV). */
