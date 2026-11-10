@@ -240,7 +240,6 @@ private fun BrowseTab(movies: Boolean) {
                 state = listState,
                 // ▼ from the tabs always lands on the first poster of Recently added / updated.
                 modifier = Modifier.weight(1f).fillMaxWidth()
-                    .focusProperties { enter = { if (recentReady) recentReq else FocusRequester.Default } }
                     .focusGroup(),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = PaddingValues(bottom = 40.dp),

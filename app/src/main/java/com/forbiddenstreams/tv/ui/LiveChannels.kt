@@ -157,6 +157,14 @@ fun LiveChannelsTab() {
         fun backToCategories() { step = 1; focus(catReq) }
         var hideAsk by remember { mutableStateOf<Group.Cat?>(null) }
         var searching by remember { mutableStateOf(false) }
+        // ▼ from the Live TV tab: the category (step 1) or the channel (step 2) — safely (no crash if it scrolled away).
+        val goIn: () -> Boolean = {
+            try { (if (step == 1) catReq else chReq).requestFocus(); true } catch (e: Exception) { false }
+        }
+        androidx.compose.runtime.DisposableEffect(Unit) {
+            TabDown.handler = goIn
+            onDispose { if (TabDown.handler === goIn) TabDown.handler = null }
+        }
         if (searching) ChannelSearchDialog(onClose = { searching = false })
         hideAsk?.let { g -> HideCategoryDialog(g, onClose = { hideAsk = null; focus(catReq) }) }
 
@@ -165,7 +173,6 @@ fun LiveChannelsTab() {
         Row(
             Modifier.fillMaxSize().padding(top = 76.dp, start = 18.dp, end = 18.dp)
                 // ▼ from the tabs lands on the category (step 1) or the channel (step 2).
-                .focusProperties { enter = { if (step == 1) catReq else chReq } }
                 .focusGroup(),
         ) {
             // ---- Categories ----
