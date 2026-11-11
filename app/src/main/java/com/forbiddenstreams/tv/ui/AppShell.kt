@@ -148,12 +148,12 @@ fun AppShell(onLogout: () -> Unit) {
 
     if (settings) {
         // Nov 10: how long the IPTV service has left (from the provider's account info).
-        val acct by produceState<com.forbiddenstreams.tv.data.AccountInfo?>(null) {
-            value = try { Session.source?.account() } catch (e: Exception) { null }
+        val acct by produceState<Pair<Boolean, com.forbiddenstreams.tv.data.AccountInfo?>>(false to null) {
+            value = true to (try { Session.source?.account() } catch (e: Exception) { null })
         }
         ChoiceDialog(
             title = "Settings",
-            subtitle = serviceLine(acct),
+            subtitle = if (!acct.first) "Service: checking…" else acct.second?.let { serviceLine(it) },
             options = listOf(
                 "⬆  Check for updates" to {
                     settings = false
@@ -776,8 +776,7 @@ fun refreshPlaylist(context: android.content.Context) {
 
 
 /** "Service: 23 days left · ends Dec 3, 2026 · 2 screens" for Settings. */
-private fun serviceLine(a: com.forbiddenstreams.tv.data.AccountInfo?): String {
-    if (a == null) return "Service: checking…"
+private fun serviceLine(a: com.forbiddenstreams.tv.data.AccountInfo): String {
     val parts = ArrayList<String>()
     val exp = a.expires
     if (exp == null) parts += "Service: no end date"
