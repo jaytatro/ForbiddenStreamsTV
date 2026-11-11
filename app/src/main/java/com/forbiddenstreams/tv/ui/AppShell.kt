@@ -199,13 +199,28 @@ fun AppShell(onLogout: () -> Unit) {
             else -> "Less than 1 day left on your service"
         }
         val end = a.expires?.let { SimpleDateFormat("EEEE, MMM d, yyyy", Locale.US).format(java.util.Date(it)) }
-        // Only Confirm closes it (BACK does nothing).
-        ChoiceDialog(
-            title = "⚠  $title",
-            subtitle = (if (ms <= 0) "It ended" else "It ends") + (end?.let { " on $it" } ?: "") + ". Renew with your provider to keep watching.",
-            options = listOf("Confirm" to { serviceWarn = null }),
-            onDismiss = { },
-        )
+        // Only Confirm closes it (BACK does nothing). The provider's QR code to renew (Nov 10).
+        val okReq = remember { FocusRequester() }
+        Dialog(onDismissRequest = { }) {
+            LaunchedEffect(Unit) { repeat(8) { delay(100); try { okReq.requestFocus(); return@LaunchedEffect } catch (e: Exception) { } } }
+            Column(
+                Modifier.width(560.dp).background(FS.Panel, RoundedCornerShape(16.dp))
+                    .border(2.dp, FS.GreenDeep, RoundedCornerShape(16.dp)).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("⚠  $title", color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Text((if (ms <= 0) "It ended" else "It ends") + (end?.let { " on $it" } ?: "") + ".",
+                    color = FS.TextDim, fontSize = 15.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Image(painterResource(R.drawable.renew_qr), contentDescription = "QR code", modifier = Modifier.size(230.dp))
+                Text("Scan QR Code to update subscription now", color = FS.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Spacer(Modifier.height(4.dp))
+                Pill("Confirm", selected = true, fontSize = 18.sp, modifier = Modifier.focusRequester(okReq),
+                    onClick = { serviceWarn = null })
+            }
+        }
     }
     if (parental) ParentalSettings(onClose = { parental = false })
     if (reorder) ReorderCategories(onClose = { reorder = false })
