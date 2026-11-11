@@ -4,6 +4,9 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -224,11 +227,7 @@ fun AppShell(onLogout: () -> Unit) {
     }
     if (parental) ParentalSettings(onClose = { parental = false })
     if (reorder) ReorderCategories(onClose = { reorder = false })
-    crashText?.let { t ->
-        // Shown so it can be photographed and sent for fixing.
-        ChoiceDialog(title = "Last crash report", subtitle = t.lines().take(18).joinToString("\n"),
-            options = listOf("Close" to { crashText = null }), onDismiss = { crashText = null })
-    }
+    crashText?.let { t -> CrashReportScreen(t, onClose = { crashText = null }) }
     UpdatePrompt()
 }
 
@@ -836,4 +835,65 @@ private fun serviceLine(a: com.forbiddenstreams.tv.data.AccountInfo): String {
     a.status?.takeIf { !it.equals("Active", true) }?.let { parts += it }
     a.maxConnections?.let { parts += "$it screen${if (it == 1) "" else "s"}" }
     return parts.joinToString("  ·  ")
+}
+
+
+/**
+ * Settings › Last crash report (Nov 10): the whole report, full screen. ▲ ▼ scroll it
+ * (so every line can be photographed); ▶ to the buttons; BACK closes.
+ */
+@Composable
+private fun CrashReportScreen(text: String, onClose: () -> Unit) {
+    val context = LocalContext.current
+    val scroll = androidx.compose.foundation.rememberScrollState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val textReq = remember { FocusRequester() }
+    val closeReq = remember { FocusRequester() }
+    var textFocused by remember { mutableStateOf(false) }
+    Dialog(onDismissRequest = onClose, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        LaunchedEffect(Unit) { repeat(8) { delay(100); try { textReq.requestFocus(); return@LaunchedEffect } catch (e: Exception) { } } }
+        Column(Modifier.fillMaxSize().background(FS.Bg).padding(horizontal = 48.dp, vertical = 24.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Last crash report", color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(16.dp))
+                Text("▲ ▼ scroll  ·  ▶ buttons  ·  BACK closes", color = FS.TextDim, fontSize = 14.sp)
+                Spacer(Modifier.weight(1f))
+                Pill("Clear report", selected = false, outlined = true, fontSize = 15.sp, onClick = {
+                    try { java.io.File(context.filesDir, "last_crash.txt").delete() } catch (e: Exception) { }
+                    toast(context, "Crash report cleared")
+                    onClose()
+                })
+                Spacer(Modifier.width(10.dp))
+                Pill("Close", selected = true, fontSize = 15.sp, onClick = onClose, modifier = Modifier.focusRequester(closeReq)
+                    .onPreviewKeyEvent { ev ->
+                        if (ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN && ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN) {
+                            try { textReq.requestFocus() } catch (e: Exception) { }; true
+                        } else false
+                    })
+            }
+            Spacer(Modifier.height(12.dp))
+            Box(
+                Modifier.weight(1f).fillMaxWidth()
+                    .background(Color.Black, RoundedCornerShape(10.dp))
+                    .border(2.dp, if (textFocused) FS.Green else FS.GreenDeep, RoundedCornerShape(10.dp))
+                    .focusRequester(textReq)
+                    .onFocusChanged { textFocused = it.isFocused }
+                    .onPreviewKeyEvent { ev ->
+                        if (ev.nativeKeyEvent.action != android.view.KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
+                        when (ev.nativeKeyEvent.keyCode) {
+                            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> { scope.launch { scroll.animateScrollBy(260f) }; true }
+                            android.view.KeyEvent.KEYCODE_DPAD_UP -> { scope.launch { scroll.animateScrollBy(-260f) }; true }
+                            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> { try { closeReq.requestFocus() } catch (e: Exception) { }; true }
+                            else -> false
+                        }
+                    }
+                    .focusable()
+                    .verticalScroll(scroll)
+                    .padding(18.dp),
+            ) {
+                Text(text, color = FS.Text, fontSize = 14.sp, lineHeight = 19.sp,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+            }
+        }
+    }
 }

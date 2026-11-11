@@ -43,7 +43,7 @@ class App : Application(), ImageLoaderFactory {
                 val sw = java.io.StringWriter()
                 e.printStackTrace(java.io.PrintWriter(sw))
                 java.io.File(filesDir, "last_crash.txt").writeText(
-                    java.text.SimpleDateFormat("EEE M/d h:mm a", java.util.Locale.US).format(java.util.Date()) + "\n" + sw.toString().take(6000),
+                    java.text.SimpleDateFormat("EEE M/d h:mm a", java.util.Locale.US).format(java.util.Date()) + "\n" + sw.toString().take(30000),
                 )
             } catch (_: Exception) { }
             previous?.uncaughtException(t, e)
