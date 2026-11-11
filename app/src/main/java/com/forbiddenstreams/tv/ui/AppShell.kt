@@ -105,6 +105,17 @@ fun AppShell(onLogout: () -> Unit) {
         }
     }
     var crashText by remember { mutableStateOf<String?>(null) }
+    // Nov 10: with a week or less of service left, a pop-up when the app opens (once per opening).
+    var serviceWarn by remember { mutableStateOf<com.forbiddenstreams.tv.data.AccountInfo?>(null) }
+    var serviceChecked by remember { mutableStateOf(false) }
+    LaunchedEffect(Session.source) {
+        if (serviceChecked || Session.source == null) return@LaunchedEffect
+        delay(1500)
+        val a = try { Session.source?.account() } catch (e: Exception) { null } ?: return@LaunchedEffect
+        serviceChecked = true
+        val exp = a.expires ?: return@LaunchedEffect
+        if (exp - System.currentTimeMillis() <= 7 * 86_400_000L) serviceWarn = a
+    }
     LaunchedEffect(exitHint) { if (exitHint) { delay(2500); exitHint = false } }
     // Leaving Live TV (or coming back from the player to another tab) stops the live channel.
     LaunchedEffect(tab, PlayerHolder.fullScreen) {
@@ -179,6 +190,23 @@ fun AppShell(onLogout: () -> Unit) {
         )
     }
     if (favTeams) FavoriteTeamsDialog(onClose = { favTeams = false })
+    serviceWarn?.let { a ->
+        val ms = (a.expires ?: 0L) - System.currentTimeMillis()
+        val days = ms / 86_400_000L
+        val title = when {
+            ms <= 0 -> "Your service has expired"
+            days >= 1 -> "$days day${if (days == 1L) "" else "s"} left on your service"
+            else -> "Less than 1 day left on your service"
+        }
+        val end = a.expires?.let { SimpleDateFormat("EEEE, MMM d, yyyy", Locale.US).format(java.util.Date(it)) }
+        // Only Confirm closes it (BACK does nothing).
+        ChoiceDialog(
+            title = "⚠  $title",
+            subtitle = (if (ms <= 0) "It ended" else "It ends") + (end?.let { " on $it" } ?: "") + ". Renew with your provider to keep watching.",
+            options = listOf("Confirm" to { serviceWarn = null }),
+            onDismiss = { },
+        )
+    }
     if (parental) ParentalSettings(onClose = { parental = false })
     if (reorder) ReorderCategories(onClose = { reorder = false })
     crashText?.let { t ->
