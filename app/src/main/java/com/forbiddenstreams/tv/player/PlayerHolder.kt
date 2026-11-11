@@ -33,6 +33,8 @@ data class PlayItem(
     val image: String? = null,
     /** Start here instead of the beginning (resume). */
     val startMs: Long? = null,
+    /** Set when this is "Start over" of a live channel (its channel id): the player shows a time bar, Settings and LIVE. */
+    val restartOf: String? = null,
 )
 
 /**

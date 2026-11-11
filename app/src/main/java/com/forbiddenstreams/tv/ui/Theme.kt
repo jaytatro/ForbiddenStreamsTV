@@ -280,6 +280,12 @@ fun GText(
     textAlign: androidx.compose.ui.text.style.TextAlign? = null,
     lineHeight: TextUnit = TextUnit.Unspecified,
 ) {
+    // Nov 10: the user wants emojis in their normal colors again (green tint switched off).
+    if (true) {
+        Text(text, modifier = modifier, color = color, fontSize = fontSize, fontWeight = fontWeight, maxLines = maxLines,
+            overflow = overflow, softWrap = softWrap, letterSpacing = letterSpacing, textAlign = textAlign, lineHeight = lineHeight)
+        return
+    }
     // Split into runs of symbols and normal text.
     val runs = ArrayList<Pair<Boolean, String>>()
     var i = 0

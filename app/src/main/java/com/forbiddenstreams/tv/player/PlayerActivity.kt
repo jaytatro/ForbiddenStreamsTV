@@ -119,7 +119,7 @@ class PlayerActivity : ComponentActivity() {
         view = PlayerView(this).apply {
             player = PlayerHolder.player(this@PlayerActivity)
             // Live TV has no seek bar; our own bottom bar shows the info instead.
-            useController = !live
+            useController = !live && PlayerHolder.current?.restartOf == null
             controllerShowTimeoutMs = 4000
             setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
             keepScreenOn = true
@@ -165,7 +165,7 @@ class PlayerActivity : ComponentActivity() {
                       // Bottom bar: channel info, and under it (after OK) Last Channel · Record · Multi-View.
                       Column(
                           Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                              .padding(start = 32.dp, end = 32.dp, bottom = if (item.live) 28.dp else 96.dp)
+                              .padding(start = 32.dp, end = 32.dp, bottom = if (item.live || item.restartOf != null) 28.dp else 96.dp)
                               .background(Color(0xE6040604), RoundedCornerShape(16.dp))
                               .border(1.dp, FS.GreenDeep, RoundedCornerShape(16.dp))
                               .padding(horizontal = 24.dp, vertical = 16.dp),
@@ -204,7 +204,9 @@ class PlayerActivity : ComponentActivity() {
                             Spacer(Modifier.width(18.dp))
                             Text(Fmt.time(now), color = FS.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         }
-                        if (actionsVisible) {
+                        // Start over of a live channel (Nov 10): time bar, and after OK ⏯ · ● LIVE · ⚙ Settings, all in this box.
+                        if (item.restartOf != null) RestartBar(actionsVisible)
+                        if (actionsVisible && item.restartOf == null) {
                             BackHandler { actionsVisible = false }
                             val first = remember { androidx.compose.ui.focus.FocusRequester() }
                             val last = remember { androidx.compose.ui.focus.FocusRequester() }
@@ -252,7 +254,7 @@ class PlayerActivity : ComponentActivity() {
                                     onClick = {
                                         actionsVisible = false
                                         // A new player screen for the replay; the live channel is remembered for Last Channel.
-                                        PlayerHolder.start(this@PlayerActivity, listOf(PlayItem(prog.title, startUrl, live = false, subtitle = "${item.title} · from the start")), 0)
+                                        PlayerHolder.start(this@PlayerActivity, listOf(PlayItem(prog.title, startUrl, live = false, subtitle = "${item.title} · from the start", restartOf = item.channelId ?: "")), 0)
                                         finish()
                                     },
                                 )
@@ -542,6 +544,62 @@ class PlayerActivity : ComponentActivity() {
     }
 
     /** Records what's on now (or the next hour if there's no guide info). */
+    /** Time bar (and, after OK, the ⏯ · ● LIVE · ⚙ Settings buttons) for "Start over" of a live channel. */
+    @androidx.compose.runtime.Composable
+    private fun RestartBar(buttons: Boolean) {
+        val p = PlayerHolder.existingPlayer()
+        var pos by remember { mutableStateOf(0L) }
+        var dur by remember { mutableStateOf(0L) }
+        var playing by remember { mutableStateOf(true) }
+        LaunchedEffect(Unit) {
+            while (true) {
+                val pl = PlayerHolder.existingPlayer()
+                if (pl != null) { pos = pl.currentPosition.coerceAtLeast(0); dur = pl.duration.takeIf { it > 0 } ?: 0L; playing = pl.isPlaying }
+                delay(500)
+            }
+        }
+        fun t(ms: Long): String { val s = ms / 1000; return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s % 3600 / 60, s % 60) else "%d:%02d".format(s / 60, s % 60) }
+        Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(t(pos), color = FS.Text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(12.dp))
+            val f = if (dur > 0) (pos.toFloat() / dur).coerceIn(0f, 1f) else 0f
+            Box(Modifier.weight(1f).height(6.dp).background(Color(0x33FFFFFF), RoundedCornerShape(3.dp))) {
+                Box(Modifier.fillMaxWidth(f).height(6.dp).background(FS.Green, RoundedCornerShape(3.dp)))
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(if (dur > 0) t(dur) else "--:--", color = FS.TextDim, fontSize = 14.sp)
+        }
+        if (!buttons) {
+            Text("◀ ▶ 10 s  ·  OK for Pause, LIVE and Settings", color = FS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+            return
+        }
+        BackHandler { actionsVisible = false }
+        val first = remember { androidx.compose.ui.focus.FocusRequester() }
+        LaunchedEffect(Unit) { delay(80); try { first.requestFocus() } catch (e: Exception) { } }
+        LaunchedEffect(Unit) {
+            lastKeyAt = android.os.SystemClock.uptimeMillis()
+            while (true) { delay(500); if (android.os.SystemClock.uptimeMillis() - lastKeyAt > 5_000) { actionsVisible = false; break } }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(top = 10.dp),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+        ) {
+            com.forbiddenstreams.tv.ui.Pill(if (playing) "⏸  Pause" else "▶  Play", selected = false, fontSize = 18.sp,
+                modifier = Modifier.focusRequester(first),
+                onClick = { p?.let { if (it.isPlaying) it.pause() else it.play() }; playing = !playing })
+            com.forbiddenstreams.tv.ui.Pill("●  LIVE", selected = false, fontSize = 18.sp, onClick = {
+                actionsVisible = false
+                // Back to the live channel this was started from.
+                if (!PlayerHolder.playLast(this@PlayerActivity)) {
+                    val ch = PlayerHolder.current?.restartOf?.let { Session.channelById(it) }
+                    if (ch != null) playChannels(this@PlayerActivity, listOf(ch), 0, fullScreen = false)
+                }
+                showInfo()
+            })
+            com.forbiddenstreams.tv.ui.Pill("⚙  Settings", selected = false, fontSize = 18.sp, onClick = { actionsVisible = false; vodMenu = "main" })
+        }
+    }
+
     private fun recordNow(prog: com.forbiddenstreams.tv.data.Program?) {
         val ch = PlayerHolder.current?.channelId?.let { Session.channelById(it) }
         if (ch == null) { com.forbiddenstreams.tv.ui.toast(this, "Can't record this stream"); return }
@@ -586,6 +644,25 @@ class PlayerActivity : ComponentActivity() {
         val live = PlayerHolder.current?.live == true
         val down = event.action == KeyEvent.ACTION_DOWN
         if (event.keyCode == KeyEvent.KEYCODE_INFO) { if (down) showInfo(); return true }
+        if (PlayerHolder.current?.restartOf != null) {
+            // Start over: ◀ ▶ = 10 s back/ahead, OK = the buttons (⏯ · LIVE · Settings), ▲ ▼ = show the bar.
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    if (down) { skip(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -10_000 else 10_000); showInfo() }
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> { if (down) showInfo(); return true }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    if (!down) { showInfo(); actionsVisible = true }
+                    return true
+                }
+                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                    if (down) PlayerHolder.existingPlayer()?.let { p -> if (p.isPlaying) p.pause() else p.play() }
+                    return true
+                }
+            }
+            return super.dispatchKeyEvent(event)
+        }
         if (!live) {
             // Movies/episodes. Bar hidden: ◀ ▶ = 10 s, OK = pause/play (and show the bar), ▲ ▼ = show the bar.
             // Bar showing: keys go straight to the player's buttons (Compose around the video
