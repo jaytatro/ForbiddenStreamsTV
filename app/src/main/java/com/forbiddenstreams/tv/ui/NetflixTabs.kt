@@ -522,7 +522,15 @@ private fun TitlePage(t: Tile, movies: Boolean, more: List<Tile>, onOpen: (Tile)
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         BackHandler { onClose() }
         LaunchedEffect(t.key) { repeat(8) { delay(120); try { playReq.requestFocus(); return@LaunchedEffect } catch (e: Exception) { } } }
-        Box(Modifier.fillMaxSize().background(Color.Black)) {
+        // Can open from a held OK (Keep watching / grid): ignore that OK until a fresh press.
+        var armed by remember { mutableStateOf(false) }
+        Box(Modifier.fillMaxSize().background(Color.Black).onPreviewKeyEvent { ev ->
+            val ne = ev.nativeKeyEvent
+            val ok = ne.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || ne.keyCode == android.view.KeyEvent.KEYCODE_ENTER ||
+                ne.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
+            if (!ok || armed) return@onPreviewKeyEvent false
+            if (ne.action == android.view.KeyEvent.ACTION_DOWN && ne.repeatCount == 0) { armed = true; false } else true
+        }) {
             val pic = art?.backdrop ?: series?.backdrop
             if (pic != null) {
                 NetImage(pic, Modifier.align(Alignment.TopEnd).fillMaxWidth(0.75f).height(480.dp), crop = true)
