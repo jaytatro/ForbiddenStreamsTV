@@ -147,8 +147,13 @@ fun AppShell(onLogout: () -> Unit) {
     }
 
     if (settings) {
+        // Nov 10: how long the IPTV service has left (from the provider's account info).
+        val acct by produceState<com.forbiddenstreams.tv.data.AccountInfo?>(null) {
+            value = try { Session.source?.account() } catch (e: Exception) { null }
+        }
         ChoiceDialog(
             title = "Settings",
+            subtitle = serviceLine(acct),
             options = listOf(
                 "⬆  Check for updates" to {
                     settings = false
@@ -767,4 +772,26 @@ fun refreshPlaylist(context: android.content.Context) {
     Session.refresh(context)
     MovieMatcher.reset()
     resetLibrary()
+}
+
+
+/** "Service: 23 days left · ends Dec 3, 2026 · 2 screens" for Settings. */
+private fun serviceLine(a: com.forbiddenstreams.tv.data.AccountInfo?): String {
+    if (a == null) return "Service: checking…"
+    val parts = ArrayList<String>()
+    val exp = a.expires
+    if (exp == null) parts += "Service: no end date"
+    else {
+        val ms = exp - System.currentTimeMillis()
+        val days = ms / 86_400_000L
+        parts += when {
+            ms <= 0 -> "Service: expired"
+            days >= 1 -> "Service: $days day${if (days == 1L) "" else "s"} left"
+            else -> "Service: ${(ms / 3_600_000L).coerceAtLeast(1)} hours left"
+        }
+        parts += "ends " + SimpleDateFormat("MMM d, yyyy", Locale.US).format(java.util.Date(exp))
+    }
+    a.status?.takeIf { !it.equals("Active", true) }?.let { parts += it }
+    a.maxConnections?.let { parts += "$it screen${if (it == 1) "" else "s"}" }
+    return parts.joinToString("  ·  ")
 }

@@ -119,4 +119,17 @@ interface ContentSource {
     suspend fun allSeries(): List<SeriesItem> = seriesCategories().flatMap { seriesItems(it.id) }.distinctBy { it.id }
 
     fun clearCache()
+
+    /** Subscription details from the provider (Xtream only), or null. */
+    suspend fun account(): AccountInfo? = null
 }
+
+/** Settings › Your service: when it ends and how many screens it allows. */
+data class AccountInfo(
+    val status: String?,
+    /** Epoch ms, or null for "unlimited". */
+    val expires: Long?,
+    val maxConnections: Int?,
+    val activeConnections: Int?,
+    val username: String?,
+)

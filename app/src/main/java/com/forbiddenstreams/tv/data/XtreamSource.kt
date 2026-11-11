@@ -40,6 +40,13 @@ class XtreamSource(
      * (8080, 80, 25461, 8000, 2095, 2082) and http/https are tried, with a few app
      * names (some providers only answer known IPTV apps). What works is kept.
      */
+    override suspend fun account(): AccountInfo? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val j = try { jsonObject(Http.get(api())) } catch (e: Exception) { null }
+        val ui = j?.optJSONObject("user_info") ?: return@withContext null
+        val exp = ui.str("exp_date")?.toLongOrNull()?.takeIf { it > 0 }?.times(1000)
+        AccountInfo(ui.str("status"), exp, ui.str("max_connections")?.toIntOrNull(), ui.str("active_cons")?.toIntOrNull(), ui.str("username"))
+    }
+
     suspend fun login(): String? = kotlinx.coroutines.coroutineScope {
         val bases = candidateBases(base)
         val agents = listOf(Http.DEFAULT_USER_AGENT, "IPTVSmartersPro", "okhttp/4.12.0", "VLC/3.0.20 LibVLC/3.0.20")
