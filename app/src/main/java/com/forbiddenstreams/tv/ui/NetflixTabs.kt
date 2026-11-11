@@ -791,10 +791,21 @@ private fun List<Tile>.safe(block: Boolean): List<Tile> =
 @Composable
 private fun CategoryGrid(s: Shelf, onOpen: (Tile) -> Unit, onClose: () -> Unit) {
     val firstReq = remember { FocusRequester() }
+    // Nov 10: this opens while OK is still held (hold OK = expand). Ignore that held OK and its release,
+    // so letting go doesn't open the first poster; a fresh OK press works normally.
+    var armed by remember { mutableStateOf(false) }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         BackHandler { onClose() }
         LaunchedEffect(Unit) { repeat(8) { delay(120); try { firstReq.requestFocus(); return@LaunchedEffect } catch (e: Exception) { } } }
-        Column(Modifier.fillMaxSize().background(Color.Black).padding(start = 60.dp, end = 60.dp, top = 22.dp)) {
+        Column(Modifier.fillMaxSize().background(Color.Black)
+            .onPreviewKeyEvent { ev ->
+                val ne = ev.nativeKeyEvent
+                val ok = ne.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || ne.keyCode == android.view.KeyEvent.KEYCODE_ENTER ||
+                    ne.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
+                if (!ok || armed) return@onPreviewKeyEvent false
+                if (ne.action == android.view.KeyEvent.ACTION_DOWN && ne.repeatCount == 0) { armed = true; false } else true
+            }
+            .padding(start = 60.dp, end = 60.dp, top = 22.dp)) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(s.title, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(14.dp))
