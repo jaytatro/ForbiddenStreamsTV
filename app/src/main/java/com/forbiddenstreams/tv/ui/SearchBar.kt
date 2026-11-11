@@ -59,7 +59,7 @@ fun SearchBar(
     @Composable
     fun Inside(inner: @Composable () -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("🔍", fontSize = fontSize * 0.85f)
+            GText("🔍", fontSize = fontSize * 0.85f)
             Spacer(Modifier.width(10.dp))
             Box {
                 if (query.isEmpty()) Text(hint, color = FS.TextDim, fontSize = fontSize, maxLines = 1)
@@ -182,7 +182,7 @@ fun ChannelSearchDialog(onClose: () -> Unit) {
                     .padding(horizontal = 22.dp, vertical = 12.dp),
                 decorationBox = { inner ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("🔍", fontSize = 20.sp)
+                        GText("🔍", fontSize = 20.sp)
                         Spacer(Modifier.width(12.dp))
                         Box {
                             if (query.isEmpty()) Text("Type a channel name…", color = FS.TextDim, fontSize = 22.sp)

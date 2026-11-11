@@ -738,7 +738,7 @@ fun ChoiceDialog(
                 .padding(28.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(title, color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 2,
+            GText(title, color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 2,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             if (subtitle != null) Text(subtitle, color = FS.TextDim, fontSize = 15.sp, maxLines = 8,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
@@ -766,7 +766,7 @@ fun ChoiceDialog(
                                 }
                             },
                     ) {
-                        Text(label, fontSize = 19.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp))
+                        GText(label, fontSize = 19.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp))
                     }
                 }
             }
@@ -826,7 +826,7 @@ private fun androidx.compose.foundation.layout.BoxScope.FavoriteGameAlert(onWatc
         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 36.dp).focusRequester(req),
     ) {
         Row(Modifier.padding(horizontal = 26.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("⭐ ${g.away.displayName} vs. ${g.home.displayName} starts in 1 minute", color = FS.Green,
+            GText("⭐ ${g.away.displayName} vs. ${g.home.displayName} starts in 1 minute", color = FS.Green,
                 fontSize = 19.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(18.dp))
             Text("OK = pick a channel · BACK = dismiss", color = FS.Text, fontSize = 15.sp)
@@ -913,7 +913,7 @@ private fun SportsDockList(
                             scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
                         ) {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("⇅", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                GText("⇅", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

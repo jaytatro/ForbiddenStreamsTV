@@ -48,7 +48,7 @@ fun FavoriteTeamsScreen() {
     val favs = remember(FavTeams.version) { FavTeams.all(context) }
     Column(Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("⭐ Favorite Teams", color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            GText("⭐ Favorite Teams", color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.size(24.dp))
             Text("OK on a team switches it on or off · ${favs.size} on", color = FS.TextDim, fontSize = 15.sp)
         }
@@ -144,7 +144,7 @@ fun FavoriteTeamsDialog(onClose: () -> Unit) {
                     }
                 }
                 Column {
-                    Text("⭐ Favorite teams", color = FS.Green, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                    GText("⭐ Favorite teams", color = FS.Green, fontSize = 30.sp, fontWeight = FontWeight.Bold)
                     Text("Pick a sport, then switch your teams on. Their games go to the top of Sports on the days they play · ${favs.size} on",
                         color = FS.TextDim, fontSize = 16.sp)
                     Spacer(Modifier.height(28.dp))
@@ -162,9 +162,9 @@ fun FavoriteTeamsDialog(onClose: () -> Unit) {
                             ) {
                                 Column(Modifier.fillMaxSize().padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.Center) {
-                                    Text(s.icon, fontSize = 30.sp)
+                                    GText(s.icon, fontSize = 30.sp)
                                     Text(s.label, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = 2)
-                                    if (n > 0) Text("⭐ $n on", color = FS.Green, fontSize = 13.sp)
+                                    if (n > 0) GText("⭐ $n on", color = FS.Green, fontSize = 13.sp)
                                 }
                             }
                         }

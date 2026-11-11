@@ -455,7 +455,7 @@ private fun GameCard(league: League, g: Game, fav: Boolean, selected: Boolean, m
                 }
             }
             // Where they're playing.
-            g.venue?.let { Text("📍 $it", color = FS.Green, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            g.venue?.let { GText("📍 $it", color = FS.Green, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
     }
 }

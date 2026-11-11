@@ -101,7 +101,7 @@ fun LiveGamesRow(games: List<Pair<League, Game>>, onOpen: (League, String) -> Un
                             Text("LIVE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                                 modifier = Modifier.background(FS.Live, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text((if (fav) "⭐ " else "") + "${l.icon} ${l.label}", color = FS.TextDim, fontSize = 13.sp,
+                            GText((if (fav) "⭐ " else "") + "${l.icon} ${l.label}", color = FS.TextDim, fontSize = 13.sp,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             Text(g.detail, color = FS.Live, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                         }
@@ -111,7 +111,7 @@ fun LiveGamesRow(games: List<Pair<League, Game>>, onOpen: (League, String) -> Un
                         TeamLine(g.home.logo, g.home.displayName, g.home.score)
                         Spacer(Modifier.weight(1f))
                         if (g.networks.isNotEmpty()) {
-                            Text("📺 " + g.networks.take(3).joinToString(" · "), color = FS.TextDim, fontSize = 12.sp,
+                            GText("📺 " + g.networks.take(3).joinToString(" · "), color = FS.TextDim, fontSize = 12.sp,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }

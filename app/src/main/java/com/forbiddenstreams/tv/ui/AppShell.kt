@@ -212,7 +212,7 @@ fun AppShell(onLogout: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("⚠  $title", color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.Bold,
+                GText("⚠  $title", color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.Bold,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 Text((if (ms <= 0) "It ended" else "It ends") + (end?.let { " on $it" } ?: "") + ".",
                     color = FS.TextDim, fontSize = 15.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
@@ -438,10 +438,10 @@ private fun Hero(c: Card?, modifier: Modifier) {
                     overflow = TextOverflow.Ellipsis, lineHeight = 42.sp)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     art?.date?.let { d ->
-                        Text("📅  " + niceDate(d), color = FS.Text, fontSize = 16.sp)
+                        GText("📅  " + niceDate(d), color = FS.Text, fontSize = 16.sp)
                         Spacer(Modifier.width(18.dp))
                     }
-                    art?.runtimeMin?.let { Text("⏱  $it Min", color = FS.Text, fontSize = 16.sp) }
+                    art?.runtimeMin?.let { GText("⏱  $it Min", color = FS.Text, fontSize = 16.sp) }
                 }
                 if (c.season != null && c.episode != null) {
                     Text("S${c.season}:E${c.episode}" + ((art?.episodeName ?: c.episodeTitle)?.let { " - $it" } ?: ""),
@@ -728,7 +728,7 @@ private fun ListDialog(
                         focusedScale = 1.02f,
                     ) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(label, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            GText(label, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             note?.let { Text(it, color = FS.Green, fontSize = 14.sp, modifier = Modifier.padding(start = 12.dp)) }
                         }
                     }
@@ -796,7 +796,7 @@ private fun ChannelHero(ch: com.forbiddenstreams.tv.data.LiveChannel, modifier: 
             Text(cur?.title ?: ch.name, color = FS.Text, fontSize = 40.sp, fontWeight = FontWeight.Bold, maxLines = 2,
                 overflow = TextOverflow.Ellipsis, lineHeight = 42.sp)
             if (cur != null) {
-                Text("⏱  ${Fmt.range(cur.start, cur.end)}" + (next?.let { "      Next: ${it.title}" } ?: ""),
+                GText("⏱  ${Fmt.range(cur.start, cur.end)}" + (next?.let { "      Next: ${it.title}" } ?: ""),
                     color = FS.Text, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 cur.description.takeIf { it.isNotBlank() }?.let {
                     Text(it, color = FS.Text, fontSize = 15.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 20.sp)
@@ -856,7 +856,7 @@ private fun CrashReportScreen(text: String, onClose: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Last crash report", color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(16.dp))
-                Text("▲ ▼ scroll  ·  ▶ buttons  ·  BACK closes", color = FS.TextDim, fontSize = 14.sp)
+                GText("▲ ▼ scroll  ·  ▶ buttons  ·  BACK closes", color = FS.TextDim, fontSize = 14.sp)
                 Spacer(Modifier.weight(1f))
                 Pill("Clear report", selected = false, outlined = true, fontSize = 15.sp, onClick = {
                     try { java.io.File(context.filesDir, "last_crash.txt").delete() } catch (e: Exception) { }

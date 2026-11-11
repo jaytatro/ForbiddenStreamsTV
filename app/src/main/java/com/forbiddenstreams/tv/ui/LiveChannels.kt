@@ -341,7 +341,7 @@ private fun ChannelLine(c: LiveChannel, playing: Boolean, now: Long) {
             Text(on ?: "N/A", color = FS.TextDim, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (playing) { Spacer(Modifier.width(8.dp)); LiveDot() }
-        if (c.hasArchive) { Spacer(Modifier.width(10.dp)); Text("⟲", color = FS.TextDim, fontSize = 22.sp) }
+        if (c.hasArchive) { Spacer(Modifier.width(10.dp)); GText("⟲", color = FS.TextDim, fontSize = 22.sp) }
     }
 }
 
@@ -390,7 +390,7 @@ private fun ProgramList(
                             }
                             when {
                                 live -> LiveDot()
-                                past && ch.hasArchive -> Text("⟲", color = FS.TextDim, fontSize = 22.sp)
+                                past && ch.hasArchive -> GText("⟲", color = FS.TextDim, fontSize = 22.sp)
                             }
                         }
                     }

@@ -728,7 +728,7 @@ private fun GuideInfoPanel(ch: LiveChannel?, p: Program?, previewReq: FocusReque
                     Spacer(Modifier.width(8.dp))
                 }
                 if (ch?.hasArchive == true) {
-                    Text("⟲ CATCH-UP", color = FS.Green, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    GText("⟲ CATCH-UP", color = FS.Green, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.border(1.dp, FS.GreenDeep, RoundedCornerShape(4.dp)).padding(horizontal = 7.dp, vertical = 1.dp))
                 }
             }
@@ -805,11 +805,11 @@ private fun GuideRow(
                 }
                 Text(ch.name, fontSize = 11.sp, color = FS.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (playing) Text("▶", color = FS.Green, fontSize = 14.sp)
+            if (playing) GText("▶", color = FS.Green, fontSize = 14.sp)
             val ctx = androidx.compose.ui.platform.LocalContext.current
             val isFav = remember(ch.id) { ch.id in com.forbiddenstreams.tv.data.Prefs(ctx).favorites }
-            if (isFav) Text("★", color = FS.Green, fontSize = 14.sp)
-            if (ch.hasArchive) Text("⟲", color = FS.Text, fontSize = 15.sp)
+            if (isFav) GText("★", color = FS.Green, fontSize = 14.sp)
+            if (ch.hasArchive) GText("⟲", color = FS.Text, fontSize = 15.sp)
         }
         Box(Modifier.weight(1f).fillMaxHeight().horizontalScroll(hState, enabled = false)) {
             Row(Modifier.width(widthDp(we - ws)).fillMaxHeight()) {
@@ -833,7 +833,7 @@ private fun GuideRow(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         val catchup = past && inArchive(ch, cell.start) && (p == null || p.hasArchive || ch.hasArchive)
-                        if (catchup) Text("⟲ ", color = FS.Green, fontSize = 13.sp)
+                        if (catchup) GText("⟲ ", color = FS.Green, fontSize = 13.sp)
                         Text(
                             p?.title ?: if (epg == null) "…" else if (catchup) "${ch.name} · ${Fmt.time(cell.start)}" else "No information",
                             color = if (sel) Color.White else FS.Text,

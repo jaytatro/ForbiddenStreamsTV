@@ -17,6 +17,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -150,7 +153,7 @@ fun Pill(
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
     ) {
-        Text(
+        GText(
             text,
             fontSize = fontSize,
             fontWeight = FontWeight.Bold,
@@ -195,7 +198,7 @@ fun SideItem(
                 LineIcon(icon, 22.dp, androidx.tv.material3.LocalContentColor.current)
                 androidx.compose.foundation.layout.Spacer(Modifier.padding(start = 10.dp))
             }
-            Text(
+            GText(
                 text,
                 fontSize = 20.sp,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
@@ -247,4 +250,66 @@ object Fmt {
     fun range(a: Long, b: Long) = "${time(a)} – ${time(b)}"
     fun day(ms: Long): String = SimpleDateFormat("EEE, M/d", Locale.US).format(Date(ms)).uppercase(Locale.US)
     fun longDay(ms: Long): String = SimpleDateFormat("EEEE M/d", Locale.US).format(Date(ms))
+}
+
+/** True for emoji / picture symbols (⭐ 🏈 ▶ ⟲ 🔍 …) — not letters, digits or normal punctuation. */
+private fun isPictureSymbol(cp: Int): Boolean {
+    if (cp < 0x80) return false
+    if (cp == 0xFE0F || cp == 0x200D || cp == 0x20E3 || cp in 0x1F3FB..0x1F3FF) return true
+    if (cp in 0x1F000..0x1FAFF || cp in 0x2190..0x21FF || cp in 0x2300..0x23FF || cp in 0x25A0..0x27BF || cp in 0x2900..0x297F || cp in 0x2B00..0x2BFF) return true
+    val t = Character.getType(cp)
+    return t == Character.OTHER_SYMBOL.toInt() || t == Character.MATH_SYMBOL.toInt()
+}
+
+/**
+ * Text whose emojis / symbols are drawn in the app's green (Nov 10: "change all emojis to the green color").
+ * On a green (highlighted) background they're drawn in the text's own dark color instead so they stay visible.
+ * Plain text without symbols is a normal Text.
+ */
+@Composable
+fun GText(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    fontSize: TextUnit = TextUnit.Unspecified,
+    fontWeight: FontWeight? = null,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+    softWrap: Boolean = true,
+    letterSpacing: TextUnit = TextUnit.Unspecified,
+    textAlign: androidx.compose.ui.text.style.TextAlign? = null,
+    lineHeight: TextUnit = TextUnit.Unspecified,
+) {
+    // Split into runs of symbols and normal text.
+    val runs = ArrayList<Pair<Boolean, String>>()
+    var i = 0
+    while (i < text.length) {
+        val cp = text.codePointAt(i)
+        val sym = isPictureSymbol(cp)
+        val n = Character.charCount(cp)
+        if (runs.isNotEmpty() && runs.last().first == sym) runs[runs.size - 1] = sym to (runs.last().second + text.substring(i, i + n))
+        else runs += sym to text.substring(i, i + n)
+        i += n
+    }
+    if (runs.none { it.first }) {
+        Text(text, modifier = modifier, color = color, fontSize = fontSize, fontWeight = fontWeight, maxLines = maxLines,
+            overflow = overflow, softWrap = softWrap, letterSpacing = letterSpacing, textAlign = textAlign, lineHeight = lineHeight)
+        return
+    }
+    val base = if (color != Color.Unspecified) color else androidx.tv.material3.LocalContentColor.current
+    val tint = if (base.luminance() < 0.3f) base else FS.Green
+    androidx.compose.foundation.layout.Row(modifier, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        runs.forEachIndexed { k, (sym, part) ->
+            if (sym) {
+                Text(part, fontSize = fontSize, maxLines = 1, softWrap = false,
+                    modifier = Modifier
+                        .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+                        .drawWithContent { drawContent(); drawRect(tint, blendMode = androidx.compose.ui.graphics.BlendMode.SrcIn) })
+            } else {
+                Text(part, color = color, fontSize = fontSize, fontWeight = fontWeight, maxLines = 1, softWrap = false,
+                    overflow = if (k == runs.size - 1) TextOverflow.Ellipsis else TextOverflow.Clip, letterSpacing = letterSpacing,
+                    modifier = if (k == runs.size - 1) Modifier.weight(1f, fill = false) else Modifier)
+            }
+        }
+    }
 }

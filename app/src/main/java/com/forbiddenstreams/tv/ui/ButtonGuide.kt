@@ -241,7 +241,7 @@ fun ButtonSetupScreen() {
             }
         }
         item {
-            Text("◀ in the TV guide", color = FS.Green, fontSize = 18.sp)
+            GText("◀ in the TV guide", color = FS.Green, fontSize = 18.sp)
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Pill("Back to the categories", selected = ButtonPrefs.leftOpensCategories, onClick = { ButtonPrefs.setLeft(context, true) })

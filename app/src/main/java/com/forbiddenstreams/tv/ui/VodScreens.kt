@@ -372,7 +372,7 @@ private fun SeriesDetails(series: SeriesItem, onBack: () -> Unit, onPlayed: () -
         Column(Modifier.width(280.dp)) {
             NetImage(series.cover, Modifier.fillMaxWidth().aspectRatio(2f / 3f), crop = true)
             Spacer(Modifier.height(12.dp))
-            series.rating?.let { Text("★ $it", color = FS.TextDim, fontSize = 16.sp) }
+            series.rating?.let { GText("★ $it", color = FS.TextDim, fontSize = 16.sp) }
         }
         Spacer(Modifier.width(32.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {

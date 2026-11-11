@@ -1,5 +1,6 @@
 package com.forbiddenstreams.tv.player
 
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.WindowManager
@@ -21,6 +22,7 @@ import com.forbiddenstreams.tv.ui.Fmt
 import com.forbiddenstreams.tv.ui.GuideView
 import com.forbiddenstreams.tv.ui.Group
 import com.forbiddenstreams.tv.ui.playChannels
+import com.forbiddenstreams.tv.ui.GText
 import com.forbiddenstreams.tv.ui.MultiViewScreen
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.focus.focusRequester
@@ -191,7 +193,7 @@ class PlayerActivity : ComponentActivity() {
                                 }
                             }
                             PlayerHolder.audioInfo?.let {
-                                Text("🔊 $it", color = if (it.startsWith("No") || it.startsWith("Audio not")) FS.Live else FS.Text,
+                                GText("🔊 $it", color = if (it.startsWith("No") || it.startsWith("Audio not")) FS.Live else FS.Text,
                                     fontSize = 15.sp, modifier = Modifier.padding(end = 14.dp))
                             }
                             produceState(PlayerHolder.boxVolume(this@PlayerActivity)) { while (true) { delay(1_000); value = PlayerHolder.boxVolume(this@PlayerActivity) } }.value?.let { (txt, bad) ->
@@ -215,20 +217,29 @@ class PlayerActivity : ComponentActivity() {
                                     if (android.os.SystemClock.uptimeMillis() - lastKeyAt > 5_000) { actionsVisible = false; break }
                                 }
                             }
+                            // ▼ on the buttons: your last 5 channels (OK plays one; ▲ back to the buttons).
+                            val recent = remember(actionsVisible, item.channelId) {
+                                com.forbiddenstreams.tv.data.Prefs(this@PlayerActivity).history
+                                    .filter { it != item.channelId }.mapNotNull { Session.channelById(it) }.take(5)
+                            }
+                            var recentOpen by remember { mutableStateOf(false) }
+                            val recentReq = remember { androidx.compose.ui.focus.FocusRequester() }
                             Row(
-                                Modifier.fillMaxWidth().padding(top = 10.dp),
+                                Modifier.fillMaxWidth().padding(top = 10.dp)
+                                    .onPreviewKeyEvent { ev ->
+                                        if (ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                            ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN && !recentOpen) {
+                                            if (recent.isEmpty()) com.forbiddenstreams.tv.ui.toast(this@PlayerActivity, "No previous channels yet")
+                                            else {
+                                                recentOpen = true
+                                                lifecycleScope.launch { repeat(6) { delay(50); try { recentReq.requestFocus(); return@launch } catch (e: Exception) { } } }
+                                            }
+                                            true
+                                        } else false
+                                    },
                                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
                             ) {
-                            com.forbiddenstreams.tv.ui.Pill(
-                                "⏮  Last Channel", selected = false, fontSize = 18.sp,
-                                // Round robin: ◀ on Last Channel goes to CC (the last button).
-                                modifier = Modifier.focusRequester(first).focusProperties { left = last },
-                                onClick = {
-                                    actionsVisible = false
-                                    if (PlayerHolder.playLast(this@PlayerActivity)) showInfo()
-                                    else com.forbiddenstreams.tv.ui.toast(this@PlayerActivity, "No previous channel yet")
-                                },
-                            )
+                            // Nov 10: no Last Channel button — ▼ shows the last 5 channels instead (below).
                             // ⟲ Start over: the show on now, from its beginning (catch-up channels only).
                             val startUrl = remember(prog, ch) {
                                 if (ch != null && prog != null && ch.hasArchive) Session.source?.catchupUrl(ch, prog) else null
@@ -236,6 +247,8 @@ class PlayerActivity : ComponentActivity() {
                             if (startUrl != null && prog != null) {
                                 com.forbiddenstreams.tv.ui.Pill(
                                     "⟲  Start over", selected = false, fontSize = 18.sp,
+                                    // Round robin: ◀ on the first button goes to CC (the last one).
+                                    modifier = Modifier.focusRequester(first).focusProperties { left = last },
                                     onClick = {
                                         actionsVisible = false
                                         // A new player screen for the replay; the live channel is remembered for Last Channel.
@@ -250,6 +263,7 @@ class PlayerActivity : ComponentActivity() {
                             }
                             com.forbiddenstreams.tv.ui.Pill(
                                 if (recording != null) "⏹  Recording…" else "⏺  Record", selected = recording != null, fontSize = 18.sp,
+                                modifier = if (startUrl == null || prog == null) Modifier.focusRequester(first).focusProperties { left = last } else Modifier,
                                 onClick = {
                                     actionsVisible = false
                                     if (recording != null) recStopAsk = recording else { recordNow(prog); recTick++ }
@@ -289,6 +303,50 @@ class PlayerActivity : ComponentActivity() {
                                     )
                                 },
                             )
+                            }
+                            if (!recentOpen) {
+                                GText("▼  Recent channels", color = FS.Green, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp))
+                            } else {
+                                Text("RECENT CHANNELS", color = FS.TextDim, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp,
+                                    modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
+                                Row(
+                                    Modifier.fillMaxWidth().onPreviewKeyEvent { ev ->
+                                        if (ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                            ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP) {
+                                            recentOpen = false
+                                            try { first.requestFocus() } catch (e: Exception) { }
+                                            true
+                                        } else false
+                                    },
+                                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
+                                ) {
+                                    recent.forEachIndexed { k, rc ->
+                                        val on = Session.cachedEpg(rc)?.firstOrNull { it.isLive(now) }?.title
+                                        com.forbiddenstreams.tv.ui.FocusCard(
+                                            onClick = {
+                                                actionsVisible = false
+                                                playChannels(this@PlayerActivity, recent, k, fullScreen = false)
+                                                showInfo()
+                                            },
+                                            modifier = Modifier.weight(1f).height(86.dp).then(if (k == 0) Modifier.focusRequester(recentReq) else Modifier),
+                                            focusedScale = 1.04f,
+                                        ) {
+                                            Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                Box(Modifier.width(56.dp).height(40.dp), contentAlignment = Alignment.Center) {
+                                                    com.forbiddenstreams.tv.ui.NetImage(rc.logo, Modifier.fillMaxSize())
+                                                }
+                                                Spacer(Modifier.width(8.dp))
+                                                Column {
+                                                    Text("${rc.num} · ${rc.name}", fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                                    on?.let { Text(it, color = FS.TextDim, fontSize = 12.sp, maxLines = 1,
+                                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                       }

@@ -84,7 +84,7 @@ fun BoxScope.FavGameStartAlert(onWatch: (League, String) -> Unit) {
             .padding(horizontal = 18.dp, vertical = 14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("⭐ ${l.icon} ${l.label} · Game starting in 1 minute", color = FS.Green, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            GText("⭐ ${l.icon} ${l.label} · Game starting in 1 minute", color = FS.Green, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
             Text("OK = channels to watch it on · BACK = dismiss", color = FS.TextDim, fontSize = 15.sp)
         }

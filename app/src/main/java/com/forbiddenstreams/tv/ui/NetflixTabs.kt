@@ -380,11 +380,8 @@ private fun PosterShelf(s: Shelf, onFocus: (Tile) -> Unit, onOpen: (Tile) -> Uni
     Column {
         Row(Modifier.padding(start = 40.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(s.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            if (onExpand != null) {
-                Spacer(Modifier.width(14.dp))
-                Pill("⤢  Expand Row", selected = false, outlined = true, fontSize = 13.sp, hPad = 12.dp, onClick = onExpand,
-                    modifier = Modifier.focusRequester(expandReq))
-            }
+            // Nov 10: no Expand Row button — hold OK on a poster to expand its row.
+            if (onExpand != null) Text("   Hold OK to expand", color = FS.TextDim, fontSize = 12.sp)
         }
         LazyRow(
             state = state,
@@ -403,15 +400,11 @@ private fun PosterShelf(s: Shelf, onFocus: (Tile) -> Unit, onOpen: (Tile) -> Uni
                         when (ev.nativeKeyEvent.keyCode) {
                             android.view.KeyEvent.KEYCODE_DPAD_DOWN -> nav?.move(rowKey, 1) ?: false
                             android.view.KeyEvent.KEYCODE_DPAD_UP -> nav?.move(rowKey, -1) ?: false
-                            // ◀ on the first poster reaches the row's Expand Row button.
-                            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> if (i == 0 && onExpand != null) {
-                                try { expandReq.requestFocus() } catch (e: Exception) { }; true
-                            } else false
                             else -> false
                         }
                     },
                     onClick = { if (t.recent != null) (onRecent ?: { r -> resume(context, r) })(t.recent) else onOpen(t) },
-                    onLongClick = { onOpen(t) })
+                    onLongClick = { if (onExpand != null) onExpand() else onOpen(t) })
             }
         }
     }

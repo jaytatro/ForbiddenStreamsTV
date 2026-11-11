@@ -166,14 +166,14 @@ private fun CategoryEditor() {
 
     if (pin != null && !unlocked) {
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Text("🔒 Categories are protected", color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            GText("🔒 Categories are protected", color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(12.dp))
             Pill("Enter parental code", selected = true, onClick = { askPin = "open" })
         }
     } else Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Categories", color = FS.Green, fontSize = 30.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            Text("▲ ▼ move · Hide · 🔒 Lock", color = FS.TextDim, fontSize = 15.sp)
+            GText("▲ ▼ move · Hide · 🔒 Lock", color = FS.TextDim, fontSize = 15.sp)
             Spacer(Modifier.width(16.dp))
             Pill(if (pin == null) "Set parental code" else "Change code", selected = false, onClick = { askPin = "set" })
             Spacer(Modifier.width(6.dp))
@@ -197,7 +197,7 @@ private fun CategoryEditor() {
                         fontWeight = if (off || lock) FontWeight.Normal else FontWeight.Bold,
                         maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
                     )
-                    if (lock) Text("🔒 locked", color = FS.Live, fontSize = 14.sp, modifier = Modifier.padding(end = 12.dp))
+                    if (lock) GText("🔒 locked", color = FS.Live, fontSize = 14.sp, modifier = Modifier.padding(end = 12.dp))
                     else if (off) Text("hidden", color = FS.Live, fontSize = 14.sp, modifier = Modifier.padding(end = 12.dp))
                     Pill("▲", selected = false, fontSize = 16.sp, onClick = { CategoryPrefs.move(context, cats, c.id, -1) })
                     Pill("▼", selected = false, fontSize = 16.sp, onClick = { CategoryPrefs.move(context, cats, c.id, 1) })
