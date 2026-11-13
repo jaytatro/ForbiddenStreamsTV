@@ -123,7 +123,17 @@ object Espn {
         return "https://site.api.espn.com/apis/site/v2/sports/$path/scoreboard" + if (q.isEmpty()) "" else "?$q&limit=300"
     }
 
-    private suspend fun fetch(league: League, query: String): List<Game> = withContext(Dispatchers.Default) { fetchNow(league, query) }
+    private val recent = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, List<Game>>>()
+
+    /** One ESPN day for a league; the same answer is reused for 20 s (Nov 13: fewer downloads, quicker screens). */
+    private suspend fun fetch(league: League, query: String): List<Game> {
+        val key = league.name + "|" + query
+        val now = System.currentTimeMillis()
+        recent[key]?.let { (t, v) -> if (now - t < 20_000) return v }
+        val v = withContext(Dispatchers.Default) { fetchNow(league, query) }
+        recent[key] = now to v
+        return v
+    }
 
     private suspend fun fetchNow(league: League, query: String): List<Game> {
         val out = ArrayList<Game>()

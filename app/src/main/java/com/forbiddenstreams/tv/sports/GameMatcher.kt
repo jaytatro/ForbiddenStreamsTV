@@ -89,6 +89,33 @@ object GameMatcher {
         return out
     }
 
+    private val streamWords = listOf("prime", "amazon", "tnf", "thursday night", "netflix", "peacock", "event", "events", "ppv",
+        "espn plus", "espn+", "nfl plus", "nfl+", "game pass", "apple", "mls season", "paramount", "max", "youtube", "sunday ticket", "dazn")
+
+    /**
+     * Event channels for a game (Nov 13: Prime Video / Netflix games had nowhere to play): providers put
+     * streaming-only games on one-off channels like "NFL 07 | Bills @ Dolphins" or "Amazon Prime TNF: Bills".
+     * A channel counts if its name has both teams, or one team plus a streaming / event word.
+     */
+    fun eventChannels(game: Game, all: List<LiveChannel>, exclude: Set<String>): List<Pair<String, LiveChannel>> {
+        fun names(t: Team) = listOf(t.nickname, t.displayName).filter { it.isNotBlank() }.map { norm(it).trim() }.distinct()
+        val a = names(game.away); val h = names(game.home)
+        if (a.isEmpty() || h.isEmpty()) return emptyList()
+        val words = streamWords.map { norm(it).trim() }
+        return all.asSequence().filter { c -> c.id !in exclude }.mapNotNull { c ->
+            val n = norm(c.name)
+            if (excluded.any { n.contains(" $it ") }) return@mapNotNull null
+            val ha = a.any { n.contains(" $it ") }
+            val hh = h.any { n.contains(" $it ") }
+            val stream = words.any { n.contains(" $it ") }
+            when {
+                ha && hh -> 0 to c
+                (ha || hh) && stream -> 1 to c
+                else -> null
+            }
+        }.sortedWith(compareBy({ it.first }, { it.second.name.length })).take(6).map { (_, c) -> "Event" to c }.toList()
+    }
+
     /**
      * The names a TV network goes by on channel lists. ESPN shortens some ("NFL Net", "NFLN",
      * "CBSSN"), so those are spelled out too (Nov 8: NFL Network wasn't found for Bengals–Falcons).
@@ -109,7 +136,7 @@ object GameMatcher {
             u == "FS1" -> listOf("fs1", "fox sports 1")
             u == "FS2" -> listOf("fs2", "fox sports 2")
             u.startsWith("ESPNPLUS") -> listOf("espn plus", "espn+")
-            u.startsWith("PRIME") || u.startsWith("AMAZON") -> listOf("prime", "prime video", "amazon prime", "tnf", "thursday night football")
+            u.startsWith("PRIME") || u.startsWith("AMAZON") -> listOf("prime", "prime video", "amazon prime", "amazon", "tnf", "thursday night football", "thursday night")
             u.startsWith("PEACOCK") -> listOf("peacock")
             u.startsWith("NETFLIX") -> listOf("netflix")
             u.startsWith("TRUTV") -> listOf("trutv", "tru tv")

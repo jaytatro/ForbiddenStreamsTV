@@ -259,6 +259,9 @@ internal fun gameOptions(
     m?.home?.let { feeds += Triple("📺 ${g.home.displayName} feed", it, team) }
     val used = m?.options.orEmpty().map { it.id }.toSet()
     GameMatcher.networkChannels(g, Session.liveAll.orEmpty(), used).forEach { (net, c) -> feeds += Triple("📡 $net", c, listOf(c)) }
+    // Streaming-only games (Prime Video, Netflix, …): the provider's event channels for this matchup.
+    val taken = used + feeds.map { it.second.id }
+    GameMatcher.eventChannels(g, Session.liveAll.orEmpty(), taken).forEach { (_, c) -> feeds += Triple("🎟 Event", c, listOf(c)) }
 
     if (g.isFinal) {
         val src = Session.source ?: return out

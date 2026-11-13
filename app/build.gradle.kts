@@ -29,7 +29,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // Nov 13 ("make things run smoother and quicker"): R8 optimizes Compose / Media3 for speed.
+            // Names are kept (no obfuscation) so crash reports stay readable.
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("fs")
         }
         debug {
@@ -67,5 +70,7 @@ dependencies {
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    // Installs the speed profiles that Compose / Media3 ship with, so screens and scrolling are fast from the first run.
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 }
