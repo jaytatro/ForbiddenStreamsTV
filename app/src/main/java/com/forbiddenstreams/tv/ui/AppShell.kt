@@ -76,7 +76,7 @@ import java.util.Locale
 object TabDown { var handler: (() -> Boolean)? = null }
 
 /** Tabs across the top, left to right, centered. */
-private val TABS = listOf("Home", "Live TV", "TV Guide", "Sports", "Movies", "TV Shows")
+private val TABS = listOf("Home", "Live TV", "TV Guide", "Sports") // Movies / TV Shows tabs removed Nov 13
 
 /**
  * The new app (started from scratch, Nov 1 2026): tabs centered across the top, always opens on Home.
@@ -97,7 +97,6 @@ fun AppShell(onLogout: () -> Unit) {
     val activity = context as? android.app.Activity
     LaunchedEffect(Unit) { delay(150); try { tabReq[0].requestFocus() } catch (e: Exception) { } }
     // Movie and show categories load in the background so those tabs open fast.
-    LaunchedEffect(Session.source) { delay(4000); prefetchLibrary() }
     // The playlist refreshes by itself every 24 hours (checked every 30 minutes while the app is open).
     LaunchedEffect(Session.source) {
         val sp = context.getSharedPreferences("forbidden_streams", android.content.Context.MODE_PRIVATE)
@@ -138,9 +137,7 @@ fun AppShell(onLogout: () -> Unit) {
             0 -> HomeTab(onOpenGame = { l, id -> sportsOpen = l to id; tab = 3 })
             1 -> LiveChannelsTab()
             2 -> LiveTvTab()
-            3 -> SportsTab(open = sportsOpen, onOpened = { sportsOpen = null }, enter = sportsEnter)
-            4 -> MoviesTab()
-            else -> ShowsTab()
+            else -> SportsTab(open = sportsOpen, onOpened = { sportsOpen = null }, enter = sportsEnter)
         }
         TopBar(
             tab = tab, reqs = tabReq,
