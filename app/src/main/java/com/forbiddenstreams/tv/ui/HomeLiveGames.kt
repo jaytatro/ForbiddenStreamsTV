@@ -67,20 +67,21 @@ fun liveGamesNow(): List<Pair<League, Game>> {
 }
 
 /**
- * Home: "Live games · Sports" (Nov 13: separated into columns) — one column per league, side by side,
- * each with its own header (icon, name, live count) and its games stacked underneath (scrolls if more
- * than 3). Favorite teams' leagues and games first. OK on a game = its channels.
+ * Home: "Live games" (Nov 13) — one row per sport, games left to right, the next sport underneath.
+ * Sports with a favorite team playing always come first; the rest follow your order from the Sports tab
+ * (hold OK on a sport there to move it). OK on a game = its channels.
  */
 @Composable
 fun LiveGamesRow(games: List<Pair<League, Game>>, onOpen: (League, String) -> Unit) {
     val context = LocalContext.current
+    val orderV = com.forbiddenstreams.tv.sports.SportOrder.version
+    val order = androidx.compose.runtime.remember(orderV) { com.forbiddenstreams.tv.sports.SportOrder.get(context) }
     val byLeague = games.groupBy { it.first }
         .map { (l, list) -> l to list.map { it.second }.distinctBy { it.id }
             .sortedWith(compareBy({ if (FavTeams.inGame(context, l, it)) 0 else 1 }, { it.start })) }
-        .sortedWith(compareBy({ (l, list) -> if (list.any { FavTeams.inGame(context, l, it) }) 0 else 1 }, { SPORTS_ORDER.indexOf(it.first) }))
-    val rows = byLeague.maxOfOrNull { it.second.size }?.coerceAtMost(3) ?: 1
-    val cardH = 84.dp
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        .sortedWith(compareBy({ (l, list) -> if (list.any { FavTeams.inGame(context, l, it) }) 0 else 1 },
+            { order.indexOf(it.first).let { i -> if (i < 0) 99 else i } }))
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp), verticalAlignment = Alignment.CenterVertically) {
             LiveDot()
             Spacer(Modifier.width(10.dp))
@@ -89,34 +90,33 @@ fun LiveGamesRow(games: List<Pair<League, Game>>, onOpen: (League, String) -> Un
             Spacer(Modifier.weight(1f))
             Text("\"OK\" for the channels", color = FS.TextDim, fontSize = 13.sp)
         }
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(18.dp),
-            contentPadding = PaddingValues(horizontal = 36.dp, vertical = 6.dp),
-        ) {
-            items(byLeague, key = { it.first.name }) { (l, list) ->
-                Column(
-                    Modifier.width(290.dp)
-                        .background(Color(0xFF0A120C), RoundedCornerShape(16.dp))
-                        .border(1.dp, Color(0xFF1C2E20), RoundedCornerShape(16.dp))
-                        .padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    // League header
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp)) {
+        byLeague.forEach { (l, list) ->
+            androidx.compose.runtime.key(l.name) {
+                val favLeague = list.any { FavTeams.inGame(context, l, it) }
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Sport header
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 40.dp)) {
+                        Box(Modifier.width(4.dp).height(20.dp).background(if (favLeague) Color(0xFFFFC83D) else FS.Green, RoundedCornerShape(2.dp)))
+                        Spacer(Modifier.width(10.dp))
                         Text(l.icon, fontSize = 18.sp)
                         Spacer(Modifier.width(8.dp))
-                        Text(l.label.uppercase(), color = FS.Green, fontSize = 15.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        Text(l.label.uppercase(), color = FS.Green, fontSize = 15.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp, maxLines = 1)
+                        Spacer(Modifier.width(10.dp))
                         Text("${list.size} LIVE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Black,
                             modifier = Modifier.background(FS.Live, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 2.dp))
+                        if (favLeague) {
+                            Spacer(Modifier.width(8.dp))
+                            Text("★ Favorite", color = Color(0xFFFFC83D), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
-                    // Its games, stacked (scrolls inside when more than 3)
-                    androidx.compose.foundation.lazy.LazyColumn(
-                        Modifier.height(cardH * rows + 8.dp * (rows - 1) + 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp, horizontal = 4.dp),
+                    // Its games, left to right
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        contentPadding = PaddingValues(horizontal = 36.dp, vertical = 4.dp),
                     ) {
-                        items(list, key = { it.id }) { g -> MiniGameCard(l, g, FavTeams.inGame(context, l, g), cardH) { onOpen(l, g.id) } }
+                        items(list, key = { it.id }) { g ->
+                            Box(Modifier.width(280.dp)) { MiniGameCard(l, g, FavTeams.inGame(context, l, g), 84.dp) { onOpen(l, g.id) } }
+                        }
                     }
                 }
             }

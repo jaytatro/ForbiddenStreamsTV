@@ -68,6 +68,7 @@ import com.forbiddenstreams.tv.sports.FavTeams
 import com.forbiddenstreams.tv.sports.Game
 import com.forbiddenstreams.tv.sports.League
 import com.forbiddenstreams.tv.sports.SPORTS_ORDER
+import com.forbiddenstreams.tv.sports.SportOrder
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -134,6 +135,12 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
     }
 
     val railReq = remember { SPORTS_ORDER.associateWith { FocusRequester() } }
+    // Your own sport order (hold OK on a sport → ▲▼ to move → OK to set). Home follows it.
+    val order = remember { androidx.compose.runtime.mutableStateListOf<League>().apply { addAll(SportOrder.get(context)) } }
+    var moving by remember { mutableStateOf<League?>(null) }
+    var heldFromLong by remember { mutableStateOf(false) }
+    var swallowUp by remember { mutableStateOf(false) }
+    fun setOrder() { SportOrder.set(context, order.toList()); moving = null }
     val firstGameReq = remember { FocusRequester() }
     fun focusRail() { scope.launch { repeat(6) { delay(50); try { railReq[league]?.requestFocus(); return@launch } catch (e: Exception) { } } } }
     fun focusGames(): Boolean = try { firstGameReq.requestFocus(); true } catch (e: Exception) { false }
@@ -148,7 +155,7 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
     }
 
     Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF050A06), Color.Black))).padding(top = 76.dp)) {
-        Ticker(today)
+        Ticker(today, order)
         Row(Modifier.fillMaxSize().padding(top = 8.dp)) {
             // ---- League rail ----
             LazyColumn(
@@ -156,19 +163,47 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                 contentPadding = PaddingValues(start = 18.dp, end = 10.dp, top = 6.dp, bottom = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                itemsIndexed(SPORTS_ORDER, key = { _, l -> l.name }) { _, l ->
+                itemsIndexed(order, key = { _, l -> l.name }) { idx, l ->
                     val games = today[l].orEmpty()
                     RailItem(
                         l, selected = l == league,
                         live = games.count { it.isLive }, total = games.size,
-                        modifier = Modifier.focusRequester(railReq.getValue(l)).onPreviewKeyEvent { ev ->
-                            if (ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
-                                ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) focusGames() else false
+                        moving = moving == l,
+                        modifier = Modifier.animateItem().focusRequester(railReq.getValue(l)).onPreviewKeyEvent { ev ->
+                            val ne = ev.nativeKeyEvent
+                            val ok = ne.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || ne.keyCode == android.view.KeyEvent.KEYCODE_ENTER ||
+                                ne.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
+                            if (moving == l) {
+                                // Move mode: ▲▼ moves this sport, OK (a fresh press) sets it where it is.
+                                if (ne.action == android.view.KeyEvent.ACTION_DOWN) {
+                                    when {
+                                        ne.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP -> {
+                                            val i = order.indexOf(l); if (i > 0) { order.removeAt(i); order.add(i - 1, l) }
+                                            scope.launch { delay(30); try { railReq[l]?.requestFocus() } catch (e: Exception) { } }
+                                        }
+                                        ne.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                            val i = order.indexOf(l); if (i in 0 until order.size - 1) { order.removeAt(i); order.add(i + 1, l) }
+                                            scope.launch { delay(30); try { railReq[l]?.requestFocus() } catch (e: Exception) { } }
+                                        }
+                                        ok && ne.repeatCount == 0 && !heldFromLong -> { setOrder(); swallowUp = true }
+                                        ne.keyCode == android.view.KeyEvent.KEYCODE_BACK -> setOrder()
+                                    }
+                                    true
+                                } else {
+                                    if (ok && heldFromLong) heldFromLong = false
+                                    if (ok && swallowUp) swallowUp = false
+                                    ok || ne.keyCode == android.view.KeyEvent.KEYCODE_BACK ||
+                                        ne.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP || ne.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN
+                                }
+                            } else if (ok && swallowUp && ne.action == android.view.KeyEvent.ACTION_UP) { swallowUp = false; true }
+                            else if (ne.action == android.view.KeyEvent.ACTION_DOWN && ne.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) focusGames()
+                            else false
                         },
                         onFocus = {
-                            if (leagueName != l.name) { leagueName = l.name; sp.edit().putString("sports_league", l.name).apply() }
+                            if (moving == null && leagueName != l.name) { leagueName = l.name; sp.edit().putString("sports_league", l.name).apply() }
                         },
-                        onClick = { focusGames() },
+                        onClick = { if (moving == null) focusGames() },
+                        onLongClick = { if (moving == null) { moving = l; heldFromLong = true } },
                     )
                 }
             }
@@ -187,6 +222,8 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                         modifier = Modifier.padding(bottom = 5.dp),
                     )
                 }
+                if (moving != null) Text("Moving ${moving!!.icon} ${railName(moving!!)}  —  ▲▼ to move it, OK to set it here",
+                    color = Color(0xFFFFC83D), fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
                 DateBar(day, week, onPick = { day = it })
                 val games = week?.get(day).orEmpty()
                 val sorted = remember(games, favV) {
@@ -231,8 +268,8 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
 /** A thin scoreboard ticker of every game being played right now, scrolling right to left. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Ticker(today: Map<League, List<Game>>) {
-    val live = SPORTS_ORDER.flatMap { l -> today[l].orEmpty().filter { it.isLive }.map { l to it } }
+private fun Ticker(today: Map<League, List<Game>>, order: List<League>) {
+    val live = order.flatMap { l -> today[l].orEmpty().filter { it.isLive }.map { l to it } }
     val pulse = rememberInfiniteTransition(label = "pulse").animateFloat(0.35f, 1f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "a")
     Row(
         Modifier.fillMaxWidth().height(34.dp).background(Color(0xFF070D08))
@@ -265,18 +302,20 @@ private fun Ticker(today: Map<League, List<Game>>) {
 
 /** One league on the rail: icon, name, and today's live / total counts. */
 @Composable
-private fun RailItem(l: League, selected: Boolean, live: Int, total: Int, modifier: Modifier, onFocus: () -> Unit, onClick: () -> Unit) {
+private fun RailItem(l: League, selected: Boolean, live: Int, total: Int, moving: Boolean, modifier: Modifier, onFocus: () -> Unit, onClick: () -> Unit, onLongClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     Surface(
         onClick = onClick,
+        onLongClick = onLongClick,
         modifier = modifier.fillMaxWidth().height(50.dp).onFocusChanged { if (it.isFocused) onFocus() },
         shape = ClickableSurfaceDefaults.shape(shape = shape),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (selected) PanelHi else Color.Transparent, contentColor = if (selected) FS.Green else FS.Text,
-            focusedContainerColor = FS.Green, focusedContentColor = Color.Black,
+            focusedContainerColor = if (moving) Color(0xFFFFC83D) else FS.Green, focusedContentColor = Color.Black,
         ),
         border = ClickableSurfaceDefaults.border(
             border = if (selected) Border(BorderStroke(1.dp, FS.GreenDeep), shape = shape) else Border.None,
+            focusedBorder = if (moving) Border(BorderStroke(2.dp, Color.White), shape = shape) else Border.None,
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
     ) {
@@ -287,12 +326,13 @@ private fun RailItem(l: League, selected: Boolean, live: Int, total: Int, modifi
             Text(l.icon, fontSize = 20.sp)
             Spacer(Modifier.width(10.dp))
             Text(railName(l), fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            if (live > 0) {
+            if (moving) Text("▲▼", fontSize = 15.sp, fontWeight = FontWeight.Black)
+            if (!moving && live > 0) {
                 Text("$live", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black,
                     modifier = Modifier.background(LiveRed, RoundedCornerShape(50)).padding(horizontal = 7.dp, vertical = 1.dp))
                 Spacer(Modifier.width(6.dp))
             }
-            if (total > 0) Text("$total", fontSize = 13.sp, modifier = Modifier.alpha(0.7f))
+            if (!moving && total > 0) Text("$total", fontSize = 13.sp, modifier = Modifier.alpha(0.7f))
         }
     }
 }
