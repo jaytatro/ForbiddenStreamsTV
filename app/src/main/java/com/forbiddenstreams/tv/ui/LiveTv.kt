@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -133,32 +134,36 @@ fun LiveTvTab() {
     }
 
     hideAsk?.let { g -> HideCategoryDialog(g, onClose = { hideAsk = null; openList() }) }
-    Row(Modifier.fillMaxSize().padding(top = 76.dp)) {
+    // Nov 13: same control-room look as Live TV — dark backdrop, ON AIR strip, glass panels, neon-bar rows.
+    var now by remember { androidx.compose.runtime.mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { delay(30_000); now = System.currentTimeMillis() } }
+    val counts = remember(Session.liveAll) { Session.liveAll.orEmpty().groupingBy { it.categoryId }.eachCount() }
+    Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFF07120A), Color.Black))))
+    OnAirStrip(now, Modifier.padding(top = 76.dp, start = 18.dp, end = 18.dp))
+    Row(Modifier.fillMaxSize().padding(top = 122.dp, start = 18.dp, end = 18.dp, bottom = 14.dp)) {
         if (listOpen || listW > 0.dp) {
             Box(
                 Modifier.width(listW).fillMaxHeight().clipToBounds().alpha(listA)
-                    .background(Color.Black)
                     .onFocusChanged { listFocused = it.hasFocus },
             ) {
-                Column(Modifier.width(320.dp).fillMaxHeight().padding(start = 16.dp, end = 12.dp, top = 6.dp)) {
+                Column(Modifier.width(306.dp).padding(end = 14.dp).fillMaxHeight().glass()) {
                     // Nov 8: a 🔍 button; OK opens the search with the keyboard up right away.
-                    Row(Modifier.padding(bottom = 8.dp)) {
-                        Pill("🔍", selected = false, outlined = true, fontSize = 18.sp, hPad = 16.dp, onClick = { searching = true })
+                    Row(Modifier.padding(start = 14.dp, top = 10.dp, end = 10.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("CATEGORIES", color = FS.GreenMid, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp, modifier = Modifier.weight(1f))
+                        Pill("🔍", selected = false, outlined = true, fontSize = 16.sp, hPad = 14.dp, onClick = { searching = true })
                     }
-                    Text("CATEGORIES", color = FS.GreenMid, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp,
-                        modifier = Modifier.padding(start = 14.dp, bottom = 8.dp))
                     val selIndex = groups.indexOfFirst { it.key == picked?.key }.coerceAtLeast(0)
-                    val state = rememberLazyListState(selIndex)
+                    val state = rememberLazyListState((selIndex - 3).coerceAtLeast(0))
                     val topReq = remember { FocusRequester() }
-                    LazyColumn(state = state, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    LazyColumn(state = state, verticalArrangement = Arrangement.spacedBy(4.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 10.dp, horizontal = 6.dp)) {
                         itemsIndexed(groups, key = { _, g -> g.key }) { i, g ->
-                            SideItem(
-                                g.title, selected = g.key == picked?.key,
-                                textColor = FS.Green,
-                                onFocus = { if (listOpen) pending = g },
+                            ListPill(
+                                selected = g.key == picked?.key,
                                 onClick = { pick(g) },
                                 onLongClick = { if (g is Group.Cat) hideAsk = g },
-                                modifier = Modifier.fillMaxWidth().then(if (i == selIndex) Modifier.focusRequester(selReq) else Modifier)
+                                modifier = Modifier.fillMaxWidth().onFocusChanged { if (it.isFocused && listOpen) pending = g }
+                                    .then(if (i == selIndex) Modifier.focusRequester(selReq) else Modifier)
                                     .then(if (i == 0) Modifier.focusRequester(topReq) else Modifier)
                                     // ▶ on a category does the same as OK; ▼ on the last one goes back to the top.
                                     .onPreviewKeyEvent { ev ->
@@ -178,7 +183,20 @@ fun LiveTvTab() {
                                             else -> false
                                         }
                                     },
-                            )
+                            ) {
+                                Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 11.dp, bottom = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(g.title, color = FS.Green, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                    val n = when (g) {
+                                        is Group.Cat -> counts[g.cat.id] ?: 0
+                                        Group.History -> prefs.history.size
+                                        Group.Favorites -> prefs.favorites.size
+                                        else -> 0
+                                    }
+                                    if (n > 0) Text("$n", color = FS.TextDim, fontSize = 12.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        modifier = Modifier.background(Color(0x22FFFFFF), androidx.compose.foundation.shape.RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
+                                }
+                            }
                         }
                     }
                 }
@@ -186,7 +204,7 @@ fun LiveTvTab() {
         }
 
         Box(
-            Modifier.weight(1f).fillMaxHeight()
+            Modifier.weight(1f).fillMaxHeight().glass().clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)).padding(top = 6.dp, bottom = 6.dp)
                 .onFocusChanged {
                     guideFocused = it.hasFocus
                     // While the list is open, the cursor belongs in the list (▼ from the tabs lands there).

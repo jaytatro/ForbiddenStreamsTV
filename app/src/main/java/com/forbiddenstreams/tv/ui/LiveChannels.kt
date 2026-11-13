@@ -362,7 +362,7 @@ private fun canPlayBack(ch: LiveChannel, p: Program): Boolean {
 
 /** A glass row: a neon bar on its left when highlighted (green) or picked (dim green). */
 @Composable
-private fun ListPill(
+internal fun ListPill(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -390,13 +390,13 @@ private fun ListPill(
 }
 
 /** See-through dark panel with a thin neon edge. */
-private fun Modifier.glass() = this
+internal fun Modifier.glass() = this
     .background(Color(0xB8050B07), RoundedCornerShape(20.dp))
     .border(1.dp, Color(0x337CFF3A), RoundedCornerShape(20.dp))
 
 /** Strip above the lists: ON AIR · the playing channel · its show and time left · the clock. */
 @Composable
-private fun OnAirStrip(now: Long, modifier: Modifier) {
+internal fun OnAirStrip(now: Long, modifier: Modifier) {
     val item = PlayerHolder.current
     val ch = item?.channelId?.let { Session.channelById(it) }
     val prog = ch?.let { Session.cachedEpg(it) }?.firstOrNull { it.isLive(now) }

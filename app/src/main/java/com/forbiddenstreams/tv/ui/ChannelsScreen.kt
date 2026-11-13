@@ -625,8 +625,8 @@ fun GuideView(
             Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(if (dateMode) "◀ ▶ DAY" else "DATE", color = if (dateMode) FS.Green else FS.TextDim, fontSize = 14.sp,
-                fontWeight = if (dateMode) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.padding(end = 12.dp))
+            Text(if (dateMode) "◀ ▶ DAY" else "DAY", color = if (dateMode) FS.Green else FS.GreenMid, fontSize = 12.sp,
+                fontWeight = FontWeight.Black, letterSpacing = 3.sp, modifier = Modifier.padding(end = 12.dp))
             // The 7 days spread evenly across the full width.
             for (d in -3..3) {
                 val sel = d == dayOffset
@@ -634,7 +634,8 @@ fun GuideView(
                     Text(
                         if (d == 0) "TODAY" else Fmt.day(dayStart(d)),
                         color = if (sel && dateMode) androidx.compose.ui.graphics.Color.Black else if (sel) FS.Green else FS.TextDim,
-                        fontSize = 14.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
+                        fontSize = 13.sp, fontWeight = if (sel) FontWeight.Black else FontWeight.Normal,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                         modifier = Modifier
                             .then(if (sel && dateMode) Modifier.background(FS.Green, RoundedCornerShape(50)) else Modifier)
                             .then(if (sel) Modifier.border(2.dp, FS.Green, RoundedCornerShape(50)) else Modifier)
@@ -711,7 +712,8 @@ private fun GuideInfoPanel(ch: LiveChannel?, p: Program?, previewReq: FocusReque
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 (ch?.let { "${it.num}  ·  ${it.name}" } ?: "TV Guide").uppercase(),
-                color = FS.TextDim, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, maxLines = 1,
+                color = FS.Green, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp, maxLines = 1,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(p?.title ?: ch?.name ?: "", color = FS.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1,
@@ -748,19 +750,25 @@ private fun GuideInfoPanel(ch: LiveChannel?, p: Program?, previewReq: FocusReque
 
 @Composable
 private fun TimeHeader(title: String, ws: Long, we: Long, now: Long, hState: ScrollState, overlay: Boolean, onWidth: (Int) -> Unit) {
-    Row(Modifier.fillMaxWidth().height(32.dp).background(if (overlay) Color.Transparent else FS.Panel2), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, color = FS.Green, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+    Row(Modifier.fillMaxWidth().height(32.dp).then(if (overlay) Modifier else Modifier.background(Color(0x14FFFFFF), RoundedCornerShape(8.dp))),
+        verticalAlignment = Alignment.CenterVertically) {
+        Text(if (overlay) title else title.uppercase(), color = FS.Green, fontSize = 14.sp, fontWeight = FontWeight.Black, maxLines = 1,
+            letterSpacing = if (overlay) 0.sp else 1.sp,
             overflow = TextOverflow.Ellipsis, modifier = Modifier.width(CH_COL.dp).padding(horizontal = 10.dp))
         Box(Modifier.weight(1f).fillMaxHeight().onSizeChanged { onWidth(it.width) }.horizontalScroll(hState, enabled = false)) {
             Box(Modifier.width(widthDp(we - ws)).fillMaxHeight()) {
                 var t = ws
                 while (t < we) {
-                    Text(Fmt.time(t), color = FS.Text, fontSize = 13.sp,
+                    Text(Fmt.time(t), color = if (overlay) FS.Text else FS.TextDim, fontSize = 13.sp,
+                        fontFamily = if (overlay) null else androidx.compose.ui.text.font.FontFamily.Monospace,
                         modifier = Modifier.offset(x = widthDp(t - ws) + 6.dp).align(Alignment.CenterStart))
                     t += 30 * MIN
                 }
                 if (now in ws until we) {
-                    Box(Modifier.offset(x = widthDp(now - ws)).width(3.dp).fillMaxHeight().background(FS.Green))
+                    Box(Modifier.offset(x = widthDp(now - ws)).width(3.dp).fillMaxHeight().background(if (overlay) FS.Green else Color(0xFFFF4040)))
+                    if (!overlay) Text("NOW", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Black,
+                        modifier = Modifier.offset(x = widthDp(now - ws) + 4.dp).align(Alignment.TopStart)
+                            .background(Color(0xFFD62828), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp))
                 }
             }
         }
@@ -786,19 +794,30 @@ private fun GuideRow(
     val density = LocalDensity.current
     val scrolledDp = with(density) { hState.value.toDp() }
     val line = Color(0xCCFFFFFF)
+    val cellShape = RoundedCornerShape(8.dp)
     Row(Modifier.fillMaxWidth().height(ROW_H.dp)) {
         Row(
             Modifier.width(CH_COL.dp).fillMaxHeight().padding(1.dp)
                 .then(
                     if (overlay) Modifier.border(if (rowSel) 2.dp else 1.dp, if (rowSel) FS.Green else line, shape)
                     // The highlighted channel stands out: green fill with a bright green outline.
-                    else Modifier.background(if (rowSel) FS.GreenDeep else FS.Panel, shape)
-                        .then(if (rowSel) Modifier.border(2.dp, FS.Green, shape) else Modifier)
+                    // Nov 13 look (same as Live TV): glass row, neon edge + bar when highlighted, LED channel number.
+                    else Modifier.background(if (rowSel) Color(0xFF12301B) else Color(0x0FFFFFFF), cellShape)
+                        .border(if (rowSel) 1.5.dp else 1.dp, if (rowSel) FS.Green else Color(0x1F7CFF3A), cellShape)
                 )
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("${ch.num}", fontSize = 14.sp, color = FS.Text, modifier = Modifier.width(40.dp))
+            if (overlay) Text("${ch.num}", fontSize = 14.sp, color = FS.Text, modifier = Modifier.width(40.dp))
+            else {
+                Box(Modifier.width(3.dp).height(26.dp).background(if (rowSel) FS.Green else Color.Transparent, RoundedCornerShape(2.dp)))
+                Spacer(Modifier.width(4.dp))
+                Box(Modifier.width(44.dp).background(Color(0xFF020503), RoundedCornerShape(6.dp)).border(1.dp, Color(0x337CFF3A), RoundedCornerShape(6.dp))
+                    .padding(vertical = 2.dp), contentAlignment = Alignment.Center) {
+                    Text("${ch.num}", color = if (playing) Color(0xFFFF5A5A) else FS.Green, fontSize = 13.sp, fontWeight = FontWeight.Black,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, maxLines = 1)
+                }
+            }
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(Modifier.size(width = 70.dp, height = 30.dp), contentAlignment = Alignment.Center) {
                     NetImage(ch.logo, Modifier.fillMaxSize())
@@ -826,24 +845,30 @@ private fun GuideRow(
                         Modifier.width(widthDp(cell.end - cell.start)).fillMaxHeight().padding(1.dp)
                             .then(
                                 if (overlay) Modifier.border(if (sel) 3.dp else 1.dp, if (sel) FS.Green else line, shape)
-                                else Modifier.background(if (sel) FS.GreenDeep else if (live) FS.Panel2 else FS.Panel, shape)
-                                    .then(if (sel) Modifier.border(2.dp, FS.Green, shape) else Modifier)
+                                else Modifier.background(
+                                    when { sel -> Color(0xFF12301B); live -> Color(0x1AFF4040); past -> Color(0x08FFFFFF); else -> Color(0x0FFFFFFF) }, cellShape)
+                                    .border(if (sel) 1.5.dp else 1.dp, when { sel -> FS.Green; live -> Color(0x55FF4040); else -> Color(0x1A7CFF3A) }, cellShape)
                             )
                             .padding(start = 8.dp + shift, end = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        if (!overlay && live) {
+                            Box(Modifier.size(7.dp).background(Color(0xFFFF4040), RoundedCornerShape(50)))
+                            Spacer(Modifier.width(6.dp))
+                        }
                         val catchup = past && inArchive(ch, cell.start) && (p == null || p.hasArchive || ch.hasArchive)
                         if (catchup) GText("⟲ ", color = FS.Green, fontSize = 13.sp)
                         Text(
                             p?.title ?: if (epg == null) "…" else if (catchup) "${ch.name} · ${Fmt.time(cell.start)}" else "No information",
-                            color = if (sel) Color.White else FS.Text,
+                            color = if (sel) Color.White else if (!overlay && past) FS.TextDim else if (!overlay && live) FS.Green else FS.Text,
                             fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            fontWeight = if (!overlay && live) FontWeight.SemiBold else null,
                         )
                     }
                 }
             }
             if (now in ws until we) {
-                Box(Modifier.offset(x = widthDp(now - ws)).width(2.dp).fillMaxHeight().background(FS.Green))
+                Box(Modifier.offset(x = widthDp(now - ws)).width(2.dp).fillMaxHeight().background(if (overlay) FS.Green else Color(0xCCFF4040)))
             }
         }
     }
