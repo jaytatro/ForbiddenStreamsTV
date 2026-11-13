@@ -142,6 +142,8 @@ fun LiveChannelsTab() {
         val ch = channels.getOrNull(chIndex)
         var dayOffset by remember { mutableIntStateOf(0) }
         LaunchedEffect(ch?.id) { dayOffset = 0 }
+        // A show later on: pop-up with "Add a reminder" and "Record" (Nov 13).
+        var later by remember { mutableStateOf<Pair<LiveChannel, Program>?>(null) }
         var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
         LaunchedEffect(Unit) { while (true) { delay(30_000); now = System.currentTimeMillis() } }
 
@@ -306,11 +308,12 @@ fun LiveChannelsTab() {
                         when {
                             p.isLive(System.currentTimeMillis()) -> playChannels(context, channels, chIndex, fullScreen = true)
                             p.end <= System.currentTimeMillis() -> {
-                                val u = src.catchupUrl(ch, p)
+                                // Playback of an earlier show (yesterday and older too) when the channel has catch-up.
+                                val u = if (canPlayBack(ch, p)) src.catchupUrl(ch, p) else null
                                 if (u != null) Playback.one(context, PlayItem(p.title, u, live = false, subtitle = ch.name))
-                                else toast(context, "Catch-up isn't available for this show")
+                                else toast(context, "Playback isn't available for this show")
                             }
-                            else -> toast(context, "${p.title} starts at ${Fmt.time(p.start)}")
+                            else -> later = ch to p
                         }
                     },
                 )
@@ -322,7 +325,39 @@ fun LiveChannelsTab() {
                 )
             }
         }
+        later?.let { (c, p) ->
+            val hasRem = remember(p) { com.forbiddenstreams.tv.reminders.Reminders.all(context).firstOrNull { it.title == p.title && it.start == p.start } }
+            val hasRec = remember(p) { com.forbiddenstreams.tv.recording.Recordings.all(context).any { it.title == p.title && it.start == p.start } }
+            val opts = ArrayList<Pair<String, () -> Unit>>()
+            opts += (if (hasRem != null) "⏰  Remove reminder" else "⏰  Add a reminder") to {
+                if (hasRem != null) { com.forbiddenstreams.tv.reminders.Reminders.remove(context, hasRem.id); toast(context, "Reminder removed") }
+                else { com.forbiddenstreams.tv.reminders.Reminders.add(context, c, p); toast(context, "Reminder set for ${Fmt.day(p.start)} ${Fmt.time(p.start)}") }
+                later = null
+            }
+            opts += (if (hasRec) "⏺  Already set to record" else "⏺  Record") to {
+                if (!hasRec) {
+                    com.forbiddenstreams.tv.recording.Recordings.schedule(context, c, p)
+                    toast(context, "Will record ${p.title} at ${Fmt.time(p.start)}")
+                }
+                later = null
+            }
+            opts += "✕  Close" to { later = null }
+            ChoiceDialog(
+                title = p.title,
+                subtitle = "${c.name} · ${Fmt.day(p.start)} ${Fmt.range(p.start, p.end)}" +
+                    (if (p.description.isNotBlank()) "\n${p.description}" else ""),
+                options = opts,
+                onDismiss = { later = null },
+            )
+        }
     }
+}
+
+/** Can this earlier show be played back? The channel has catch-up and the show is within its catch-up days. */
+private fun canPlayBack(ch: LiveChannel, p: Program): Boolean {
+    if (!ch.hasArchive && !p.hasArchive) return false
+    val days = if (ch.archiveDays > 0) ch.archiveDays else 7
+    return p.end <= System.currentTimeMillis() && p.start >= System.currentTimeMillis() - days * DAY_MS
 }
 
 /** A glass row: a neon bar on its left when highlighted (green) or picked (dim green). */
@@ -441,7 +476,14 @@ private fun ProgramList(
     // A short pause so scrolling down the channels stays smooth.
     val epg by produceState(Session.cachedEpg(ch), ch.id) { delay(200); value = Session.epg(ch) }
     val from = dayStartMs(dayOffset)
-    val day = remember(epg, dayOffset) { epg.orEmpty().filter { it.end > from && it.start < from + DAY_MS }.sortedBy { it.start } }
+    val day = remember(epg, dayOffset) {
+        val real = epg.orEmpty().filter { it.end > from && it.start < from + DAY_MS }.sortedBy { it.start }
+        // An earlier day with no guide info on a catch-up channel: offer it hour by hour so it can still be played back.
+        if (real.isEmpty() && epg != null && dayOffset < 0 && ch.hasArchive)
+            (0 until 24).map { h -> Program("${Fmt.time(from + h * 3_600_000L)} – ${Fmt.time(from + (h + 1) * 3_600_000L)}", "", from + h * 3_600_000L, from + (h + 1) * 3_600_000L, true) }
+                .filter { canPlayBack(ch, it) }
+        else real
+    }
     val focusIdx = remember(day, now) {
         day.indexOfFirst { it.isLive(now) }.takeIf { it >= 0 } ?: day.indexOfFirst { it.end > now }.takeIf { it >= 0 } ?: 0
     }
@@ -487,7 +529,9 @@ private fun ProgramList(
                                 Text(if (live) "On now · until ${Fmt.time(p.end)}" else "${((p.end - p.start) / 60_000)} min",
                                     color = if (live) Color(0xFFFF7070) else FS.TextDim, fontSize = 12.sp)
                             }
-                            if (past && ch.hasArchive) GText("⟲", color = FS.TextDim, fontSize = 20.sp)
+                            if (past && canPlayBack(ch, p)) Text("⟲ PLAYBACK", color = FS.Green, fontSize = 11.sp, fontWeight = FontWeight.Black,
+                                letterSpacing = 1.sp, modifier = Modifier.border(1.dp, FS.GreenDeep, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 2.dp))
+                            else if (!past && !live) Text("⏰ ⏺", fontSize = 13.sp, modifier = Modifier.alpha(0.6f))
                         }
                     }
                 }
