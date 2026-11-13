@@ -2,6 +2,7 @@ package com.forbiddenstreams.tv.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -65,59 +66,98 @@ fun liveGamesNow(): List<Pair<League, Game>> {
     return games
 }
 
-/** Home: "Live games · Sports" — OK on a game opens the Sports tab with its channel pop-up. */
+/**
+ * Home: "Live games · Sports" (Nov 13: separated into columns) — one column per league, side by side,
+ * each with its own header (icon, name, live count) and its games stacked underneath (scrolls if more
+ * than 3). Favorite teams' leagues and games first. OK on a game = its channels.
+ */
 @Composable
 fun LiveGamesRow(games: List<Pair<League, Game>>, onOpen: (League, String) -> Unit) {
     val context = LocalContext.current
+    val byLeague = games.groupBy { it.first }
+        .map { (l, list) -> l to list.map { it.second }.distinctBy { it.id }
+            .sortedWith(compareBy({ if (FavTeams.inGame(context, l, it)) 0 else 1 }, { it.start })) }
+        .sortedWith(compareBy({ (l, list) -> if (list.any { FavTeams.inGame(context, l, it) }) 0 else 1 }, { SPORTS_ORDER.indexOf(it.first) }))
+    val rows = byLeague.maxOfOrNull { it.second.size }?.coerceAtMost(3) ?: 1
+    val cardH = 84.dp
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 36.dp), verticalAlignment = Alignment.CenterVertically) {
             LiveDot()
             Spacer(Modifier.width(10.dp))
             Text("Live games", color = FS.Text, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-            Text("  ·  Sports", color = FS.TextDim, fontSize = 16.sp)
+            Text("  ·  ${games.size} on now", color = FS.TextDim, fontSize = 16.sp)
             Spacer(Modifier.weight(1f))
             Text("\"OK\" for the channels", color = FS.TextDim, fontSize = 13.sp)
         }
         LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(horizontal = 36.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
+            contentPadding = PaddingValues(horizontal = 36.dp, vertical = 6.dp),
         ) {
-            items(games, key = { it.first.name + ":" + it.second.id }) { (l, g) ->
-                val fav = FavTeams.inGame(context, l, g)
-                val shape = RoundedCornerShape(6.dp)
-                Surface(
-                    onClick = { onOpen(l, g.id) },
-                    modifier = Modifier.width(300.dp).height(169.dp),
-                    shape = ClickableSurfaceDefaults.shape(shape = shape),
-                    colors = ClickableSurfaceDefaults.colors(containerColor = FS.Panel2, focusedContainerColor = FS.Panel2),
-                    border = ClickableSurfaceDefaults.border(
-                        border = if (fav) Border(BorderStroke(1.dp, FS.GreenMid), shape = shape) else Border.None,
-                        focusedBorder = Border(BorderStroke(3.dp, FS.Green), shape = shape),
-                    ),
-                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
+            items(byLeague, key = { it.first.name }) { (l, list) ->
+                Column(
+                    Modifier.width(290.dp)
+                        .background(Color(0xFF0A120C), RoundedCornerShape(16.dp))
+                        .border(1.dp, Color(0xFF1C2E20), RoundedCornerShape(16.dp))
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("LIVE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                                modifier = Modifier.background(FS.Live, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
-                            Spacer(Modifier.width(8.dp))
-                            GText((if (fav) "⭐ " else "") + "${l.icon} ${l.label}", color = FS.TextDim, fontSize = 13.sp,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            Text(g.detail, color = FS.Live, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                        }
-                        Spacer(Modifier.weight(1f))
-                        TeamLine(g.away.logo, g.away.displayName, g.away.score)
-                        Spacer(Modifier.height(8.dp))
-                        TeamLine(g.home.logo, g.home.displayName, g.home.score)
-                        Spacer(Modifier.weight(1f))
-                        if (g.networks.isNotEmpty()) {
-                            GText("📺 " + g.networks.take(3).joinToString(" · "), color = FS.TextDim, fontSize = 12.sp,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
+                    // League header
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp)) {
+                        Text(l.icon, fontSize = 18.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(l.label.uppercase(), color = FS.Green, fontSize = 15.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        Text("${list.size} LIVE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Black,
+                            modifier = Modifier.background(FS.Live, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 2.dp))
+                    }
+                    // Its games, stacked (scrolls inside when more than 3)
+                    androidx.compose.foundation.lazy.LazyColumn(
+                        Modifier.height(cardH * rows + 8.dp * (rows - 1) + 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp, horizontal = 4.dp),
+                    ) {
+                        items(list, key = { it.id }) { g -> MiniGameCard(l, g, FavTeams.inGame(context, l, g), cardH) { onOpen(l, g.id) } }
                     }
                 }
             }
         }
+    }
+}
+
+/** A small live-score card: both teams with logos and scores, the clock on the right. */
+@Composable
+private fun MiniGameCard(l: League, g: Game, fav: Boolean, h: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(10.dp)
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().height(h),
+        shape = ClickableSurfaceDefaults.shape(shape = shape),
+        colors = ClickableSurfaceDefaults.colors(containerColor = FS.Panel2, focusedContainerColor = Color(0xFF13301B)),
+        border = ClickableSurfaceDefaults.border(
+            border = if (fav) Border(BorderStroke(1.dp, Color(0xFFFFC83D)), shape = shape) else Border.None,
+            focusedBorder = Border(BorderStroke(2.dp, FS.Green), shape = shape),
+        ),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
+    ) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                MiniTeam(g.away.logo, (if (fav && FavTeams.isFav(LocalContext.current, l, g.away.abbreviation)) "★ " else "") + g.away.abbreviation, g.away.score)
+                MiniTeam(g.home.logo, (if (fav && FavTeams.isFav(LocalContext.current, l, g.home.abbreviation)) "★ " else "") + g.home.abbreviation, g.home.score)
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(g.detail, color = FS.Live, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 2,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.width(70.dp))
+        }
+    }
+}
+
+@Composable
+private fun MiniTeam(logo: String?, name: String, score: Any?) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) { NetImage(logo, Modifier.fillMaxSize()) }
+        Spacer(Modifier.width(8.dp))
+        Text(name, color = FS.Text, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f))
+        Text("${score ?: 0}", color = FS.Text, fontSize = 18.sp, fontWeight = FontWeight.Black)
     }
 }
 

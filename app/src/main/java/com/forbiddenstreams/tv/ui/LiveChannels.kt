@@ -34,6 +34,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.border
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -170,24 +174,29 @@ fun LiveChannelsTab() {
 
         val catW by animateDpAsState(if (step == 1) 300.dp else 0.dp, tween(240), label = "cats")
 
+        // Nov 13 restyle ("make the Live TV screen unique, same idea"): a broadcast control-room look —
+        // an ON AIR strip, glass panels with neon edges, LED channel numbers and a timeline of shows.
+        OnAirStrip(now, Modifier.padding(top = 76.dp, start = 18.dp, end = 18.dp))
+        val counts = remember(Session.liveAll) { Session.liveAll.orEmpty().groupingBy { it.categoryId }.eachCount() }
         Row(
-            Modifier.fillMaxSize().padding(top = 76.dp, start = 18.dp, end = 18.dp)
+            Modifier.fillMaxSize().padding(top = 122.dp, start = 18.dp, end = 18.dp, bottom = 14.dp)
                 // ▼ from the tabs lands on the category (step 1) or the channel (step 2).
                 .focusGroup(),
         ) {
             // ---- Categories ----
             if (catW > 0.dp) {
                 Box(Modifier.width(catW).fillMaxHeight().clipToBounds()) {
-                  Column(Modifier.width(300.dp).fillMaxHeight()) {
+                  Column(Modifier.width(288.dp).fillMaxHeight().glass()) {
                     // Nov 8: a 🔍 button; OK opens the search with the keyboard up right away.
-                    Row(Modifier.padding(start = 6.dp, top = 6.dp, bottom = 2.dp)) {
-                        Pill("🔍", selected = false, outlined = true, fontSize = 18.sp, hPad = 16.dp, onClick = { searching = true })
+                    Row(Modifier.padding(start = 14.dp, top = 10.dp, end = 10.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("CATEGORIES", color = FS.GreenMid, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp, modifier = Modifier.weight(1f))
+                        Pill("🔍", selected = false, outlined = true, fontSize = 16.sp, hPad = 14.dp, onClick = { searching = true })
                     }
                     val sel = groups.indexOfFirst { it.key == shown?.key }.coerceAtLeast(0)
                     val catState = rememberLazyListState((sel - 3).coerceAtLeast(0))
                     val topReq = remember { FocusRequester() }
                     LazyColumn(
-                        Modifier.width(300.dp).fillMaxHeight(),
+                        Modifier.width(288.dp).fillMaxHeight(),
                         state = catState,
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                         contentPadding = PaddingValues(vertical = 10.dp, horizontal = 6.dp),
@@ -218,8 +227,18 @@ fun LiveChannelsTab() {
                                         }
                                     },
                             ) {
-                                Text(g.title, color = FS.Green, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp))
+                                Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 11.dp, bottom = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(g.title, color = FS.Green, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                    val n = when (g) {
+                                        is Group.Cat -> counts[g.cat.id] ?: 0
+                                        Group.History -> prefs.history.size
+                                        Group.Favorites -> prefs.favorites.size
+                                        else -> 0
+                                    }
+                                    if (n > 0) Text("$n", color = FS.TextDim, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier.background(Color(0x22FFFFFF), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
+                                }
                             }
                         }
                     }
@@ -228,8 +247,9 @@ fun LiveChannelsTab() {
             }
 
             // ---- Channels ----
-            Column(Modifier.then(if (step == 1) Modifier.weight(1f) else Modifier.width(560.dp)).fillMaxHeight()) {
-                Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 20.dp, top = 6.dp, bottom = 4.dp)) {
+            if (catW > 0.dp) Spacer(Modifier.width(14.dp))
+            Column(Modifier.then(if (step == 1) Modifier.weight(1f) else Modifier.width(540.dp)).fillMaxHeight().glass()) {
+                Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 10.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(if (shown == Group.Search) "🔍 \"${chQuery.trim()}\"" else shown?.title ?: "", color = FS.Text, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f),
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (channels.isNotEmpty()) Text("${chIndex + 1}/${channels.size}", color = FS.TextDim, fontSize = 16.sp)
@@ -275,10 +295,10 @@ fun LiveChannelsTab() {
 
             // ---- The highlighted channel's shows, and the dates ----
             if (step == 2 && ch != null) {
-                Spacer(Modifier.width(18.dp))
+                Spacer(Modifier.width(14.dp))
                 ProgramList(
                     ch = ch, dayOffset = dayOffset, now = now, req = progReq,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    modifier = Modifier.weight(1f).fillMaxHeight().glass(),
                     onLeft = { focus(chReq) },
                     onRight = { focus(dateReq) },
                     onPlay = { p ->
@@ -294,6 +314,7 @@ fun LiveChannelsTab() {
                         }
                     },
                 )
+                Spacer(Modifier.width(10.dp))
                 DateColumn(
                     selected = dayOffset, req = dateReq,
                     onPick = { dayOffset = it },
@@ -304,7 +325,7 @@ fun LiveChannelsTab() {
     }
 }
 
-/** A rounded row that lights up when highlighted (like the photos), green outline in our colors. */
+/** A glass row: a neon bar on its left when highlighted (green) or picked (dim green). */
 @Composable
 private fun ListPill(
     selected: Boolean,
@@ -313,35 +334,102 @@ private fun ListPill(
     onLongClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
-    val shape = RoundedCornerShape(50)
+    val shape = RoundedCornerShape(12.dp)
+    var focused by remember { mutableStateOf(false) }
     Surface(
-        onClick = onClick, onLongClick = onLongClick, modifier = modifier,
-        shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(28.dp)),
+        onClick = onClick, onLongClick = onLongClick, modifier = modifier.onFocusChanged { focused = it.isFocused },
+        shape = ClickableSurfaceDefaults.shape(shape = shape),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = if (selected) Color(0x33FFFFFF) else Color.Transparent, contentColor = FS.Text,
-            focusedContainerColor = FS.GreenDeep, focusedContentColor = Color.White,
+            containerColor = if (selected) Color(0x1A7CFF3A) else Color.Transparent, contentColor = FS.Text,
+            focusedContainerColor = Color(0xFF12301B), focusedContentColor = Color.White,
         ),
-        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, FS.Green), shape = RoundedCornerShape(28.dp))),
+        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(1.5.dp, FS.Green), shape = shape)),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
-    ) { content() }
+    ) {
+        Row(Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
+            Box(Modifier.width(4.dp).fillMaxHeight().padding(vertical = 8.dp)
+                .background(if (focused) FS.Green else if (selected) FS.GreenDeep else Color.Transparent, RoundedCornerShape(2.dp)))
+            content()
+        }
+    }
+}
+
+/** See-through dark panel with a thin neon edge. */
+private fun Modifier.glass() = this
+    .background(Color(0xB8050B07), RoundedCornerShape(20.dp))
+    .border(1.dp, Color(0x337CFF3A), RoundedCornerShape(20.dp))
+
+/** Strip above the lists: ON AIR · the playing channel · its show and time left · the clock. */
+@Composable
+private fun OnAirStrip(now: Long, modifier: Modifier) {
+    val item = PlayerHolder.current
+    val ch = item?.channelId?.let { Session.channelById(it) }
+    val prog = ch?.let { Session.cachedEpg(it) }?.firstOrNull { it.isLive(now) }
+    val pulse = androidx.compose.animation.core.rememberInfiniteTransition(label = "air").animateFloat(
+        0.35f, 1f, androidx.compose.animation.core.infiniteRepeatable(tween(800), androidx.compose.animation.core.RepeatMode.Reverse), label = "a")
+    Row(modifier.fillMaxWidth().height(38.dp).glass().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        val on = item?.live == true && ch != null
+        Row(Modifier.background(if (on) Color(0xFFD62828) else Color(0xFF2A3A2E), RoundedCornerShape(6.dp)).padding(horizontal = 10.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(7.dp).alpha(if (on) pulse.value else 1f).background(Color.White, RoundedCornerShape(50)))
+            Spacer(Modifier.width(6.dp))
+            Text(if (on) "ON AIR" else "OFF AIR", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+        }
+        Spacer(Modifier.width(14.dp))
+        if (on && ch != null) {
+            Text("${ch.num}", color = FS.Green, fontSize = 15.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+            Spacer(Modifier.width(10.dp))
+            Text(ch.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false))
+            prog?.let { p ->
+                Text("   ·   ${p.title}", color = FS.Text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                Text("   ${((p.end - now) / 60_000).coerceAtLeast(0)} min left", color = FS.TextDim, fontSize = 13.sp)
+            }
+        } else {
+            Text("Pick a channel — OK plays it behind the menu, OK again goes full screen", color = FS.TextDim, fontSize = 14.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Spacer(Modifier.weight(1f))
+        Text(Fmt.time(now), color = FS.Green, fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+    }
 }
 
 @Composable
 private fun ChannelLine(c: LiveChannel, playing: Boolean, now: Long) {
-    val on by produceState(Session.cachedEpg(c)?.firstOrNull { it.isLive(now) }?.title, c.id, now) {
-        value = Session.epg(c).firstOrNull { it.isLive(System.currentTimeMillis()) }?.title
+    val prog by produceState(Session.cachedEpg(c)?.firstOrNull { it.isLive(now) }, c.id, now) {
+        value = Session.epg(c).firstOrNull { it.isLive(System.currentTimeMillis()) }
     }
-    Row(Modifier.fillMaxWidth().height(70.dp).padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("${c.num}", color = FS.TextDim, fontSize = 17.sp, modifier = Modifier.width(54.dp))
-        Box(Modifier.size(width = 84.dp, height = 46.dp), contentAlignment = Alignment.Center) { NetImage(c.logo, Modifier.fillMaxSize()) }
-        Spacer(Modifier.width(16.dp))
-        Column(Modifier.weight(1f)) {
-            Text(c.name, color = if (playing) FS.Green else Color.Unspecified, fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(on ?: "N/A", color = FS.TextDim, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Row(Modifier.fillMaxWidth().height(68.dp).padding(start = 10.dp, end = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        // LED-style channel number.
+        Box(Modifier.width(58.dp).background(Color(0xFF020503), RoundedCornerShape(8.dp)).border(1.dp, Color(0x337CFF3A), RoundedCornerShape(8.dp))
+            .padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+            Text("${c.num}", color = if (playing) Color(0xFFFF5A5A) else FS.Green, fontSize = 16.sp, fontWeight = FontWeight.Black,
+                fontFamily = FontFamily.Monospace, maxLines = 1)
         }
-        if (playing) { Spacer(Modifier.width(8.dp)); LiveDot() }
-        if (c.hasArchive) { Spacer(Modifier.width(10.dp)); GText("⟲", color = FS.TextDim, fontSize = 22.sp) }
+        Spacer(Modifier.width(12.dp))
+        Box(Modifier.size(width = 76.dp, height = 44.dp).background(Color(0x14FFFFFF), RoundedCornerShape(8.dp)).padding(4.dp),
+            contentAlignment = Alignment.Center) { NetImage(c.logo, Modifier.fillMaxSize()) }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(c.name, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false))
+                if (playing) {
+                    Spacer(Modifier.width(8.dp))
+                    Text("ON AIR", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp,
+                        modifier = Modifier.background(Color(0xFFD62828), RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 1.dp))
+                }
+            }
+            val p = prog
+            Text(p?.title ?: "No information", color = FS.TextDim, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (p != null) {
+                val f = ((now - p.start).toFloat() / (p.end - p.start).coerceAtLeast(1)).coerceIn(0f, 1f)
+                Box(Modifier.padding(top = 4.dp).fillMaxWidth(0.85f).height(3.dp).background(Color(0x22FFFFFF), RoundedCornerShape(2.dp))) {
+                    Box(Modifier.fillMaxWidth(f).height(3.dp).background(FS.Green, RoundedCornerShape(2.dp)))
+                }
+            }
+        }
+        if (c.hasArchive) { Spacer(Modifier.width(10.dp)); GText("⟲", color = FS.TextDim, fontSize = 20.sp) }
     }
 }
 
@@ -365,7 +453,7 @@ private fun ProgramList(
                 Modifier.fillMaxSize(),
                 state = remember(ch.id, dayOffset) { androidx.compose.foundation.lazy.LazyListState((focusIdx - 1).coerceAtLeast(0)) },
                 verticalArrangement = Arrangement.spacedBy(2.dp),
-                contentPadding = PaddingValues(vertical = 6.dp),
+                contentPadding = PaddingValues(vertical = 10.dp, horizontal = 6.dp),
             ) {
                 itemsIndexed(day, key = { i, p -> "$i:${p.start}" }) { i, p ->
                     val live = p.isLive(now)
@@ -382,16 +470,24 @@ private fun ProgramList(
                                 }
                             },
                     ) {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(Fmt.range(p.start, p.end), color = if (live) FS.Green else FS.TextDim, fontSize = 14.sp)
-                                Text(p.title, color = if (live) FS.Green else Color.Unspecified, fontSize = 19.sp,
+                        // Timeline: start time · a dot on a line (red = on now, grey = over, green ring = later) · the show.
+                        Row(Modifier.fillMaxWidth().height(androidx.compose.foundation.layout.IntrinsicSize.Min).padding(end = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text(Fmt.time(p.start), color = if (live) FS.Green else FS.TextDim, fontSize = 13.sp, fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.width(78.dp).padding(start = 8.dp))
+                            Box(Modifier.width(22.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                                Box(Modifier.width(2.dp).fillMaxHeight().background(Color(0x337CFF3A)))
+                                Box(Modifier.size(if (live) 12.dp else 9.dp).background(
+                                    when { live -> Color(0xFFFF4040); past -> Color(0xFF5A6A5E); else -> Color(0xFF050B07) }, RoundedCornerShape(50))
+                                    .border(2.dp, if (live) Color(0x66FF4040) else if (past) Color.Transparent else FS.Green, RoundedCornerShape(50)))
+                            }
+                            Column(Modifier.weight(1f).padding(start = 8.dp, top = 9.dp, bottom = 9.dp)) {
+                                Text(p.title, color = if (live) FS.Green else if (past) FS.TextDim else Color.Unspecified, fontSize = 17.sp,
                                     fontWeight = if (live) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(if (live) "On now · until ${Fmt.time(p.end)}" else "${((p.end - p.start) / 60_000)} min",
+                                    color = if (live) Color(0xFFFF7070) else FS.TextDim, fontSize = 12.sp)
                             }
-                            when {
-                                live -> LiveDot()
-                                past && ch.hasArchive -> GText("⟲", color = FS.TextDim, fontSize = 22.sp)
-                            }
+                            if (past && ch.hasArchive) GText("⟲", color = FS.TextDim, fontSize = 20.sp)
                         }
                     }
                 }
@@ -403,20 +499,21 @@ private fun ProgramList(
 /** Dates down the right: 3 days back · Today · 3 days ahead. Highlighting one shows its shows. */
 @Composable
 private fun DateColumn(selected: Int, req: FocusRequester, onPick: (Int) -> Unit, onLeft: () -> Unit) {
-    Column(Modifier.width(96.dp).fillMaxHeight().padding(top = 6.dp), horizontalAlignment = Alignment.CenterHorizontally,
+    Column(Modifier.width(92.dp).fillMaxHeight().glass().padding(top = 10.dp, start = 4.dp, end = 4.dp), horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("DATE", color = FS.TextDim, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text("DAY", color = FS.GreenMid, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp)
         for (d in -3..3) {
             val t = dayStartMs(d)
             ListPill(
                 selected = d == selected, onClick = { onPick(d) },
-                modifier = Modifier.width(88.dp)
+                modifier = Modifier.width(82.dp)
                     .then(if (d == selected) Modifier.focusRequester(req) else Modifier)
                     .onFocusChanged { if (it.isFocused) onPick(d) }
                     .onPreviewKeyEvent { ev -> if (keyIs(ev, android.view.KeyEvent.KEYCODE_DPAD_LEFT)) { onLeft(); true } else false },
             ) {
                 Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(if (d == 0) "Today" else SimpleDateFormat("d", Locale.US).format(t), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text(if (d == 0) "TODAY" else SimpleDateFormat("d", Locale.US).format(t), fontSize = if (d == 0) 14.sp else 18.sp,
+                        fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
                     Text(SimpleDateFormat("EEE", Locale.US).format(t).uppercase(Locale.US), color = FS.TextDim, fontSize = 12.sp)
                 }
             }
