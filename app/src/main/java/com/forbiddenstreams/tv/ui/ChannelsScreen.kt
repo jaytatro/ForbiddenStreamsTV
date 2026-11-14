@@ -787,7 +787,7 @@ private fun GuideRow(
     overlay: Boolean,
     onEpg: () -> Unit,
 ) {
-    val epg by produceState(Session.cachedEpg(ch), ch.id) { value = Session.epg(ch); onEpg() }
+    val epg by produceState(Session.cachedEpg(ch), ch.id, Session.guideVersion) { value = Session.epg(ch); onEpg() }
     val cells = remember(epg, ws) { buildCells(epg, ws, we) }
     val shape = RoundedCornerShape(4.dp)
     val rowSel = cursor != null

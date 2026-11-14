@@ -88,7 +88,7 @@ object XmltvParser {
     }
 
     /** Returns programmes per lower-cased channel id, only inside [from, to]. */
-    fun parse(input: InputStream, from: Long, to: Long): Map<String, List<Program>> {
+    fun parse(input: InputStream, from: Long, to: Long, only: Set<String>? = null): Map<String, List<Program>> {
         val out = HashMap<String, MutableList<Program>>()
         val p = Xml.newPullParser()
         p.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
@@ -106,14 +106,15 @@ object XmltvParser {
                     "programme" -> {
                         val s = time(p.getAttributeValue(null, "start"))
                         val e = time(p.getAttributeValue(null, "stop"))
-                        inProg = s != null && e != null && e > from && s < to
+                        val cid = p.getAttributeValue(null, "channel")?.lowercase()
+                        inProg = s != null && e != null && e > from && s < to && (only == null || (cid != null && cid in only))
                         if (inProg) {
-                            ch = p.getAttributeValue(null, "channel")?.lowercase()
+                            ch = cid
                             start = s!!; end = e!!; title = ""; desc = ""
                         }
                     }
                     "title" -> { if (inProg && title.isEmpty()) title = p.nextText() ?: "" }
-                    "desc" -> { if (inProg && desc.isEmpty()) desc = p.nextText() ?: "" }
+                    "desc" -> { if (inProg && desc.isEmpty()) desc = (p.nextText() ?: "").take(400) }
                 }
             } else if (ev == XmlPullParser.END_TAG && p.name == "programme") {
                 val c = ch

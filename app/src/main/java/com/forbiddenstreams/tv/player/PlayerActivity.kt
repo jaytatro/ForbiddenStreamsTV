@@ -184,8 +184,13 @@ class PlayerActivity : ComponentActivity() {
                                     Text(listOfNotNull(pch?.num?.toString(), item.subtitle).joinToString("  ·  "), color = FS.Green, fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, maxLines = 1)
                                 }
-                                Text(item.title, color = FS.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                                // Hour blocks (no guide info when started) get the show's real name once it's known.
+                                val named = pEpg?.firstOrNull { it.isLive(item.progStart + 60_000) && it.start >= item.progStart - 60_000 }
+                                Text(named?.title ?: item.title, color = FS.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1,
                                     modifier = Modifier.padding(top = 6.dp))
+                                named?.description?.takeIf { it.isNotBlank() }?.let {
+                                    Text(it, color = FS.TextDim, fontSize = 13.sp, maxLines = 2, modifier = Modifier.width(620.dp))
+                                }
                                 Text("Aired ${Fmt.day(item.progStart)}  ${Fmt.range(item.progStart, item.progEnd)}" +
                                     (nextShow?.let { "     Next: ${it.title}" } ?: "     Next: ${pch?.name ?: "live"}"),
                                     color = FS.TextDim, fontSize = 15.sp, maxLines = 1)

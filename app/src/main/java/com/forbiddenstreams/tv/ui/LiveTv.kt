@@ -72,6 +72,7 @@ fun LiveTvTab() {
     // Search bar above the categories (Nov 8): matching channels from every category.
     var chQuery by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(Session.liveAll != null) { if (Session.liveAll != null) Session.importPastGuide(context) }
 
     var listOpen by remember { mutableStateOf(true) }
     // Always starts at History (Nov 8).

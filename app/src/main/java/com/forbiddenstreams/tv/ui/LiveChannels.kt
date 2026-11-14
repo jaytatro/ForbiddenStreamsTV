@@ -101,6 +101,8 @@ fun LiveChannelsTab() {
     val prefs = remember { Prefs(context) }
     val scope = rememberCoroutineScope()
     val cats = Session.liveCats
+    // Earlier days' show names for catch-up channels (Nov 13).
+    LaunchedEffect(Session.liveAll != null) { if (Session.liveAll != null) Session.importPastGuide(context) }
 
     Box(Modifier.fillMaxSize()) {
         LiveBackdrop()
@@ -268,9 +270,10 @@ fun LiveChannelsTab() {
                         contentPadding = PaddingValues(vertical = 6.dp, horizontal = 6.dp),
                     ) {
                         itemsIndexed(channels, key = { _, c -> c.id }) { i, c ->
-                            val playing = PlayerHolder.current?.channelId == c.id
+                            val playing = PlayerHolder.current?.let { it.channelId == c.id || it.playbackOf == c.id } == true
                             ListPill(
                                 selected = i == chIndex && step == 2,
+                                playing = playing,
                                 onClick = {
                                     if (playing) PlayerHolder.openFullScreen(context)
                                     else playChannels(context, channels, i, fullScreen = false)
@@ -367,6 +370,8 @@ internal fun ListPill(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
+    /** Red outline: this is what's playing (Nov 13). */
+    playing: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val shape = RoundedCornerShape(12.dp)
@@ -378,7 +383,10 @@ internal fun ListPill(
             containerColor = if (selected) Color(0x1A7CFF3A) else Color.Transparent, contentColor = FS.Text,
             focusedContainerColor = Color(0xFF12301B), focusedContentColor = Color.White,
         ),
-        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(1.5.dp, FS.Green), shape = shape)),
+        border = ClickableSurfaceDefaults.border(
+            border = if (playing) Border(BorderStroke(2.dp, Color(0xFFFF3B3B)), shape = shape) else Border.None,
+            focusedBorder = Border(BorderStroke(if (playing) 2.5.dp else 1.5.dp, if (playing) Color(0xFFFF3B3B) else FS.Green), shape = shape),
+        ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
     ) {
         Row(Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)) {
@@ -421,7 +429,8 @@ internal fun OnAirStrip(now: Long, modifier: Modifier) {
                 Text(ch.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false))
             }
-            Text("   ·   ${item.title}", color = FS.Text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            val named = ch?.let { Session.cachedEpg(it) }?.firstOrNull { it.isLive(item.progStart + 60_000) && it.start >= item.progStart - 60_000 }?.title ?: item.title
+            Text("   ·   $named", color = FS.Text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
             Text("   aired ${Fmt.day(item.progStart)} ${Fmt.time(item.progStart)}", color = FS.TextDim, fontSize = 13.sp, maxLines = 1)
         } else if (on && ch != null) {
             Text("${ch.num}", color = FS.Green, fontSize = 15.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
@@ -486,7 +495,7 @@ private fun ProgramList(
     onLeft: () -> Unit, onRight: () -> Unit, onPlay: (Program) -> Unit,
 ) {
     // A short pause so scrolling down the channels stays smooth.
-    val epg by produceState(Session.cachedEpg(ch), ch.id) { delay(200); value = Session.epg(ch) }
+    val epg by produceState(Session.cachedEpg(ch), ch.id, Session.guideVersion) { delay(200); value = Session.epg(ch) }
     val from = dayStartMs(dayOffset)
     val day = remember(epg, dayOffset) {
         val real = epg.orEmpty().filter { it.end > from && it.start < from + DAY_MS }.sortedBy { it.start }
@@ -515,9 +524,10 @@ private fun ProgramList(
                 itemsIndexed(day, key = { i, p -> "$i:${p.start}" }) { i, p ->
                     val live = p.isLive(now)
                     val past = p.end <= now
-                    val playingBack = PlayerHolder.current?.let { it.playbackOf == ch.id && it.progStart == p.start } == true
+                    val playingBack = PlayerHolder.current?.let { it.playbackOf == ch.id && it.progStart < p.end && it.progEnd > p.start && p.start >= it.progStart - 60_000 } == true
+                    val playingLive = live && PlayerHolder.current?.let { it.live && it.channelId == ch.id } == true
                     ListPill(
-                        selected = false, onClick = { onPlay(p) },
+                        selected = false, onClick = { onPlay(p) }, playing = playingBack || playingLive,
                         modifier = Modifier.fillMaxWidth()
                             .then(if (i == focusIdx) Modifier.focusRequester(req) else Modifier)
                             .then(if (i == 0) Modifier.focusRequester(edgeReq[0]) else if (i == day.size - 1) Modifier.focusRequester(edgeReq[1]) else Modifier)

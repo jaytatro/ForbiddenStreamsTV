@@ -122,11 +122,50 @@ object Session {
                 liveError = null
                 epgCache.clear()
                 withContext(Dispatchers.IO) { save(context, cats, all) }
+                importPastGuide(context)
             } catch (e: Exception) {
                 if (liveAll == null) liveError = e.message ?: "Couldn't load channels"
             } finally {
                 refreshing = false
             }
+        }
+    }
+
+    /** Bumped when earlier days' show names arrive, so open guides reload. */
+    var guideVersion by androidx.compose.runtime.mutableIntStateOf(0)
+        private set
+    private var pastJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Nov 13: names of earlier days' shows for catch-up channels. Many providers' per-channel guide only
+     * starts today, so the full XMLTV guide is read (only catch-up channels, last 4 days) and saved into
+     * the on-box show history. At most every 3 hours.
+     */
+    fun importPastGuide(context: Context, force: Boolean = false) {
+        if (pastJob?.isActive == true) return
+        val src = source as? XtreamSource ?: return
+        val sp = context.applicationContext.getSharedPreferences("forbidden_streams", Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        if (!force && now - sp.getLong("past_guide_at", 0L) < 3 * 3_600_000L) return
+        pastJob = scope.launch(Dispatchers.IO) {
+            try {
+                val arch = liveAll.orEmpty().filter { it.hasArchive && !it.epgId.isNullOrBlank() }
+                if (arch.isEmpty()) return@launch
+                val byEpg = arch.groupBy { it.epgId!!.lowercase() }
+                val map = Http.stream(src.xmltvUrl()) { XmltvParser.parse(it, now - 4 * 86_400_000L, now, byEpg.keys) }
+                var n = 0
+                for ((k, progs) in map) {
+                    val past = progs.filter { it.start <= now }.map { it.copy(hasArchive = true) }
+                    if (past.isEmpty()) continue
+                    for (ch in byEpg[k].orEmpty()) {
+                        val current = epgCache[ch.id]?.second.orEmpty().filter { it.end > now - 3_600_000L }
+                        withHistory(ch.id, (past.filter { p -> current.none { it.start < p.end && it.end > p.start } } + current).sortedBy { it.start })
+                        n++
+                    }
+                }
+                sp.edit().putLong("past_guide_at", now).apply()
+                if (n > 0) { epgCache.clear(); withContext(Dispatchers.Main) { guideVersion++ } }
+            } catch (e: Exception) { /* no XMLTV on this provider: the hour-by-hour list still works */ }
         }
     }
 
@@ -203,7 +242,7 @@ object Session {
     private fun withHistory(channelId: String, fresh: List<Program>): List<Program> {
         val dir = histDir ?: return fresh
         val now = System.currentTimeMillis()
-        val cutoff = now - 2 * 86_400_000L
+        val cutoff = now - 4 * 86_400_000L
         val f = File(dir, channelId.replace(Regex("[^A-Za-z0-9_-]"), "_") + ".json")
         val old = try {
             if (!f.exists()) emptyList() else {

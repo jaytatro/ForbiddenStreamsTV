@@ -30,6 +30,9 @@ class XtreamSource(
     private var seriesCats: List<Category>? = null
     private val seriesByCat = HashMap<String, List<SeriesItem>>()
 
+    /** The provider's full guide file (has earlier days' show names that the per-channel guide often drops). */
+    fun xmltvUrl(): String = "$base/xmltv.php?username=${Http.enc(user)}&password=${Http.enc(pass)}"
+
     private fun api(action: String? = null, extra: String = ""): String =
         "$base/player_api.php?username=${Http.enc(user)}&password=${Http.enc(pass)}" +
             (if (action != null) "&action=$action" else "") + extra
