@@ -486,14 +486,14 @@ fun GuideView(
                 // Past hour with no guide info on a catch-up channel: play that hour.
                 val c = cellAt(row)!!
                 val prog = Program("${ch.name} · ${Fmt.time(c.start)}", "", c.start, c.end, true)
-                val u = src.catchupUrl(ch, prog)
-                if (u != null) playItem(PlayItem(prog.title, u, live = false, subtitle = ch.name))
+                val it = com.forbiddenstreams.tv.player.playbackItem(ch, prog)
+                if (it != null) playItem(it)
                 else toast(context, "Catch-up isn't available for this time")
             }
             p == null || p.isLive(t) -> playCh(channels, row)
             p.end <= t -> {
-                val u = src.catchupUrl(ch, p)
-                if (u != null) playItem(PlayItem(p.title, u, live = false, subtitle = ch.name))
+                val it = com.forbiddenstreams.tv.player.playbackItem(ch, p)
+                if (it != null) playItem(it)
                 else toast(context, "Catch-up isn't available for this show")
             }
             else -> openMenu()
@@ -680,10 +680,10 @@ fun GuideView(
             menu = null
         }
         if (p != null && p.start <= t) {
-            val u = src.catchupUrl(ch, p)
-            if (u != null) opts += "⏮  Watch from start" to {
+            val it0 = com.forbiddenstreams.tv.player.playbackItem(ch, p)
+            if (it0 != null) opts += "⏮  Watch from start" to {
                 menu = null
-                playItem(PlayItem(p.title, u, live = false, subtitle = ch.name))
+                playItem(it0)
             }
         }
         ChoiceDialog(
@@ -852,6 +852,10 @@ private fun GuideRow(
                             .padding(start = 8.dp + shift, end = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        val playingBack = PlayerHolder.current?.let { it.playbackOf == ch.id && it.progStart == cell.start } == true
+                        if (playingBack) {
+                            Text("▶ PLAYING ", color = FS.Green, fontSize = 12.sp, fontWeight = FontWeight.Black)
+                        }
                         if (!overlay && live) {
                             Box(Modifier.size(7.dp).background(Color(0xFFFF4040), RoundedCornerShape(50)))
                             Spacer(Modifier.width(6.dp))

@@ -59,6 +59,8 @@ class PlayerActivity : ComponentActivity() {
 
     /** Bottom info bar (channel, what's on, quality) is visible. */
     private var infoVisible by mutableStateOf(true)
+    /** Bumped on every key press: the playback banner (an earlier show playing) comes back for a few seconds. */
+    private var keyPing by androidx.compose.runtime.mutableIntStateOf(0)
     private var infoJob: Job? = null
 
     /** See-through TV guide over the video (hold OK on live TV). */
@@ -161,6 +163,37 @@ class PlayerActivity : ComponentActivity() {
                 val prog = epg?.firstOrNull { it.isLive(now) }
                 Box(Modifier.fillMaxSize().background(Color.Black)) {
                     AndroidView(factory = { view }, modifier = Modifier.fillMaxSize())
+                    // Nov 13: an earlier show playing back — show which show, when it aired, and what's next.
+                    if (item?.playbackOf != null && !guideVisible) {
+                        var bannerOn by remember(item) { mutableStateOf(true) }
+                        LaunchedEffect(item, keyPing) { bannerOn = true; delay(6_000); bannerOn = false }
+                        if (bannerOn) {
+                            val pch = Session.channelById(item.playbackOf)
+                            val pEpg = pch?.let { Session.cachedEpg(it) }
+                            val nextShow = pEpg?.filter { it.start >= item.progEnd - 60_000 && it.start > item.progStart }?.minByOrNull { it.start }
+                            Column(
+                                Modifier.align(Alignment.TopStart).padding(start = 32.dp, top = 28.dp, end = 32.dp)
+                                    .background(Color(0xE6040604), RoundedCornerShape(16.dp))
+                                    .border(1.dp, FS.GreenDeep, RoundedCornerShape(16.dp))
+                                    .padding(horizontal = 22.dp, vertical = 14.dp),
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("⟲ PLAYBACK", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp,
+                                        modifier = Modifier.background(FS.Green, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 2.dp))
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(listOfNotNull(pch?.num?.toString(), item.subtitle).joinToString("  ·  "), color = FS.Green, fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, maxLines = 1)
+                                }
+                                Text(item.title, color = FS.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                                    modifier = Modifier.padding(top = 6.dp))
+                                Text("Aired ${Fmt.day(item.progStart)}  ${Fmt.range(item.progStart, item.progEnd)}" +
+                                    (nextShow?.let { "     Next: ${it.title}" } ?: "     Next: ${pch?.name ?: "live"}"),
+                                    color = FS.TextDim, fontSize = 15.sp, maxLines = 1)
+                                Text("Keeps playing the next show until you press BACK", color = FS.TextDim, fontSize = 12.sp,
+                                    modifier = Modifier.padding(top = 4.dp))
+                            }
+                        }
+                    }
                     if ((infoVisible || actionsVisible) && item != null && !guideVisible) {
                       // Bottom bar: channel info, and under it (after OK) Last Channel · Record · Multi-View.
                       Column(
@@ -640,6 +673,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         lastKeyAt = android.os.SystemClock.uptimeMillis()
+        if (event.action == KeyEvent.ACTION_DOWN && event.keyCode != KeyEvent.KEYCODE_BACK) keyPing++
         if (!::view.isInitialized || guideVisible || actionsVisible || multiVisible || panelVisible) return super.dispatchKeyEvent(event)
         val live = PlayerHolder.current?.live == true
         val down = event.action == KeyEvent.ACTION_DOWN

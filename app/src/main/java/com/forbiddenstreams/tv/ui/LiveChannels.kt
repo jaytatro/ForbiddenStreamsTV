@@ -309,8 +309,8 @@ fun LiveChannelsTab() {
                             p.isLive(System.currentTimeMillis()) -> playChannels(context, channels, chIndex, fullScreen = true)
                             p.end <= System.currentTimeMillis() -> {
                                 // Playback of an earlier show (yesterday and older too) when the channel has catch-up.
-                                val u = if (canPlayBack(ch, p)) src.catchupUrl(ch, p) else null
-                                if (u != null) Playback.one(context, PlayItem(p.title, u, live = false, subtitle = ch.name))
+                                val it = if (canPlayBack(ch, p)) com.forbiddenstreams.tv.player.playbackItem(ch, p) else null
+                                if (it != null) Playback.one(context, it)
                                 else toast(context, "Playback isn't available for this show")
                             }
                             else -> later = ch to p
@@ -398,20 +398,32 @@ internal fun Modifier.glass() = this
 @Composable
 internal fun OnAirStrip(now: Long, modifier: Modifier) {
     val item = PlayerHolder.current
-    val ch = item?.channelId?.let { Session.channelById(it) }
+    val ch = (item?.channelId ?: item?.playbackOf)?.let { Session.channelById(it) }
+    val back = item?.playbackOf != null
     val prog = ch?.let { Session.cachedEpg(it) }?.firstOrNull { it.isLive(now) }
     val pulse = androidx.compose.animation.core.rememberInfiniteTransition(label = "air").animateFloat(
         0.35f, 1f, androidx.compose.animation.core.infiniteRepeatable(tween(800), androidx.compose.animation.core.RepeatMode.Reverse), label = "a")
     Row(modifier.fillMaxWidth().height(38.dp).glass().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
         val on = item?.live == true && ch != null
-        Row(Modifier.background(if (on) Color(0xFFD62828) else Color(0xFF2A3A2E), RoundedCornerShape(6.dp)).padding(horizontal = 10.dp, vertical = 3.dp),
+        Row(Modifier.background(if (back) FS.Green else if (on) Color(0xFFD62828) else Color(0xFF2A3A2E), RoundedCornerShape(6.dp)).padding(horizontal = 10.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(7.dp).alpha(if (on) pulse.value else 1f).background(Color.White, RoundedCornerShape(50)))
+            Box(Modifier.size(7.dp).alpha(if (on || back) pulse.value else 1f).background(if (back) Color.Black else Color.White, RoundedCornerShape(50)))
             Spacer(Modifier.width(6.dp))
-            Text(if (on) "ON AIR" else "OFF AIR", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+            Text(if (back) "⟲ PLAYBACK" else if (on) "ON AIR" else "OFF AIR", color = if (back) Color.Black else Color.White,
+                fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
         }
         Spacer(Modifier.width(14.dp))
-        if (on && ch != null) {
+        if (back && item != null) {
+            // Nov 13: an earlier show playing back — which show, and when it aired.
+            if (ch != null) {
+                Text("${ch.num}", color = FS.Green, fontSize = 15.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+                Spacer(Modifier.width(10.dp))
+                Text(ch.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false))
+            }
+            Text("   ·   ${item.title}", color = FS.Text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+            Text("   aired ${Fmt.day(item.progStart)} ${Fmt.time(item.progStart)}", color = FS.TextDim, fontSize = 13.sp, maxLines = 1)
+        } else if (on && ch != null) {
             Text("${ch.num}", color = FS.Green, fontSize = 15.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
             Spacer(Modifier.width(10.dp))
             Text(ch.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -487,27 +499,43 @@ private fun ProgramList(
     val focusIdx = remember(day, now) {
         day.indexOfFirst { it.isLive(now) }.takeIf { it >= 0 } ?: day.indexOfFirst { it.end > now }.takeIf { it >= 0 } ?: 0
     }
+    val listState = remember(ch.id, dayOffset) { androidx.compose.foundation.lazy.LazyListState((focusIdx - 1).coerceAtLeast(0)) }
+    val edgeReq = remember { listOf(FocusRequester(), FocusRequester()) }
+    val scope = rememberCoroutineScope()
     Box(modifier) {
         when {
             epg == null -> LoadingBox("Loading the guide")
             day.isEmpty() -> Text("No guide information for this day", color = FS.TextDim, fontSize = 17.sp, modifier = Modifier.padding(20.dp))
             else -> LazyColumn(
                 Modifier.fillMaxSize(),
-                state = remember(ch.id, dayOffset) { androidx.compose.foundation.lazy.LazyListState((focusIdx - 1).coerceAtLeast(0)) },
+                state = listState,
                 verticalArrangement = Arrangement.spacedBy(2.dp),
                 contentPadding = PaddingValues(vertical = 10.dp, horizontal = 6.dp),
             ) {
                 itemsIndexed(day, key = { i, p -> "$i:${p.start}" }) { i, p ->
                     val live = p.isLive(now)
                     val past = p.end <= now
+                    val playingBack = PlayerHolder.current?.let { it.playbackOf == ch.id && it.progStart == p.start } == true
                     ListPill(
                         selected = false, onClick = { onPlay(p) },
                         modifier = Modifier.fillMaxWidth()
                             .then(if (i == focusIdx) Modifier.focusRequester(req) else Modifier)
+                            .then(if (i == 0) Modifier.focusRequester(edgeReq[0]) else if (i == day.size - 1) Modifier.focusRequester(edgeReq[1]) else Modifier)
                             .onPreviewKeyEvent { ev ->
                                 when {
                                     keyIs(ev, android.view.KeyEvent.KEYCODE_DPAD_LEFT) -> { onLeft(); true }
                                     keyIs(ev, android.view.KeyEvent.KEYCODE_DPAD_RIGHT) -> { onRight(); true }
+                                    // Round robin: ▼ on the last show → the first, ▲ on the first → the last.
+                                    keyIs(ev, android.view.KeyEvent.KEYCODE_DPAD_DOWN) && i == day.size - 1 && day.size > 1 -> {
+                                        scope.launch { try { listState.scrollToItem(0) } catch (e: Exception) { }
+                                            repeat(5) { delay(30); try { edgeReq[0].requestFocus(); return@launch } catch (e: Exception) { } } }
+                                        true
+                                    }
+                                    keyIs(ev, android.view.KeyEvent.KEYCODE_DPAD_UP) && i == 0 && day.size > 1 -> {
+                                        scope.launch { try { listState.scrollToItem(day.size - 1) } catch (e: Exception) { }
+                                            repeat(5) { delay(30); try { edgeReq[1].requestFocus(); return@launch } catch (e: Exception) { } } }
+                                        true
+                                    }
                                     else -> false
                                 }
                             },
@@ -529,7 +557,9 @@ private fun ProgramList(
                                 Text(if (live) "On now · until ${Fmt.time(p.end)}" else "${((p.end - p.start) / 60_000)} min",
                                     color = if (live) Color(0xFFFF7070) else FS.TextDim, fontSize = 12.sp)
                             }
-                            if (past && canPlayBack(ch, p)) Text("⟲ PLAYBACK", color = FS.Green, fontSize = 11.sp, fontWeight = FontWeight.Black,
+                            if (playingBack) Text("▶ PLAYING", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp,
+                                modifier = Modifier.background(FS.Green, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 2.dp))
+                            else if (past && canPlayBack(ch, p)) Text("⟲ PLAYBACK", color = FS.Green, fontSize = 11.sp, fontWeight = FontWeight.Black,
                                 letterSpacing = 1.sp, modifier = Modifier.border(1.dp, FS.GreenDeep, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 2.dp))
                             else if (!past && !live) Text("⏰ ⏺", fontSize = 13.sp, modifier = Modifier.alpha(0.6f))
                         }

@@ -35,7 +35,17 @@ data class PlayItem(
     val startMs: Long? = null,
     /** Set when this is "Start over" of a live channel (its channel id): the player shows a time bar, Settings and LIVE. */
     val restartOf: String? = null,
+    /** Playback of an earlier show (catch-up) on this channel id: the player shows the show, and the next show follows (Nov 13). */
+    val playbackOf: String? = null,
+    val progStart: Long = 0L,
+    val progEnd: Long = 0L,
 )
+
+/** A catch-up item for an earlier show (null if the provider has no catch-up for it). */
+fun playbackItem(ch: com.forbiddenstreams.tv.data.LiveChannel, p: com.forbiddenstreams.tv.data.Program): PlayItem? {
+    val u = com.forbiddenstreams.tv.data.Session.source?.catchupUrl(ch, p) ?: return null
+    return PlayItem(p.title, u, live = false, subtitle = ch.name, playbackOf = ch.id, progStart = p.start, progEnd = p.end)
+}
 
 /**
  * One player for the whole app, so a live channel keeps playing in the
@@ -179,7 +189,7 @@ object PlayerHolder {
                 if (state == Player.STATE_ENDED) {
                     // A live channel never really "ends": the provider closed the connection. Reconnect.
                     if (current?.live == true) reconnect(p, false)
-                    else { saveProgress(); if (current?.kind == "episode") playNextEpisode() }
+                    else { saveProgress(); if (current?.kind == "episode") playNextEpisode() else if (current?.playbackOf != null) playNextShow() }
                 }
                 updateQuality(p)
             }
@@ -445,6 +455,30 @@ object PlayerHolder {
                 note(ctx, "Next: " + list[0].title.substringAfter(" · "))
                 load(ctx)
             } catch (e: Exception) { }
+        }
+    }
+
+    /**
+     * A played-back show finished (Nov 13: "round robin until BACK"): the channel's next show plays back,
+     * and once caught up to now the channel goes live — it keeps going until you press BACK.
+     */
+    private fun playNextShow() {
+        val ctx = appContext ?: return
+        val item = current ?: return
+        val ch = com.forbiddenstreams.tv.data.Session.channelById(item.playbackOf ?: return) ?: return
+        scope.launch {
+            val epg = try { com.forbiddenstreams.tv.data.Session.epg(ch) } catch (e: Exception) { emptyList() }
+            if (current !== item) return@launch
+            val now = System.currentTimeMillis()
+            var next = epg.filter { it.start > item.progStart && it.start >= item.progEnd - 60_000 }.minByOrNull { it.start }
+            if (next == null && item.progEnd + 3_600_000L <= now)
+                next = com.forbiddenstreams.tv.data.Program("${ch.name} · " + java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(java.util.Date(item.progEnd)),
+                    "", item.progEnd, item.progEnd + 3_600_000L, true)
+            val nextItem = next?.takeIf { it.end <= now }?.let { playbackItem(ch, it) }
+            items = listOf(nextItem ?: PlayItem(ch.name, ch.url, live = true, subtitle = epg.firstOrNull { it.isLive(now) }?.title, channelId = ch.id))
+            index = 0
+            note(ctx, if (nextItem != null) "Next: ${nextItem.title}" else "Caught up — ${ch.name} live")
+            load(ctx)
         }
     }
 
