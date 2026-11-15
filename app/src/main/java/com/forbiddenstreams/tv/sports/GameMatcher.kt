@@ -89,6 +89,73 @@ object GameMatcher {
         return out
     }
 
+    /** Local broadcast networks: each city has its own station, and they don't all show the same game. */
+    private fun isLocalNetwork(net: String): Boolean {
+        val u = net.uppercase().replace(" ", "")
+        return u in setOf("CBS", "FOX", "NBC", "ABC", "CW", "MNT", "MYNETWORK", "MYNETWORKTV", "IND", "INDEPENDENT") ||
+            Regex("^[KW][A-Z]{2,3}(-?TV|DT)?$").matches(u) // a single station like "KCOP" or "WPIX"
+    }
+
+    /** Words that say a guide entry is this game: either team's nickname or full name. */
+    private fun mentionsGame(text: String, game: Game): Boolean {
+        val t = norm(text)
+        return listOf(game.away, game.home).any { tm ->
+            (tm.nickname.isNotBlank() && hasWord(t, tm.nickname)) || (tm.displayName.isNotBlank() && hasWord(t, tm.displayName))
+        }
+    }
+
+    /** True when the channel's name is in either team's market (city / nickname / abbreviation). */
+    private fun inMarket(channel: LiveChannel, game: Game): Boolean {
+        val n = norm(channel.name)
+        return listOf(game.away, game.home).any { tm ->
+            (tm.location.isNotBlank() && hasWord(n, tm.location)) || (tm.nickname.isNotBlank() && hasWord(n, tm.nickname)) ||
+                (tm.abbreviation.length >= 3 && hasWord(n, tm.abbreviation))
+        }
+    }
+
+    /**
+     * Nov 15 ("playback for some teams is showing the wrong channels"): the network channels for a game,
+     * checked against each channel's guide. A channel is kept when its guide at game time names one of the
+     * teams. When no guide confirms it: local networks (CBS / FOX / NBC / ABC …, which differ city to city)
+     * only keep stations in the teams' markets; national networks (ESPN, TNT, NFL Network…) keep the
+     * top US channel. Channels whose guide shows something else at game time are dropped.
+     */
+    suspend fun verifiedNetworkChannels(
+        game: Game, all: List<LiveChannel>, exclude: Set<String>,
+        epg: suspend (LiveChannel) -> List<Program>,
+    ): List<Pair<String, LiveChannel>> {
+        val out = ArrayList<Pair<String, LiveChannel>>()
+        val seen = HashSet<String>(exclude)
+        val at = game.start + 10 * 60_000L
+        for (net in game.networks) {
+            val keys = networkNames(net)
+            if (keys.isEmpty()) continue
+            val cands = all.filter { c ->
+                val n = norm(c.name)
+                c.id !in seen && keys.any { k -> n.contains(" $k ") } && excluded.none { n.contains(" $it ") }
+            }.sortedWith(compareBy(
+                { if (inMarket(it, game)) 0 else 1 },
+                { if (norm(it.name).let { n -> n.startsWith(" us ") || n.startsWith(" usa ") }) 0 else 1 },
+                { it.name.length },
+            )).take(14)
+            val confirmed = ArrayList<LiveChannel>()
+            val contradicted = HashSet<String>()
+            for (c in cands) {
+                val prog = try { epg(c) } catch (e: Exception) { emptyList() }.firstOrNull { at in it.start until it.end } ?: continue
+                if (mentionsGame(prog.title + " " + prog.description, game)) confirmed += c
+                else contradicted += c.id // its guide shows something else then
+            }
+            val pick = when {
+                confirmed.isNotEmpty() -> confirmed.take(3)
+                isLocalNetwork(net) -> cands.filter { it.id !in contradicted && inMarket(it, game) }.take(2)
+                else -> cands.filter { it.id !in contradicted }.take(2)
+            }
+            pick.forEach { seen += it.id; out += net to it }
+            if (out.size >= 8) break
+        }
+        return out
+    }
+
     private val streamWords = listOf("prime", "amazon", "tnf", "thursday night", "netflix", "peacock", "event", "events", "ppv",
         "espn plus", "espn+", "nfl plus", "nfl+", "game pass", "apple", "mls season", "paramount", "max", "youtube", "sunday ticket", "dazn")
 

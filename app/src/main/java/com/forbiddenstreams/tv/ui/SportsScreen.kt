@@ -252,13 +252,15 @@ internal fun gameOptions(
     g: Game,
     m: GameChannels?,
     team: List<LiveChannel>,
+    /** Network channels already checked against their guides (Nov 15); null = quick unchecked list. */
+    networks: List<Pair<String, LiveChannel>>? = null,
 ): List<Pair<String, () -> Unit>> {
     val out = ArrayList<Pair<String, () -> Unit>>()
     val feeds = ArrayList<Triple<String, LiveChannel, List<LiveChannel>>>()
     m?.away?.let { feeds += Triple("📺 ${g.away.displayName} feed", it, team) }
     m?.home?.let { feeds += Triple("📺 ${g.home.displayName} feed", it, team) }
     val used = m?.options.orEmpty().map { it.id }.toSet()
-    GameMatcher.networkChannels(g, Session.liveAll.orEmpty(), used).forEach { (net, c) -> feeds += Triple("📡 $net", c, listOf(c)) }
+    (networks ?: GameMatcher.networkChannels(g, Session.liveAll.orEmpty(), used)).forEach { (net, c) -> feeds += Triple("📡 $net", c, listOf(c)) }
     // Streaming-only games (Prime Video, Netflix, …): the provider's event channels for this matchup.
     val taken = used + feeds.map { it.second.id }
     GameMatcher.eventChannels(g, Session.liveAll.orEmpty(), taken).forEach { (_, c) -> feeds += Triple("🎟 Event", c, listOf(c)) }
@@ -268,6 +270,9 @@ internal fun gameOptions(
         for ((label, c, _) in feeds) {
             // The show on the channel's guide that covers kick-off, or a window around the game.
             val prog = Session.cachedEpg(c)?.firstOrNull { g.start >= it.start - 15 * 60_000 && g.start < it.end }
+                // A guide entry that's about something else would replay the wrong thing: use the game's own window.
+                ?.takeIf { p -> listOf(g.away.nickname, g.home.nickname).any { it.isNotBlank() && p.title.contains(it, true) } || p.end - p.start >= 90 * 60_000 }
+                ?.let { p -> if (p.end < g.start + 90 * 60_000) p.copy(end = g.start + gameLengthMs(g)) else p }
                 ?: Program("${g.away.displayName} vs. ${g.home.displayName}", "", g.start - 10 * 60_000, g.start + gameLengthMs(g), true)
             val url = src.catchupUrl(c, prog) ?: continue
             val q = com.forbiddenstreams.tv.player.StreamQuality.label(context, c.id, c.name)
@@ -605,17 +610,27 @@ fun GameChannelsDialog(league: League, g: Game, onClose: () -> Unit) {
     // Nov 15: the pop-up only opens once the channels are found (it used to open as "Finding the
     // channels…" and then change, which looked like it popped up twice). Gives up waiting after 6 s.
     var waited by remember(g.id) { mutableStateOf(false) }
+    // Network channels checked against their guides at game time (right channel, right game).
+    val networks by androidx.compose.runtime.produceState<List<Pair<String, LiveChannel>>?>(null, g.id, match) {
+        val m = match ?: return@produceState
+        val used = m.options.map { it.id }.toSet()
+        value = withContext(Dispatchers.Default) {
+            kotlinx.coroutines.withTimeoutOrNull(8_000) {
+                GameMatcher.verifiedNetworkChannels(g, Session.liveAll.orEmpty(), used) { c -> Session.cachedEpg(c) ?: Session.epg(c) }
+            } ?: GameMatcher.verifiedNetworkChannels(g, Session.liveAll.orEmpty(), used) { c -> Session.cachedEpg(c).orEmpty() }
+        }
+    }
     androidx.compose.runtime.LaunchedEffect(g.id) {
         kotlinx.coroutines.delay(400)
-        if (match == null) toast(context, "Finding the channels…")
-        kotlinx.coroutines.delay(5_600)
+        if (match == null || networks == null) toast(context, "Finding the channels…")
+        kotlinx.coroutines.delay(9_600)
         waited = true
     }
-    if (match == null && !waited) {
+    if ((match == null || networks == null) && !waited) {
         androidx.activity.compose.BackHandler { onClose() }
         return
     }
-    val options = remember(g.id, match, team, Session.liveAll) { gameOptions(context, g, match, team) }
+    val options = remember(g.id, match, team, Session.liveAll, networks) { gameOptions(context, g, match, team, networks) }
     val tv = g.networks.takeIf { it.isNotEmpty() }?.let { " · TV: ${it.joinToString(", ")}" } ?: ""
     val sub = when {
         options.isNotEmpty() && g.isFinal -> "Final ${g.away.score ?: ""}–${g.home.score ?: ""}. Pick a channel to replay the game$tv"
@@ -625,7 +640,7 @@ fun GameChannelsDialog(league: League, g: Game, onClose: () -> Unit) {
     }
     // Nov 15: a finished game gets "Game highlights" at the top (YouTube).
     val highlights: List<Pair<String, () -> Unit>> =
-        if (g.isFinal) listOf("🎬  Game highlights" to { onClose(); openHighlights(context, league, g) }) else emptyList()
+        if (g.isFinal) listOf("${league.icon}  Game highlights" to { onClose(); openHighlights(context, league, g) }) else emptyList()
     val picks = options.map { (label, action) -> label to { onClose(); action() } }
     ChoiceDialog(
         "${g.away.displayName} vs. ${g.home.displayName}", sub,
