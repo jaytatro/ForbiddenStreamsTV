@@ -65,6 +65,7 @@ import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import com.forbiddenstreams.tv.data.Session
 import com.forbiddenstreams.tv.sports.Espn
 import com.forbiddenstreams.tv.sports.FavTeams
 import com.forbiddenstreams.tv.sports.Game
@@ -132,6 +133,7 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
 
     var pick by remember { mutableStateOf<Pair<League, Game>?>(null) }
     var favOpen by remember { mutableStateOf(false) }
+    var redZone by remember { mutableStateOf<List<com.forbiddenstreams.tv.data.LiveChannel>?>(null) }
     LaunchedEffect(open, week) {
         val o = open ?: return@LaunchedEffect
         val g = week?.values?.flatten()?.firstOrNull { it.id == o.second } ?: return@LaunchedEffect
@@ -239,6 +241,34 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                     Spacer(Modifier.width(10.dp))
                     Text(league.label.uppercase(), color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                     Spacer(Modifier.width(14.dp))
+                    // Nov 15: NFL RedZone button next to 🏈 NFL.
+                    if (league == League.NFL) {
+                        Surface(
+                            onClick = {
+                                val rz = Session.liveAll.orEmpty().filter { c ->
+                                    val n = c.name.lowercase().replace(Regex("[^a-z0-9]+"), " ")
+                                    n.contains("redzone") || n.contains("red zone")
+                                }.sortedBy { it.name.length }
+                                when (rz.size) {
+                                    0 -> toast(context, "No RedZone channel in your playlist")
+                                    1 -> playChannels(context, rz, 0)
+                                    else -> redZone = rz
+                                }
+                            },
+                            modifier = Modifier.padding(bottom = 3.dp),
+                            shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(50)),
+                            colors = ClickableSurfaceDefaults.colors(
+                                containerColor = Color(0xFFB71C1C), contentColor = Color.White,
+                                focusedContainerColor = Color(0xFFFF3B3B), focusedContentColor = Color.White,
+                            ),
+                            border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Color.White), shape = RoundedCornerShape(50))),
+                            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+                        ) {
+                            Text("🔴 RedZone", fontSize = 13.sp, fontWeight = FontWeight.Black,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                        }
+                        Spacer(Modifier.width(14.dp))
+                    }
                     val dg = week?.get(day).orEmpty()
                     val lv = dg.count { it.isLive }
                     Text(
@@ -294,6 +324,17 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
         }
     }
     pick?.let { (l, g) -> GameChannelsDialog(l, g, onClose = { pick = null }) }
+    redZone?.let { list ->
+        ChoiceDialog(
+            title = "🔴 NFL RedZone",
+            subtitle = "Pick a RedZone channel",
+            options = list.mapIndexed { i, c ->
+                val q = com.forbiddenstreams.tv.player.StreamQuality.label(context, c.id, c.name)
+                c.name + (q?.let { "   [$it]" } ?: "") to { redZone = null; playChannels(context, list, i) }
+            },
+            onDismiss = { redZone = null },
+        )
+    }
     if (favOpen) FavoriteTeamsDialog(onClose = { favOpen = false; focusRail() })
 }
 
