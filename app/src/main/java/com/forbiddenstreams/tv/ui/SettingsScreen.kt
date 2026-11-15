@@ -136,9 +136,11 @@ fun SettingsScreen(
     val firstRowReq = remember { FocusRequester() }
 
     fun focusSection() { scope.launch { repeat(6) { delay(40); try { secReq[section]?.requestFocus(); return@launch } catch (e: Exception) { } } } }
-    fun focusRows() { scope.launch { repeat(8) { delay(50); try { firstRowReq.requestFocus(); return@launch } catch (e: Exception) { } } } }
+    fun focusRows() { scope.launch { repeat(12) { delay(60); try { firstRowReq.requestFocus(); return@launch } catch (e: Exception) { } } } }
     /** Opens a page inside a section (Other › Search …) with the cursor on its first line. */
-    fun open(sub: String) { stack += sub; inPage = true; focusRows() }
+    var switchingAt by remember { mutableStateOf(0L) }
+    fun open(sub: String) { switchingAt = System.currentTimeMillis(); stack += sub; inPage = true; focusRows() }
+    fun back() { switchingAt = System.currentTimeMillis(); stack.removeAt(stack.size - 1); inPage = true; focusRows() }
     fun withPin(flag: Boolean, then: () -> Unit) {
         if (pinNeeded(context, flag)) { pinTitle = "Enter your parental code"; pinFor = then } else then()
     }
@@ -358,7 +360,7 @@ fun SettingsScreen(
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         BackHandler {
             when {
-                stack.isNotEmpty() -> { stack.removeAt(stack.size - 1); focusRows() }
+                stack.isNotEmpty() -> back()
                 inPage -> { inPage = false; focusSection() }
                 else -> onClose()
             }
@@ -380,7 +382,9 @@ fun SettingsScreen(
                                 selected = s.key == section,
                                 onClick = { enter() },
                                 modifier = Modifier.fillMaxWidth().focusRequester(secReq.getValue(s.key))
-                                    .onFocusChanged { if (it.isFocused && section != s.key) { section = s.key; stack.clear(); inPage = false } }
+                                    .onFocusChanged {
+                                        if (it.isFocused && section != s.key && System.currentTimeMillis() - switchingAt > 800) { section = s.key; stack.clear(); inPage = false }
+                                    }
                                     .onPreviewKeyEvent { ev ->
                                         val ne = ev.nativeKeyEvent
                                         if (ne.action != android.view.KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
@@ -425,14 +429,14 @@ fun SettingsScreen(
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
                         ) {
-                            itemsIndexed(rows, key = { i, r -> "$page:$i:${r::class.simpleName}" }) { i, r ->
+                            itemsIndexed(rows, key = { i, _ -> i }) { i, r ->
                                 SettingRow(
                                     r, focusable = inPage,
                                     modifier = Modifier.then(if (i == firstFocusable) Modifier.focusRequester(firstRowReq) else Modifier)
                                         .onPreviewKeyEvent { ev ->
                                             val ne = ev.nativeKeyEvent
                                             if (ne.action == android.view.KeyEvent.ACTION_DOWN && ne.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) {
-                                                if (stack.isNotEmpty()) { stack.removeAt(stack.size - 1); focusRows() } else { inPage = false; focusSection() }
+                                                if (stack.isNotEmpty()) back() else { inPage = false; focusSection() }
                                                 true
                                             } else false
                                         },
