@@ -72,13 +72,13 @@ private sealed class SRow {
 private data class Section(val key: String, val icon: String, val title: String, val about: String)
 
 private val SECTIONS = listOf(
+    Section("sports", "🏈", "Sports", "Favorite teams and game alerts"),
     Section("general", "⚙", "General", "How the app starts, stops and behaves on your box"),
     Section("playlists", "📋", "Playlists", "Your channel list and how often it refreshes"),
     Section("epg", "🗓", "EPG", "The TV guide: where it comes from and how long it's kept"),
     Section("appearance", "🎨", "Appearance", "Clock and what shows on the Home screen"),
     Section("playback", "▶", "Playback", "How the player plays your streams"),
     Section("parental", "🔒", "Parental controls", "A code to lock categories, 18+ and parts of the app"),
-    Section("sports", "🏈", "Sports", "Favorite teams and game alerts"),
     Section("other", "⋯", "Other", "Search, reminders and recording"),
     Section("about", "ℹ", "About", "Version, updates and your account"),
 )

@@ -128,6 +128,7 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
     LaunchedEffect(open) { open?.let { leagueName = it.first.name } }
 
     var pick by remember { mutableStateOf<Pair<League, Game>?>(null) }
+    var favOpen by remember { mutableStateOf(false) }
     LaunchedEffect(open, week) {
         val o = open ?: return@LaunchedEffect
         val g = week?.values?.flatten()?.firstOrNull { it.id == o.second } ?: return@LaunchedEffect
@@ -163,6 +164,26 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                 contentPadding = PaddingValues(start = 18.dp, end = 10.dp, top = 6.dp, bottom = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                // Nov 15: "Set Your Favorites" opens the favorite teams screen.
+                item(key = "set_favs") {
+                    Surface(
+                        onClick = { favOpen = true },
+                        modifier = Modifier.fillMaxWidth().height(50.dp).padding(bottom = 4.dp),
+                        shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(12.dp)),
+                        colors = ClickableSurfaceDefaults.colors(
+                            containerColor = Color(0x22FFC83D), contentColor = Color(0xFFFFC83D),
+                            focusedContainerColor = Color(0xFFFFC83D), focusedContentColor = Color.Black,
+                        ),
+                        border = ClickableSurfaceDefaults.border(border = Border(BorderStroke(1.dp, Color(0x88FFC83D)), shape = RoundedCornerShape(12.dp))),
+                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
+                    ) {
+                        Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("⭐", fontSize = 18.sp)
+                            Spacer(Modifier.width(10.dp))
+                            Text("Set Your Favorites", fontSize = 16.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
+                }
                 itemsIndexed(order, key = { _, l -> l.name }) { idx, l ->
                     val games = today[l].orEmpty()
                     RailItem(
@@ -263,6 +284,7 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
         }
     }
     pick?.let { (l, g) -> GameChannelsDialog(l, g, onClose = { pick = null }) }
+    if (favOpen) FavoriteTeamsDialog(onClose = { favOpen = false; focusRail() })
 }
 
 /** A thin scoreboard ticker of every game being played right now, scrolling right to left. */
