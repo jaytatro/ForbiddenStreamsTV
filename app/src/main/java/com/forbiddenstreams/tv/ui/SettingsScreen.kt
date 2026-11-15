@@ -130,6 +130,7 @@ fun SettingsScreen(
     var firstCode by remember { mutableStateOf<String?>(null) }
     var hiddenList by remember { mutableStateOf(false) }
     var addSource by remember { mutableStateOf(false) }
+    var folderPick by remember { mutableStateOf(false) }
 
 
     val secReq = remember { SECTIONS.associate { it.key to FocusRequester() } }
@@ -323,13 +324,7 @@ fun SettingsScreen(
                 val dirs = context.getExternalFilesDirs(android.os.Environment.DIRECTORY_MOVIES).filterNotNull()
                 val cur = S.recFolder.ifBlank { (dirs.firstOrNull() ?: context.filesDir).absolutePath }
                 listOf(
-                    SRow.Value("Recordings folder", cur) {
-                        val names = dirs.mapIndexed { i, d -> (if (i == 0) "Box storage" else "USB / SD card ${i}") + "  ·  " + d.absolutePath }
-                        pick("Recordings folder", names) { n ->
-                            val d = dirs[names.indexOf(n)]
-                            d.mkdirs(); S.set("rec_folder", if (dirs.indexOf(d) == 0) "" else d.absolutePath)
-                        }
-                    },
+                    SRow.Value("Recordings folder", cur) { folderPick = true },
                     SRow.Value("Start recording before program start, min", "${S.recStartBeforeMin}") {
                         pick("Start recording before program start, min", listOf("0", "1", "2", "5", "10")) { S.set("rec_before", it.toInt()) }
                     },
@@ -481,6 +476,11 @@ fun SettingsScreen(
                 } else toast(context, "Wrong code")
             }, onCancel = { pinFlow = null })
         }
+        if (folderPick) FolderPickerDialog(
+            start = AppSettings.recFolder.ifBlank { (context.getExternalFilesDir(android.os.Environment.DIRECTORY_MOVIES) ?: context.filesDir).absolutePath },
+            onChoose = { d -> AppSettings.set("rec_folder", d.absolutePath); folderPick = false; toast(context, "Recordings will be saved in ${d.absolutePath}") },
+            onClose = { folderPick = false },
+        )
         if (addSource) TextInputDialog("Add EPG source", "XMLTV address, e.g. http://example.com/guide.xml.gz",
             onDone = { u ->
                 if (u.startsWith("http")) {
@@ -615,7 +615,7 @@ private fun installedPlayers(context: Context): List<Pair<String, String>> = try
 
 /** A pop-up with one text box (keyboard opens). */
 @Composable
-fun TextInputDialog(title: String, hint: String, onDone: (String) -> Unit, onCancel: () -> Unit) {
+fun TextInputDialog(title: String, hint: String, button: String = "Add", onDone: (String) -> Unit, onCancel: () -> Unit) {
     var text by remember { mutableStateOf("") }
     Dialog(onDismissRequest = onCancel) {
         Column(
@@ -626,7 +626,7 @@ fun TextInputDialog(title: String, hint: String, onDone: (String) -> Unit, onCan
             Text(title, color = FS.Green, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             FsTextField(hint, text, { text = it }, androidx.compose.ui.text.input.KeyboardType.Uri, done = { onDone(text.trim()) })
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Pill("Add", selected = true, onClick = { onDone(text.trim()) })
+                Pill(button, selected = true, onClick = { onDone(text.trim()) })
                 Pill("Cancel", selected = false, onClick = onCancel)
             }
         }
