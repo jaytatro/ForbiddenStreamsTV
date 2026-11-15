@@ -131,7 +131,7 @@ class PlayerActivity : ComponentActivity() {
         }
 
         view.findViewById<androidx.media3.ui.DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress)?.apply {
-            setKeyTimeIncrement(10_000)
+            setKeyTimeIncrement(com.forbiddenstreams.tv.data.AppSettings.skipSec * 1000L)
             // Green seek bar.
             setPlayedColor(0xFF7CFF3A.toInt())
             setScrubberColor(0xFF7CFF3A.toInt())
@@ -163,6 +163,16 @@ class PlayerActivity : ComponentActivity() {
                 val prog = epg?.firstOrNull { it.isLive(now) }
                 Box(Modifier.fillMaxSize().background(Color.Black)) {
                     AndroidView(factory = { view }, modifier = Modifier.fillMaxSize())
+                    LaunchedEffect(Unit) {
+                        while (true) { delay(1_000); PlayerHolder.existingPlayer()?.videoFormat?.frameRate?.let { applyAfr(it) } }
+                    }
+                    if (numBuf.isNotEmpty()) {
+                        Text(numBuf, color = FS.Green, fontSize = 44.sp, fontWeight = FontWeight.Black,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            modifier = Modifier.align(Alignment.TopEnd).padding(32.dp)
+                                .background(Color(0xE6040604), RoundedCornerShape(14.dp))
+                                .border(2.dp, FS.Green, RoundedCornerShape(14.dp)).padding(horizontal = 22.dp, vertical = 8.dp))
+                    }
                     // Nov 13: an earlier show playing back — show which show, when it aired, and what's next.
                     if (item?.playbackOf != null && !guideVisible) {
                         var bannerOn by remember(item) { mutableStateOf(true) }
@@ -647,6 +657,57 @@ class PlayerActivity : ComponentActivity() {
         com.forbiddenstreams.tv.ui.toast(this, "Recording ${p.title} until ${Fmt.time(p.end)}")
     }
 
+    private var numJob: kotlinx.coroutines.Job? = null
+    private var numBuf by mutableStateOf("")
+    private fun typeDigit(d: Int) {
+        if (numBuf.length >= 5) numBuf = ""
+        numBuf += d.toString()
+        numJob?.cancel()
+        numJob = lifecycleScope.launch {
+            delay(1600)
+            val n = numBuf.toIntOrNull()
+            numBuf = ""
+            val ch = n?.let { num -> Session.liveAll?.firstOrNull { it.num == num } }
+            if (ch == null) { com.forbiddenstreams.tv.ui.toast(this@PlayerActivity, "No channel $n"); return@launch }
+            val list = Session.channelsIn(ch.categoryId).ifEmpty { listOf(ch) }
+            com.forbiddenstreams.tv.ui.playChannels(this@PlayerActivity, list, list.indexOf(ch).coerceAtLeast(0), fullScreen = false)
+            showInfo()
+        }
+    }
+
+    // Settings › Playback › Auto frame rate: switch the TV to the video's frame rate (same resolution).
+    private var afrRate = 0f
+    private fun applyAfr(fps: Float) {
+        if (!com.forbiddenstreams.tv.data.AppSettings.afr || android.os.Build.VERSION.SDK_INT < 23 || fps <= 1f || kotlin.math.abs(fps - afrRate) < 0.01f) return
+        afrRate = fps
+        try {
+            @Suppress("DEPRECATION") val d = windowManager.defaultDisplay
+            val cur = d.mode
+            val modes = d.supportedModes.filter { it.physicalWidth == cur.physicalWidth && it.physicalHeight == cur.physicalHeight }
+            val best = modes.firstOrNull { kotlin.math.abs(it.refreshRate - fps) < 0.05f }
+                ?: modes.firstOrNull { kotlin.math.abs(it.refreshRate - 2 * fps) < 0.1f }
+                ?: return
+            if (best.modeId != cur.modeId) window.attributes = window.attributes.also { it.preferredDisplayModeId = best.modeId }
+        } catch (e: Exception) { }
+    }
+
+    // Settings › General › Picture-in-picture on HOME.
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (com.forbiddenstreams.tv.data.AppSettings.pipOnHome && android.os.Build.VERSION.SDK_INT >= 26 && PlayerHolder.current != null) {
+            try {
+                enterPictureInPictureMode(android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(16, 9)).build())
+            } catch (e: Exception) { }
+        }
+    }
+
+    private var inPip by mutableStateOf(false)
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        inPip = isInPictureInPictureMode
+        if (isInPictureInPictureMode) { infoVisible = false; actionsVisible = false }
+    }
+
     private fun skip(ms: Long) {
         val p = PlayerHolder.existingPlayer() ?: return
         val dur = p.duration
@@ -656,7 +717,7 @@ class PlayerActivity : ComponentActivity() {
         p.seekTo(target)
         val pos = target / 1000
         val at = if (pos >= 3600) "%d:%02d:%02d".format(pos / 3600, pos % 3600 / 60, pos % 60) else "%d:%02d".format(pos / 60, pos % 60)
-        seekFlash = (if (ms < 0) "⏪ 10s" else "10s ⏩") + "   $at"
+        seekFlash = (if (ms < 0) "⏪ ${-ms / 1000}s" else "${ms / 1000}s ⏩") + "   $at"
         seekJob?.cancel()
         seekJob = lifecycleScope.launch { delay(1200); seekFlash = null }
     }
@@ -687,7 +748,7 @@ class PlayerActivity : ComponentActivity() {
             // Start over: ◀ ▶ = 10 s back/ahead, OK = the buttons (⏯ · LIVE · Settings), ▲ ▼ = show the bar.
             when (event.keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    if (down) { skip(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -10_000 else 10_000); showInfo() }
+                    if (down) { skip(if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -com.forbiddenstreams.tv.data.AppSettings.skipSec * 1000L else com.forbiddenstreams.tv.data.AppSettings.skipSec * 1000L); showInfo() }
                     return true
                 }
                 KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> { if (down) showInfo(); return true }
@@ -717,7 +778,7 @@ class PlayerActivity : ComponentActivity() {
             }
             if (!view.isControllerFullyVisible) {
                 when {
-                    l || r -> { if (down) skip(if (l) -10_000 else 10_000); return true }
+                    l || r -> { if (down) skip(if (l) -com.forbiddenstreams.tv.data.AppSettings.skipSec * 1000L else com.forbiddenstreams.tv.data.AppSettings.skipSec * 1000L); return true }
                     ok -> {
                         if (down && event.repeatCount == 0) {
                             PlayerHolder.existingPlayer()?.let { p -> if (p.isPlaying) p.pause() else p.play() }
@@ -735,9 +796,15 @@ class PlayerActivity : ComponentActivity() {
             }
             return super.dispatchKeyEvent(event)
         }
+        // Settings › Remote control › Number keys: type a channel number (Nov 15).
+        if (com.forbiddenstreams.tv.data.AppSettings.numberKeys && event.keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9) {
+            if (down && event.repeatCount == 0) typeDigit(event.keyCode - KeyEvent.KEYCODE_0)
+            return true
+        }
         when (event.keyCode) {
-            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_DOWN -> { if (down) { PlayerHolder.zap(this, -1); showInfo() }; return true }
-            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_UP -> { if (down) { PlayerHolder.zap(this, 1); showInfo() }; return true }
+            // Settings › Remote control › "▲ ▼ change channel": normal or reversed.
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_DOWN -> { if (down) { PlayerHolder.zap(this, if (com.forbiddenstreams.tv.data.AppSettings.channelKeysReversed) 1 else -1); showInfo() }; return true }
+            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_UP -> { if (down) { PlayerHolder.zap(this, if (com.forbiddenstreams.tv.data.AppSettings.channelKeysReversed) -1 else 1); showInfo() }; return true }
             KeyEvent.KEYCODE_DPAD_LEFT -> {
                 if (down && event.repeatCount == 0) { infoVisible = false; panelVisible = true }
                 return true

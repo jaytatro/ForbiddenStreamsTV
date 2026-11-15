@@ -33,6 +33,14 @@ import com.forbiddenstreams.tv.data.Session
 @Composable
 fun HideCategoryDialog(g: Group.Cat, onClose: () -> Unit) {
     val context = LocalContext.current
+    // Settings › Parental controls › Require PIN for › Category options (Nov 15).
+    var ok by remember { mutableStateOf(!pinNeeded(context, com.forbiddenstreams.tv.data.AppSettings.pinCategoryOptions)) }
+    if (!ok) {
+        PinDialog("Enter your parental code", onDone = { code ->
+            if (code == CategoryPrefs.pin(context)) { pinAccepted(); ok = true } else toast(context, "Wrong code")
+        }, onCancel = onClose)
+        return
+    }
     ChoiceDialog(
         title = g.title,
         subtitle = "Hidden categories can be shown again in Settings › Parental code" +

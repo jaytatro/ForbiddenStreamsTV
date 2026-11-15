@@ -82,7 +82,9 @@ object Reminders {
     fun add(context: Context, channel: LiveChannel, program: Program): Reminder {
         val r = Reminder(System.currentTimeMillis(), channel.name, channel.url, program.title, program.start)
         save(context, all(context).filter { !(it.title == r.title && it.start == r.start) } + r)
-        Alarms.schedule(context, (program.start - 60_000).coerceAtLeast(System.currentTimeMillis() + 1000), pending(context, r))
+        // Settings › Other › Reminders › "Remind before program start, min".
+        val before = com.forbiddenstreams.tv.data.AppSettings.remindBeforeMin * 60_000L
+        Alarms.schedule(context, (program.start - before).coerceAtLeast(System.currentTimeMillis() + 1000), pending(context, r))
         return r
     }
 
@@ -93,7 +95,7 @@ object Reminders {
 
     /** Reminders due now (from 1 minute before the start to 10 minutes after). */
     fun due(context: Context, now: Long = System.currentTimeMillis()): List<Reminder> =
-        all(context).filter { now >= it.start - 60_000 && now < it.start + 10 * 60_000 }
+        all(context).filter { now >= it.start - com.forbiddenstreams.tv.data.AppSettings.remindBeforeMin * 60_000L - 20_000 && now < it.start + 10 * 60_000 }
 
     fun prune(context: Context) {
         val now = System.currentTimeMillis()

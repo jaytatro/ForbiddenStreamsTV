@@ -2,4 +2,7 @@
 <paths>
     <external-files-path name="updates_ext" path="updates/" />
     <files-path name="updates_int" path="updates/" />
+    <!-- DVR recordings, for "Use external player" (Nov 15). -->
+    <external-files-path name="recordings_ext" path="Movies/" />
+    <files-path name="recordings_int" path="." />
 </paths>

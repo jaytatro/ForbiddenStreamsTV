@@ -76,7 +76,7 @@ import java.util.Locale
 object TabDown { var handler: (() -> Boolean)? = null }
 
 /** Tabs across the top, left to right, centered. */
-private val TABS = listOf("Home", "Live TV", "TV Guide", "Sports") // Movies / TV Shows tabs removed Nov 13
+private val TABS = listOf("Home", "Live TV", "TV Guide", "Sports", "DVR") // Movies / TV Shows removed Nov 13; DVR added Nov 15
 
 /**
  * The new app (started from scratch, Nov 1 2026): tabs centered across the top, always opens on Home.
@@ -102,11 +102,24 @@ fun AppShell(onLogout: () -> Unit) {
         val sp = context.getSharedPreferences("forbidden_streams", android.content.Context.MODE_PRIVATE)
         if (sp.getLong("playlist_refreshed", 0L) == 0L) sp.edit().putLong("playlist_refreshed", System.currentTimeMillis()).apply()
         while (true) {
-            if (Session.source != null && System.currentTimeMillis() - sp.getLong("playlist_refreshed", 0L) >= 24 * 3_600_000L) refreshPlaylist(context)
+            val every = com.forbiddenstreams.tv.data.AppSettings.playlistEveryH
+            if (every > 0 && Session.source != null && System.currentTimeMillis() - sp.getLong("playlist_refreshed", 0L) >= every * 3_600_000L) refreshPlaylist(context)
             delay(30 * 60_000L)
         }
     }
     var crashText by remember { mutableStateOf<String?>(null) }
+    // Settings › General › Turn on last channel on app start (Nov 15).
+    var lastStarted by remember { mutableStateOf(false) }
+    LaunchedEffect(Session.liveAll != null) {
+        if (lastStarted || Session.liveAll == null || !com.forbiddenstreams.tv.data.AppSettings.lastChannelOnStart) return@LaunchedEffect
+        lastStarted = true
+        val ch = com.forbiddenstreams.tv.data.Prefs(context).history.firstNotNullOfOrNull { Session.channelById(it) } ?: return@LaunchedEffect
+        val list = Session.channelsIn(ch.categoryId).ifEmpty { listOf(ch) }
+        playChannels(context, list, list.indexOf(ch).coerceAtLeast(0))
+    }
+    var dvrUnlocked by remember { mutableStateOf(false) }
+    var dvrPin by remember { mutableStateOf(false) }
+    var settingsPin by remember { mutableStateOf(false) }
     // Nov 10: with a week or less of service left, a pop-up when the app opens (once per opening).
     var serviceWarn by remember { mutableStateOf<com.forbiddenstreams.tv.data.AccountInfo?>(null) }
     var serviceChecked by remember { mutableStateOf(false) }
@@ -127,7 +140,7 @@ fun AppShell(onLogout: () -> Unit) {
     BackHandler {
         when {
             !tabsFocused -> try { tabReq[tab].requestFocus() } catch (e: Exception) { }
-            exitHint -> { PlayerHolder.stop(); activity?.finish() }
+            exitHint || !com.forbiddenstreams.tv.data.AppSettings.confirmExit -> { PlayerHolder.stop(); activity?.finish() }
             else -> exitHint = true
         }
     }
@@ -137,17 +150,28 @@ fun AppShell(onLogout: () -> Unit) {
             0 -> HomeTab(onOpenGame = { l, id -> sportsOpen = l to id; tab = 3 })
             1 -> LiveChannelsTab()
             2 -> LiveTvTab()
-            else -> SportsTab(open = sportsOpen, onOpened = { sportsOpen = null }, enter = sportsEnter)
+            3 -> SportsTab(open = sportsOpen, onOpened = { sportsOpen = null }, enter = sportsEnter)
+            else -> if (!dvrUnlocked && pinNeeded(context, com.forbiddenstreams.tv.data.AppSettings.pinDvr)) {
+                // DVR locked with the parental code: ▼ / OK asks for it.
+                val ask: () -> Boolean = { dvrPin = true; true }
+                androidx.compose.runtime.DisposableEffect(Unit) {
+                    TabDown.handler = ask
+                    onDispose { if (TabDown.handler === ask) TabDown.handler = null }
+                }
+                MessageBox("🔒  DVR is locked", "Press ▼ and enter your parental code.")
+            } else DvrTab()
         }
         TopBar(
             tab = tab, reqs = tabReq,
             onTab = { tab = it },
-            onEnter = { if (it == 3) sportsEnter++ },
+            onEnter = { if (it == 3) sportsEnter++; if (it == 4 && !dvrUnlocked && pinNeeded(context, com.forbiddenstreams.tv.data.AppSettings.pinDvr)) dvrPin = true },
             onFocusChange = { tabsFocused = it },
-            onSettings = { settings = true },
+            onSettings = { if (pinNeeded(context, com.forbiddenstreams.tv.data.AppSettings.pinSettings)) settingsPin = true else settings = true },
         )
         // 1 minute before a favorite team's game: pop-up with the game; OK = its channels.
-        FavGameStartAlert(onWatch = { l, id -> sportsOpen = l to id; tab = 3 })
+        if (com.forbiddenstreams.tv.data.AppSettings.favGameAlerts) FavGameStartAlert(onWatch = { l, id -> sportsOpen = l to id; tab = 3 })
+        // Reminders that are due: "Starting now" pop-up (Settings › Other › Reminders).
+        ReminderPopup()
         if (exitHint) {
             Text(
                 "Click back one more time to close", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold,
@@ -158,37 +182,24 @@ fun AppShell(onLogout: () -> Unit) {
     }
 
     if (settings) {
-        // Nov 10: how long the IPTV service has left (from the provider's account info).
-        val acct by produceState<Pair<Boolean, com.forbiddenstreams.tv.data.AccountInfo?>>(false to null) {
-            value = true to (try { Session.source?.account() } catch (e: Exception) { null })
-        }
-        ChoiceDialog(
-            title = "Settings",
-            subtitle = if (!acct.first) "Service: checking…" else acct.second?.let { serviceLine(it) },
-            options = listOf(
-                "⬆  Check for updates" to {
-                    settings = false
-                    toast(context, "Checking for updates…")
-                    UpdateState.check(context, kotlinx.coroutines.MainScope(), manual = true)
-                },
-                "⭐  Favorite teams" to { settings = false; favTeams = true },
-                "🔄  Refresh playlist" to {
-                    settings = false
-                    refreshPlaylist(context)
-                    toast(context, "Refreshing the playlist…")
-                },
-                "↕  Re-order and hide categories" to { settings = false; reorder = true },
-                "🔒  Parental code" to { settings = false; parental = true },
-                "🛠  Last crash report" to {
-                    settings = false
-                    crashText = java.io.File(context.filesDir, "last_crash.txt").takeIf { it.exists() }?.readText() ?: "No crashes saved."
-                },
-                "⎋  Log out" to { settings = false; onLogout() },
-                "Close" to { settings = false },
-            ),
-            onDismiss = { settings = false },
+        // Nov 15: TiviMate-style Settings (from the user's photos) — ui/SettingsScreen.kt.
+        SettingsScreen(
+            onClose = { settings = false },
+            onLogout = { settings = false; onLogout() },
+            onFavTeams = { favTeams = true },
+            onReorder = {
+                if (pinNeeded(context, com.forbiddenstreams.tv.data.AppSettings.pinCategoryOptions)) toast(context, "Enter your code in the next screen")
+                reorder = true
+            },
+            onCrash = { crashText = java.io.File(context.filesDir, "last_crash.txt").takeIf { it.exists() }?.readText() ?: "No crashes saved." },
         )
     }
+    if (settingsPin) PinDialog("Enter your parental code", onDone = { code ->
+        if (code == com.forbiddenstreams.tv.data.CategoryPrefs.pin(context)) { pinAccepted(); settingsPin = false; settings = true } else toast(context, "Wrong code")
+    }, onCancel = { settingsPin = false })
+    if (dvrPin) PinDialog("Enter your parental code", onDone = { code ->
+        if (code == com.forbiddenstreams.tv.data.CategoryPrefs.pin(context)) { pinAccepted(); dvrPin = false; dvrUnlocked = true } else toast(context, "Wrong code")
+    }, onCancel = { dvrPin = false })
     if (favTeams) FavoriteTeamsDialog(onClose = { favTeams = false })
     serviceWarn?.let { a ->
         val ms = (a.expires ?: 0L) - System.currentTimeMillis()
@@ -267,7 +278,7 @@ private fun TopBar(tab: Int, reqs: List<FocusRequester>, onTab: (Int) -> Unit, o
                     scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
                 ) {
                     Text(name, fontSize = 20.sp, fontWeight = if (i == tab) FontWeight.Bold else FontWeight.SemiBold,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                        modifier = Modifier.padding(horizontal = 17.dp, vertical = 8.dp))
                 }
             }
             Spacer(Modifier.width(10.dp))
@@ -285,7 +296,8 @@ private fun TopBar(tab: Int, reqs: List<FocusRequester>, onTab: (Int) -> Unit, o
                 }
             }
         }
-        Text(Fmt.time(now), color = FS.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterEnd))
+        if (com.forbiddenstreams.tv.data.AppSettings.showClock)
+            Text(Fmt.time(now), color = FS.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterEnd))
     }
 }
 
@@ -375,16 +387,17 @@ private fun HomeTab(onOpenGame: (com.forbiddenstreams.tv.sports.League, String) 
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             // Keep watching (movies and shows you stopped part-way) at the top (Nov 8).
-            if (shows.isNotEmpty() || movies.isNotEmpty()) item {
+            val S = com.forbiddenstreams.tv.data.AppSettings
+            if (S.homeKeepWatching && (shows.isNotEmpty() || movies.isNotEmpty())) item {
                 KeepWatchingRow(
                     refresh = recents,
                     onFocusKey = { k -> focused = (shows + movies).firstOrNull { it.key == k } ?: focused },
                     onMore = { k -> (shows + movies).firstOrNull { it.key == k }?.let { menu = it } },
                 )
             }
-            if (channels.isNotEmpty()) item { CardRow("Continue watching", "Live TV", RailIcon.CHANNELS, channels, { focused = it }, { menu = it }) }
+            if (S.homeRecentChannels && channels.isNotEmpty()) item { CardRow("Continue watching", "Live TV", RailIcon.CHANNELS, channels, { focused = it }, { menu = it }) }
             // OK on a game = its channels, right here on Home.
-            if (liveGames.isNotEmpty()) item { LiveGamesRow(liveGames) { l, id -> gamePick = liveGames.firstOrNull { it.first == l && it.second.id == id } } }
+            if (S.homeLiveGames && liveGames.isNotEmpty()) item { LiveGamesRow(liveGames) { l, id -> gamePick = liveGames.firstOrNull { it.first == l && it.second.id == id } } }
             if (shows.isEmpty() && movies.isEmpty() && channels.isEmpty() && liveGames.isEmpty()) {
                 item {
                     Text("Nothing here yet. TV shows and movies you start watching show up here so you can pick up where you left off.",
@@ -815,7 +828,7 @@ fun refreshPlaylist(context: android.content.Context) {
 
 
 /** "Service: 23 days left · ends Dec 3, 2026 · 2 screens" for Settings. */
-private fun serviceLine(a: com.forbiddenstreams.tv.data.AccountInfo): String {
+internal fun serviceLine(a: com.forbiddenstreams.tv.data.AccountInfo): String {
     val parts = ArrayList<String>()
     val exp = a.expires
     if (exp == null) parts += "Service: no end date"
@@ -840,7 +853,7 @@ private fun serviceLine(a: com.forbiddenstreams.tv.data.AccountInfo): String {
  * (so every line can be photographed); ▶ to the buttons; BACK closes.
  */
 @Composable
-private fun CrashReportScreen(text: String, onClose: () -> Unit) {
+internal fun CrashReportScreen(text: String, onClose: () -> Unit) {
     val context = LocalContext.current
     val scroll = androidx.compose.foundation.rememberScrollState()
     val scope = androidx.compose.runtime.rememberCoroutineScope()

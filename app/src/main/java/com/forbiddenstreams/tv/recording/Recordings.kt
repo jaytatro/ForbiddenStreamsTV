@@ -90,18 +90,19 @@ object Recordings {
             title = program.title,
             channelName = channel.name,
             url = channel.url,
-            start = program.start,
-            end = program.end,
+            // Settings › Other › Recording: start early / stop late (minutes).
+            start = program.start - com.forbiddenstreams.tv.data.AppSettings.recStartBeforeMin * 60_000L,
+            end = program.end + com.forbiddenstreams.tv.data.AppSettings.recStopAfterMin * 60_000L,
             status = "scheduled",
             file = File(dir, "${safe}_$stamp.ts").absolutePath,
         )
         save(context, all(context) + rec)
-        if (program.start <= System.currentTimeMillis()) {
+        if (rec.start <= System.currentTimeMillis()) {
             RecordingService.start(context, rec.id)
         } else {
             val i = Intent(context, RecordAlarmReceiver::class.java).putExtra("id", rec.id)
             val pi = PendingIntent.getBroadcast(context, rec.id.toInt(), i, Alarms.piFlags())
-            Alarms.schedule(context, program.start - 30_000, pi)
+            Alarms.schedule(context, rec.start - 30_000, pi)
         }
         return rec
     }

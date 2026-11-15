@@ -92,6 +92,7 @@ object PlayerHolder {
      * 4K and Dolby Vision files plays even when the box can't decode it itself.
      */
     fun createPlayer(context: Context, vod: Boolean = false): ExoPlayer {
+        val S = com.forbiddenstreams.tv.data.AppSettings
         val http = DefaultHttpDataSource.Factory()
             .setUserAgent(Http.userAgent)
             .setAllowCrossProtocolRedirects(true)
@@ -100,22 +101,81 @@ object PlayerHolder {
         val app = context.applicationContext
         val sources = DefaultMediaSourceFactory(DefaultDataSource.Factory(app, http))
             .setLoadErrorHandlingPolicy(androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(8))
-        if (!vod) return ExoPlayer.Builder(app).setMediaSourceFactory(sources).build()
+        // Settings › Playback › Buffer size (Nov 15).
+        val load = when (S.bufferSize) {
+            "Small" -> androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(8_000, 20_000, 1_000, 2_000).build()
+            "Large" -> androidx.media3.exoplayer.DefaultLoadControl.Builder().setBufferDurationsMs(30_000, 120_000, 3_000, 6_000).build()
+            else -> androidx.media3.exoplayer.DefaultLoadControl()
+        }
+        val swAudio = S.audioDecoder == "Software"
+        val swVideo = S.videoDecoder == "Software"
+        // Settings › Playback › Audio / Video decoder: "Software" puts the box's software decoders first.
+        val selector = androidx.media3.exoplayer.mediacodec.MediaCodecSelector { mime, secure, tunneling ->
+            val list = androidx.media3.exoplayer.mediacodec.MediaCodecUtil.getDecoderInfos(mime, secure, tunneling)
+            val sw = (swVideo && androidx.media3.common.MimeTypes.isVideo(mime)) || (swAudio && androidx.media3.common.MimeTypes.isAudio(mime))
+            if (sw) list.sortedBy { if (it.softwareOnly) 0 else 1 } else list
+        }
+        if (!vod && !swAudio && !S.passthrough) {
+            val r = androidx.media3.exoplayer.DefaultRenderersFactory(app).setMediaCodecSelector(selector).setEnableDecoderFallback(true)
+            return ExoPlayer.Builder(app, r).setMediaSourceFactory(sources).setLoadControl(load).build().also { applyAudioPrefs(it) }
+        }
+        val passthrough = S.passthrough
         val renderers = object : androidx.media3.exoplayer.DefaultRenderersFactory(app) {
             override fun buildAudioSink(
                 context: Context,
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean,
-            ): androidx.media3.exoplayer.audio.AudioSink =
-                androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
-                    .setAudioCapabilities(androidx.media3.exoplayer.audio.AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES)
+            ): androidx.media3.exoplayer.audio.AudioSink {
+                val b = androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
                     .setEnableFloatOutput(enableFloatOutput)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                    .build()
+                // Passthrough on: Dolby/DTS go to the TV/receiver untouched (if they support it).
+                if (!passthrough) b.setAudioCapabilities(androidx.media3.exoplayer.audio.AudioCapabilities.DEFAULT_AUDIO_CAPABILITIES)
+                return b.build()
+            }
         }
-            .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            .setMediaCodecSelector(selector)
+            .setExtensionRendererMode(
+                if (swAudio) androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+                else if (vod) androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+                else androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF,
+            )
             .setEnableDecoderFallback(true)
-        return ExoPlayer.Builder(app, renderers).setMediaSourceFactory(sources).build()
+        return ExoPlayer.Builder(app, renderers).setMediaSourceFactory(sources).setLoadControl(load).build().also { applyAudioPrefs(it) }
+    }
+
+    /** Settings › Playback › "Select surround audio track by default". */
+    private fun applyAudioPrefs(p: ExoPlayer) {
+        if (!com.forbiddenstreams.tv.data.AppSettings.surroundFirst) return
+        p.addListener(object : Player.Listener {
+            override fun onTracksChanged(tracks: Tracks) {
+                val groups = tracks.groups.filter { it.type == androidx.media3.common.C.TRACK_TYPE_AUDIO }
+                if (groups.size < 2) return
+                val best = groups.maxByOrNull { g -> (0 until g.length).maxOf { g.getTrackFormat(it).channelCount } } ?: return
+                if (best.isSelected) return
+                val bestCh = (0 until best.length).maxOf { best.getTrackFormat(it).channelCount }
+                if (bestCh <= 2) return
+                p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                    .setOverrideForType(androidx.media3.common.TrackSelectionOverride(best.mediaTrackGroup, 0)).build()
+            }
+        })
+    }
+
+    /** Settings › Playback › Use external player: hands the stream to another app (VLC, MX Player…). */
+    private fun openExternal(context: Context): Boolean {
+        val item = current ?: return false
+        return try {
+            val i = Intent(Intent.ACTION_VIEW).setDataAndType(android.net.Uri.parse(item.url), "video/*")
+                .putExtra("title", item.title).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (item.url.startsWith("file:")) {
+                val f = java.io.File(android.net.Uri.parse(item.url).path ?: return false)
+                val u = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".updates", f)
+                i.setDataAndType(u, "video/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(i, "Play with").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            stop()
+            true
+        } catch (e: Exception) { false }
     }
 
     /**
@@ -154,13 +214,20 @@ object PlayerHolder {
     /** Swaps the shared player when going between live TV and movies/episodes. */
     private fun ensureKind(context: Context, vod: Boolean) {
         val p = exo ?: run { nextVod = vod; return }
-        if (exoVod == vod) return
+        if (exoVod == vod && !stale) return
+        stale = false
         p.release()
         exo = null
         nextVod = vod
         player(context)
     }
     private var nextVod = false
+
+    /** Settings › Playback changed: the player is rebuilt with the new settings at the next channel/video. */
+    private var stale = false
+    fun settingsChanged() {
+        if (current == null) { exo?.release(); exo = null } else stale = true
+    }
 
     fun player(context: Context): ExoPlayer {
         exo?.let { return it }
@@ -368,6 +435,7 @@ object PlayerHolder {
 
     fun openFullScreen(context: Context) {
         if (current == null) return
+        if (com.forbiddenstreams.tv.data.AppSettings.externalPlayer && openExternal(context)) return
         previewHidden = false
         fullScreen = true
         context.startActivity(Intent(context, PlayerActivity::class.java))
@@ -495,6 +563,8 @@ object PlayerHolder {
         val dur = p.duration
         if (dur == androidx.media3.common.C.TIME_UNSET || dur <= 0) return
         val pos = if (p.playbackState == Player.STATE_ENDED) dur else p.currentPosition
+        // DVR recordings keep their own spot (Resume in the DVR tab), not in Keep watching.
+        if (key.startsWith("r:")) { key.drop(2).toLongOrNull()?.let { com.forbiddenstreams.tv.ui.DvrProgress.save(ctx, it, pos, dur) }; return }
         com.forbiddenstreams.tv.data.Recents.save(
             ctx,
             com.forbiddenstreams.tv.data.RecentItem(

@@ -102,7 +102,9 @@ object Session {
                 val saved = withContext(Dispatchers.IO) { readSaved(app) }
                 if (saved != null && liveAll == null) { liveCats = saved.first; liveAll = saved.second }
             }
-            refreshInBackground(app)
+            // Settings › Playlists › Update on app start (always when nothing is saved yet).
+            if (liveAll == null || AppSettings.playlistOnStart) refreshInBackground(app)
+            if (AppSettings.epgOnStart) importPastGuide(app, force = true)
         }
     }
 
@@ -146,13 +148,14 @@ object Session {
         val src = source as? XtreamSource ?: return
         val sp = context.applicationContext.getSharedPreferences("forbidden_streams", Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
-        if (!force && now - sp.getLong("past_guide_at", 0L) < 3 * 3_600_000L) return
+        if (!force && now - sp.getLong("past_guide_at", 0L) < AppSettings.epgEveryH.coerceAtLeast(1) * 3_600_000L) return
+        val days = AppSettings.epgPastDays.coerceIn(1, 7)
         pastJob = scope.launch(Dispatchers.IO) {
             try {
                 val arch = liveAll.orEmpty().filter { it.hasArchive && !it.epgId.isNullOrBlank() }
                 if (arch.isEmpty()) return@launch
                 val byEpg = arch.groupBy { it.epgId!!.lowercase() }
-                val map = Http.stream(src.xmltvUrl()) { XmltvParser.parse(it, now - 4 * 86_400_000L, now, byEpg.keys) }
+                val map = Http.stream(src.xmltvUrl()) { XmltvParser.parse(it, now - days * 86_400_000L, now, byEpg.keys) }
                 var n = 0
                 for ((k, progs) in map) {
                     val past = progs.filter { it.start <= now }.map { it.copy(hasArchive = true) }
@@ -164,9 +167,23 @@ object Session {
                     }
                 }
                 sp.edit().putLong("past_guide_at", now).apply()
+                AppSettings.set("epg_status", "EPG updated for $n catch-up channels on " +
+                    java.text.SimpleDateFormat("M/d/yyyy h:mm a", java.util.Locale.US).format(java.util.Date(now)))
                 if (n > 0) { epgCache.clear(); withContext(Dispatchers.Main) { guideVersion++ } }
-            } catch (e: Exception) { /* no XMLTV on this provider: the hour-by-hour list still works */ }
+            } catch (e: Exception) {
+                // No XMLTV on this provider: the hour-by-hour list still works.
+                AppSettings.set("epg_status", "Last update failed: ${e.message ?: "no answer"}")
+            }
         }
+    }
+
+    /** Settings › EPG › Clear EPG: forgets saved shows and reloads the guide. */
+    fun clearEpg(context: Context) {
+        try { histDir?.listFiles()?.forEach { it.delete() } } catch (e: Exception) { }
+        epgCache.clear()
+        context.applicationContext.getSharedPreferences("forbidden_streams", Context.MODE_PRIVATE).edit().remove("past_guide_at").apply()
+        AppSettings.set("epg_status", "EPG cleared")
+        guideVersion++
     }
 
     fun channelsIn(categoryId: String): List<LiveChannel> = liveAll.orEmpty().filter { it.categoryId == categoryId }
@@ -242,7 +259,7 @@ object Session {
     private fun withHistory(channelId: String, fresh: List<Program>): List<Program> {
         val dir = histDir ?: return fresh
         val now = System.currentTimeMillis()
-        val cutoff = now - 4 * 86_400_000L
+        val cutoff = now - AppSettings.epgPastDays.coerceIn(1, 7) * 86_400_000L
         val f = File(dir, channelId.replace(Regex("[^A-Za-z0-9_-]"), "_") + ".json")
         val old = try {
             if (!f.exists()) emptyList() else {
@@ -261,8 +278,9 @@ object Session {
         try {
             dir.mkdirs()
             val a = JSONArray()
+            val desc = AppSettings.epgDescriptions
             merged.filter { it.start <= now }.forEach {
-                a.put(JSONObject().put("t", it.title).put("d", it.description).put("s", it.start).put("e", it.end).put("a", it.hasArchive))
+                a.put(JSONObject().put("t", it.title).put("d", if (desc) it.description else "").put("s", it.start).put("e", it.end).put("a", it.hasArchive))
             }
             f.writeText(a.toString())
         } catch (e: Exception) { /* storage full: just show what we have */ }

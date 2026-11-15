@@ -246,7 +246,8 @@ fun LiveDot(modifier: Modifier = Modifier) {
 }
 
 object Fmt {
-    fun time(ms: Long): String = SimpleDateFormat("h:mm a", Locale.US).format(Date(ms))
+    /** Settings › Appearance › 24-hour clock. */
+    fun time(ms: Long): String = SimpleDateFormat(if (com.forbiddenstreams.tv.data.AppSettings.clock24) "HH:mm" else "h:mm a", Locale.US).format(Date(ms))
     fun range(a: Long, b: Long) = "${time(a)} – ${time(b)}"
     fun day(ms: Long): String = SimpleDateFormat("EEE, M/d", Locale.US).format(Date(ms)).uppercase(Locale.US)
     fun longDay(ms: Long): String = SimpleDateFormat("EEEE M/d", Locale.US).format(Date(ms))

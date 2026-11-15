@@ -35,7 +35,16 @@ import com.forbiddenstreams.tv.ui.LoginScreen
 class App : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
+        com.forbiddenstreams.tv.data.AppSettings.init(this)
         Alarms.createChannels(this)
+        // Settings › General › Auto start on wake up (works while the app is still in memory).
+        try {
+            registerReceiver(object : android.content.BroadcastReceiver() {
+                override fun onReceive(c: android.content.Context, i: android.content.Intent) {
+                    if (com.forbiddenstreams.tv.data.AppSettings.autoStartWake) startMain(c)
+                }
+            }, android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_ON))
+        } catch (_: Exception) { }
         // Keep the last crash on the box so it can be read in Settings › Account.
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
@@ -62,6 +71,20 @@ class App : Application(), ImageLoaderFactory {
         .diskCache { DiskCache.Builder().directory(cacheDir.resolve("images")).maxSizeBytes(150L * 1024 * 1024).build() }
         .crossfade(true)
         .build()
+}
+
+/** Opens the app (auto start on boot / wake up). */
+fun startMain(c: android.content.Context) {
+    try {
+        c.startActivity(android.content.Intent(c, MainActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (_: Exception) { }
+}
+
+class BootReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
+        com.forbiddenstreams.tv.data.AppSettings.init(context)
+        if (com.forbiddenstreams.tv.data.AppSettings.autoStartBoot) startMain(context)
+    }
 }
 
 class MainActivity : ComponentActivity() {

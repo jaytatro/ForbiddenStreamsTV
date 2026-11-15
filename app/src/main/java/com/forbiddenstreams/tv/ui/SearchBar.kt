@@ -138,7 +138,14 @@ fun ChannelSearchDialog(onClose: () -> Unit) {
         channelsOf(prefs, Group.Search)
     }
     val q = query.trim()
-    val results = remember(q, all) { if (q.length < 2) emptyList() else all.filter { channelMatches(it.name, q) }.take(200) }
+    // Settings › Other › Search › Show favorite channels first (Nov 15).
+    val results = remember(q, all) {
+        if (q.length < 2) emptyList() else {
+            val m = all.filter { channelMatches(it.name, q) }
+            val favs = prefs.favorites
+            (if (com.forbiddenstreams.tv.data.AppSettings.searchFavFirst) m.sortedBy { if (it.id in favs) 0 else 1 } else m).take(200)
+        }
+    }
     androidx.compose.ui.window.Dialog(onDismissRequest = onClose,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         androidx.activity.compose.BackHandler { onClose() }
@@ -191,6 +198,15 @@ fun ChannelSearchDialog(onClose: () -> Unit) {
                     }
                 },
             )
+            // Search history (Settings › Other › Search › Show search history).
+            val past = remember(com.forbiddenstreams.tv.data.AppSettings.version) { com.forbiddenstreams.tv.data.AppSettings.searches() }
+            if (q.isEmpty() && past.isNotEmpty() && com.forbiddenstreams.tv.data.AppSettings.searchHistory) {
+                Spacer(Modifier.size(10.dp))
+                Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Recent:", color = FS.TextDim, fontSize = 15.sp)
+                    past.forEach { p -> Pill("🕘 $p", selected = false, outlined = true, fontSize = 15.sp, onClick = { query = p }) }
+                }
+            }
             Spacer(Modifier.size(8.dp))
             Text(
                 when {
@@ -208,7 +224,12 @@ fun ChannelSearchDialog(onClose: () -> Unit) {
                 items(results.size, key = { results[it].id }) { i ->
                     val c = results[i]
                     FocusCard(
-                        onClick = { onClose(); playChannels(context, results, i) },
+                        onClick = {
+                            com.forbiddenstreams.tv.data.AppSettings.addSearch(q)
+                            // "Stay on search screen when switching channels": play behind, keep searching.
+                            if (com.forbiddenstreams.tv.data.AppSettings.searchStay) playChannels(context, results, i, fullScreen = false)
+                            else { onClose(); playChannels(context, results, i) }
+                        },
                         focusedScale = 1.01f,
                         modifier = Modifier.fillMaxWidth().height(64.dp)
                             .then(if (i == 0) Modifier.focusRequester(firstResult) else Modifier),
