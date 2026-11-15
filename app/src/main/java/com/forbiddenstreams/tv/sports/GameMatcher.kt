@@ -91,9 +91,16 @@ object GameMatcher {
 
     /** Local broadcast networks: each city has its own station, and they don't all show the same game. */
     private fun isLocalNetwork(net: String): Boolean {
-        val u = net.uppercase().replace(" ", "")
-        return u in setOf("CBS", "FOX", "NBC", "ABC", "CW", "MNT", "MYNETWORK", "MYNETWORKTV", "IND", "INDEPENDENT") ||
-            Regex("^[KW][A-Z]{2,3}(-?TV|DT)?$").matches(u) // a single station like "KCOP" or "WPIX"
+        // Only these show the same game everywhere; everything else (CBS / FOX / NBC / ABC stations, regional
+        // sports networks, Sportsnet / TSN regions, single stations) must be confirmed or be in the teams' market.
+        val u = net.uppercase().replace(" ", "").replace("+", "PLUS")
+        val national = listOf(
+            "ESPN", "ESPN2", "ESPNU", "ESPNEWS", "ESPNPLUS", "TNT", "TBS", "TRUTV", "NBATV", "NFLNET", "NFLN", "NFLNETWORK",
+            "NHLNET", "NHLNETWORK", "MLBN", "MLBNET", "MLBNETWORK", "FS1", "FS2", "CBSSN", "BTN", "SECN", "ACCN", "USA", "USANETWORK",
+            "PEACOCK", "PRIME", "PRIMEVIDEO", "AMAZON", "NETFLIX", "APPLETV", "APPLETVPLUS", "MAX", "PARAMOUNTPLUS", "ION", "CBC",
+            "TVASPORTS", "RDS", "SN1", "SNONE", "SN360",
+        )
+        return national.none { u == it || u.startsWith(it) && u.length <= it.length + 2 }
     }
 
     /** Words that say a guide entry is this game: either team's nickname or full name. */
@@ -102,6 +109,18 @@ object GameMatcher {
         return listOf(game.away, game.home).any { tm ->
             (tm.nickname.isNotBlank() && hasWord(t, tm.nickname)) || (tm.displayName.isNotBlank() && hasWord(t, tm.displayName))
         }
+    }
+
+    /** false = the channel's guide shows something else at game time; true = it names a team; null = no guide then. */
+    suspend fun guideShowsGame(c: LiveChannel, game: Game, epg: suspend (LiveChannel) -> List<Program>): Boolean? {
+        val at = game.start + 10 * 60_000L
+        val prog = try { epg(c) } catch (e: Exception) { emptyList() }.firstOrNull { at in it.start until it.end } ?: return null
+        val t = prog.title + " " + prog.description
+        if (mentionsGame(t, game)) return true
+        // Generic sports titles ("NHL Hockey", "Live: NHL") don't say which game: not a contradiction.
+        val n = norm(t)
+        if (listOf("nhl", "nba", "nfl", "mlb", "hockey", "basketball", "football", "baseball", "soccer", "live", "game").any { n.contains(" $it ") }) return null
+        return false
     }
 
     /** True when the channel's name is in either team's market (city / nickname / abbreviation). */
@@ -126,7 +145,6 @@ object GameMatcher {
     ): List<Pair<String, LiveChannel>> {
         val out = ArrayList<Pair<String, LiveChannel>>()
         val seen = HashSet<String>(exclude)
-        val at = game.start + 10 * 60_000L
         for (net in game.networks) {
             val keys = networkNames(net)
             if (keys.isEmpty()) continue
@@ -141,9 +159,11 @@ object GameMatcher {
             val confirmed = ArrayList<LiveChannel>()
             val contradicted = HashSet<String>()
             for (c in cands) {
-                val prog = try { epg(c) } catch (e: Exception) { emptyList() }.firstOrNull { at in it.start until it.end } ?: continue
-                if (mentionsGame(prog.title + " " + prog.description, game)) confirmed += c
-                else contradicted += c.id // its guide shows something else then
+                when (guideShowsGame(c, game, epg)) {
+                    true -> confirmed += c
+                    false -> contradicted += c.id // its guide shows something else then
+                    null -> {}
+                }
             }
             val pick = when {
                 confirmed.isNotEmpty() -> confirmed.take(3)
@@ -207,9 +227,27 @@ object GameMatcher {
             u.startsWith("PEACOCK") -> listOf("peacock")
             u.startsWith("NETFLIX") -> listOf("netflix")
             u.startsWith("TRUTV") -> listOf("trutv", "tru tv")
+            // Canada and regional networks (Nov 15: Avalanche–Canadiens showed the wrong channels).
+            u == "SN" || u == "SNET" || u == "SPORTSNET" -> listOf("sportsnet")
+            u == "SN1" || u == "SNONE" -> listOf("sportsnet one", "sportsnet 1", "sn1")
+            u == "SN360" -> listOf("sportsnet 360", "sn360")
+            u == "SNO" -> listOf("sportsnet ontario")
+            u == "SNE" -> listOf("sportsnet east")
+            u == "SNW" -> listOf("sportsnet west")
+            u == "SNP" -> listOf("sportsnet pacific")
+            u.startsWith("TVAS") || u.startsWith("TVASPORTS") -> listOf("tva sports")
+            u.startsWith("RDS") -> listOf("rds")
+            u.startsWith("TSN") && u.length <= 4 -> listOf(u.lowercase(), "tsn " + u.drop(3), "tsn")
+            u == "ALT" || u == "ALT2" || u.startsWith("ALTITUDE") -> listOf("altitude")
+            u == "NESN" -> listOf("nesn")
+            u == "MSG" || u == "MSG2" || u.startsWith("MSGSN") -> listOf("msg")
+            u.startsWith("FDSN") || u.startsWith("FANDUELSN") -> listOf(net.lowercase().replace("fdsn", "fanduel sports network").replace("fanduel sn", "fanduel sports network"))
             else -> emptyList()
         }
-        return (listOf(base) + extra.map { norm(it).trim() }).filter { it.isNotEmpty() }.distinct()
+        // A 1–2 letter code (like "SN") matches far too many channel names: only its spelled-out names count.
+        val keepBase = base.replace(" ", "").length >= 3 || extra.isEmpty()
+        return ((if (keepBase && base.replace(" ", "").length >= 3) listOf(base) else emptyList()) + extra.map { norm(it).trim() })
+            .filter { it.isNotEmpty() }.distinct()
     }
 
     suspend fun match(

@@ -254,11 +254,13 @@ internal fun gameOptions(
     team: List<LiveChannel>,
     /** Network channels already checked against their guides (Nov 15); null = quick unchecked list. */
     networks: List<Pair<String, LiveChannel>>? = null,
+    /** Team channels whose guide shows a different game at that time (left out). */
+    wrongTeam: Set<String> = emptySet(),
 ): List<Pair<String, () -> Unit>> {
     val out = ArrayList<Pair<String, () -> Unit>>()
     val feeds = ArrayList<Triple<String, LiveChannel, List<LiveChannel>>>()
-    m?.away?.let { feeds += Triple("📺 ${g.away.displayName} feed", it, team) }
-    m?.home?.let { feeds += Triple("📺 ${g.home.displayName} feed", it, team) }
+    m?.away?.takeIf { it.id !in wrongTeam }?.let { feeds += Triple("📺 ${g.away.displayName} feed", it, team) }
+    m?.home?.takeIf { it.id !in wrongTeam }?.let { feeds += Triple("📺 ${g.home.displayName} feed", it, team) }
     val used = m?.options.orEmpty().map { it.id }.toSet()
     (networks ?: GameMatcher.networkChannels(g, Session.liveAll.orEmpty(), used)).forEach { (net, c) -> feeds += Triple("📡 $net", c, listOf(c)) }
     // Streaming-only games (Prime Video, Netflix, …): the provider's event channels for this matchup.
@@ -610,10 +612,16 @@ fun GameChannelsDialog(league: League, g: Game, onClose: () -> Unit) {
     // Nov 15: the pop-up only opens once the channels are found (it used to open as "Finding the
     // channels…" and then change, which looked like it popped up twice). Gives up waiting after 6 s.
     var waited by remember(g.id) { mutableStateOf(false) }
+    var wrongTeam by remember(g.id) { mutableStateOf<Set<String>>(emptySet()) }
     // Network channels checked against their guides at game time (right channel, right game).
     val networks by androidx.compose.runtime.produceState<List<Pair<String, LiveChannel>>?>(null, g.id, match) {
         val m = match ?: return@produceState
         val used = m.options.map { it.id }.toSet()
+        wrongTeam = withContext(Dispatchers.Default) {
+            kotlinx.coroutines.withTimeoutOrNull(5_000) {
+                m.options.filter { GameMatcher.guideShowsGame(it, g) { c -> Session.cachedEpg(c) ?: Session.epg(c) } == false }.map { it.id }.toSet()
+            } ?: emptySet()
+        }
         value = withContext(Dispatchers.Default) {
             kotlinx.coroutines.withTimeoutOrNull(8_000) {
                 GameMatcher.verifiedNetworkChannels(g, Session.liveAll.orEmpty(), used) { c -> Session.cachedEpg(c) ?: Session.epg(c) }
@@ -630,7 +638,7 @@ fun GameChannelsDialog(league: League, g: Game, onClose: () -> Unit) {
         androidx.activity.compose.BackHandler { onClose() }
         return
     }
-    val options = remember(g.id, match, team, Session.liveAll, networks) { gameOptions(context, g, match, team, networks) }
+    val options = remember(g.id, match, team, Session.liveAll, networks, wrongTeam) { gameOptions(context, g, match, team, networks, wrongTeam) }
     val tv = g.networks.takeIf { it.isNotEmpty() }?.let { " · TV: ${it.joinToString(", ")}" } ?: ""
     val sub = when {
         options.isNotEmpty() && g.isFinal -> "Final ${g.away.score ?: ""}–${g.home.score ?: ""}. Pick a channel to replay the game$tv"
