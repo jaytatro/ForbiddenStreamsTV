@@ -172,6 +172,8 @@ fun AppShell(onLogout: () -> Unit) {
         if (com.forbiddenstreams.tv.data.AppSettings.favGameAlerts) FavGameStartAlert(onWatch = { l, id -> sportsOpen = l to id; tab = 3 })
         // Reminders that are due: "Starting now" pop-up (Settings › Other › Reminders).
         ReminderPopup()
+        // Game highlights playing inside the app (Nov 15).
+        HighlightPlayerHost()
         if (exitHint) {
             Text(
                 "Click back one more time to close", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold,

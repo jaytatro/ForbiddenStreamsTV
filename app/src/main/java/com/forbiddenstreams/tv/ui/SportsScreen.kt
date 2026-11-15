@@ -682,9 +682,21 @@ fun openHighlights(context: android.content.Context, league: League, g: Game) {
             }
         } catch (e: Exception) { null }
         if (id != null) {
-            val ok = tryStart(context, android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("vnd.youtube:$id"))) ||
-                tryStart(context, android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=$id")))
-            if (ok) return@launch
+            // Settings › Sports › Play highlights in: here in the app (default), TizenTube, or the YouTube app.
+            when (com.forbiddenstreams.tv.data.AppSettings.highlightsIn) {
+                "TizenTube" -> {
+                    val pkg = Highlights.tizenTube(context)
+                    if (pkg != null && Highlights.openInTizenTube(context, pkg, id)) return@launch
+                    toast(context, "TizenTube isn't installed — playing here")
+                    Highlights.playing = Highlight(id, "${g.away.displayName} vs ${g.home.displayName}", q); return@launch
+                }
+                "YouTube app" -> {
+                    val ok = tryStart(context, android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("vnd.youtube:$id"))) ||
+                        tryStart(context, android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=$id")))
+                    if (ok) return@launch
+                }
+                else -> { Highlights.playing = Highlight(id, "${g.away.displayName} vs ${g.home.displayName}", q); return@launch }
+            }
         }
         val ok = tryStart(context, android.content.Intent(android.content.Intent.ACTION_SEARCH)
             .setPackage("com.google.android.youtube.tv").putExtra(android.app.SearchManager.QUERY, q)) ||

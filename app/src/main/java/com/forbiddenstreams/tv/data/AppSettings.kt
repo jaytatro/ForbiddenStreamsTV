@@ -121,6 +121,8 @@ object AppSettings {
     val favGameAlerts get() = b("fav_alerts", true)
     /** Minutes before a favorite team's game the pop-up comes up (1–5). */
     val favAlertMin get() = i("fav_alert_min", 1)
+    /** Where game highlights play: "Forbidden Streams" (inside the app) · "TizenTube" · "YouTube app". */
+    val highlightsIn get() = s("highlights_in", "Forbidden Streams")
 
     /** Parental: the code was entered this session (when "Until the app closes"). */
     @Volatile var pinUnlocked = false

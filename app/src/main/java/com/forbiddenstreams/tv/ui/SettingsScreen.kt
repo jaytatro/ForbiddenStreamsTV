@@ -293,6 +293,12 @@ fun SettingsScreen(
                 SRow.Value("Alert pop-up time", "${S.favAlertMin} minute${if (S.favAlertMin == 1) "" else "s"} before") {
                     pick("Alert pop-up time", (1..5).map { "$it minute${if (it == 1) "" else "s"} before" }) { S.set("fav_alert_min", it.take(1).toInt()) }
                 },
+                SRow.Value("Play game highlights in", S.highlightsIn) {
+                    val tt = Highlights.tizenTube(context) != null
+                    pick("Play game highlights in", listOf("Forbidden Streams", "TizenTube" + if (tt) "" else " (not installed)", "YouTube app")) {
+                        S.set("highlights_in", it.removeSuffix(" (not installed)"))
+                    }
+                },
                 SRow.Info("Re-order sports", "In the Sports tab, hold OK on a sport and move it ▲ ▼"),
             )
             "other" -> listOf(
