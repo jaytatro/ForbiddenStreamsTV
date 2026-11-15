@@ -143,6 +143,7 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
     var swallowUp by remember { mutableStateOf(false) }
     fun setOrder() { SportOrder.set(context, order.toList()); moving = null }
     val firstGameReq = remember { FocusRequester() }
+    val todayReq = remember { FocusRequester() }
     fun focusRail() { scope.launch { repeat(6) { delay(50); try { railReq[league]?.requestFocus(); return@launch } catch (e: Exception) { } } } }
     fun focusGames(): Boolean = try { firstGameReq.requestFocus(); true } catch (e: Exception) { false }
 
@@ -245,7 +246,7 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                 }
                 if (moving != null) Text("Moving ${moving!!.icon} ${railName(moving!!)}  —  ▲▼ to move it, OK to set it here",
                     color = Color(0xFFFFC83D), fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
-                DateBar(day, week, onPick = { day = it })
+                DateBar(day, week, todayReq, onPick = { day = it })
                 val games = week?.get(day).orEmpty()
                 val sorted = remember(games, favV) {
                     games.distinctBy { it.id }.sortedWith(compareBy(
@@ -272,6 +273,12 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                                     .then(if (i == 0) Modifier.focusRequester(firstGameReq) else Modifier)
                                     .onPreviewKeyEvent { ev ->
                                         // ◀ on the left column → back to the league rail.
+                                        // ▲ on the top row → always TODAY on the date bar (Nov 15).
+                                        if (i < 2 && ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                            ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP) {
+                                            try { todayReq.requestFocus() } catch (e: Exception) { }
+                                            return@onPreviewKeyEvent true
+                                        }
                                         if (i % 2 == 0 && ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
                                             ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) { focusRail(); true } else false
                                     },
@@ -368,7 +375,7 @@ private fun railName(l: League) = when (l) {
 
 /** 7 days (3 back · TODAY · 3 ahead) as compact chips with game counts. */
 @Composable
-private fun DateBar(day: String, week: Map<String, List<Game>>?, onPick: (String) -> Unit) {
+private fun DateBar(day: String, week: Map<String, List<Game>>?, todayReq: FocusRequester, onPick: (String) -> Unit) {
     val days = remember { (-3..3).map { it to dayKeyOffset(it) } }
     val state = rememberLazyListState()
     LazyRow(
@@ -387,7 +394,8 @@ private fun DateBar(day: String, week: Map<String, List<Game>>?, onPick: (String
             val sel = key == day
             Surface(
                 onClick = { onPick(key) },
-                modifier = Modifier.onFocusChanged { if (it.isFocused) onPick(key) },
+                modifier = Modifier.then(if (off == 0) Modifier.focusRequester(todayReq) else Modifier)
+                    .onFocusChanged { if (it.isFocused) onPick(key) },
                 shape = ClickableSurfaceDefaults.shape(shape = shape),
                 colors = ClickableSurfaceDefaults.colors(
                     containerColor = if (sel) FS.GreenDeep else Panel, contentColor = if (sel) Color.White else FS.TextDim,
