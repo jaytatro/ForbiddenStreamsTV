@@ -412,12 +412,18 @@ fun GuideView(
 
     LaunchedEffect(Unit) {
         while (true) {
-            // Every 5 s: the time line stays in the middle and the shows slide slowly left.
+            // Nov 15: the times stay where they are — only the time line moves along. When it gets near
+            // the right edge, the guide moves over once (time line back to the left third).
             delay(5_000)
             now = System.currentTimeMillis()
             if (followNow && dayOffset == 0) {
                 cursor = now
-                if (gridWidthPx > 0) hState.animateScrollTo(centerOn(now), androidx.compose.animation.core.tween(4_000, easing = androidx.compose.animation.core.LinearEasing))
+                if (gridWidthPx > 0) {
+                    val x = px(now - ws) - hState.value
+                    if (x < 0 || x > gridWidthPx * 0.8f) {
+                        hState.animateScrollTo((px(now - ws) - (gridWidthPx * 0.3f).toInt()).coerceAtLeast(0))
+                    }
+                }
             }
         }
     }
