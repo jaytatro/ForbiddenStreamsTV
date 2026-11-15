@@ -88,8 +88,18 @@ object XmltvParser {
     }
 
     /** Returns programmes per lower-cased channel id, only inside [from, to]. */
-    fun parse(input: InputStream, from: Long, to: Long, only: Set<String>? = null): Map<String, List<Program>> {
+    /**
+     * [only]: guide ids to keep (null = all). [names] + [nameIds]: also keep channels whose display name is in
+     * [names] (lower case); their id is put in [nameIds] (name → id) so callers can match by name (Nov 15).
+     */
+    @Synchronized
+    fun parse(
+        input: InputStream, from: Long, to: Long, only: Set<String>? = null,
+        names: Set<String>? = null, nameIds: MutableMap<String, String>? = null,
+    ): Map<String, List<Program>> {
         val out = HashMap<String, MutableList<Program>>()
+        val byName = HashSet<String>()
+        var chanId: String? = null
         val p = Xml.newPullParser()
         p.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
         p.setInput(input, null)
@@ -103,11 +113,19 @@ object XmltvParser {
         while (ev != XmlPullParser.END_DOCUMENT) {
             if (ev == XmlPullParser.START_TAG) {
                 when (p.name) {
+                    "channel" -> chanId = p.getAttributeValue(null, "id")?.lowercase()
+                    "display-name" -> {
+                        val id = chanId
+                        if (id != null && names != null) {
+                            val n = (p.nextText() ?: "").trim().lowercase()
+                            if (n in names) { byName += id; nameIds?.put(n, id) }
+                        }
+                    }
                     "programme" -> {
                         val s = time(p.getAttributeValue(null, "start"))
                         val e = time(p.getAttributeValue(null, "stop"))
                         val cid = p.getAttributeValue(null, "channel")?.lowercase()
-                        inProg = s != null && e != null && e > from && s < to && (only == null || (cid != null && cid in only))
+                        inProg = s != null && e != null && e > from && s < to && (only == null || (cid != null && (cid in only || cid in byName)))
                         if (inProg) {
                             ch = cid
                             start = s!!; end = e!!; title = ""; desc = ""

@@ -602,6 +602,19 @@ fun GameChannelsDialog(league: League, g: Game, onClose: () -> Unit) {
             GameMatcher.match(g, league, team) { c -> Session.cachedEpg(c) ?: Session.epg(c) }
         }
     }
+    // Nov 15: the pop-up only opens once the channels are found (it used to open as "Finding the
+    // channels…" and then change, which looked like it popped up twice). Gives up waiting after 6 s.
+    var waited by remember(g.id) { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(g.id) {
+        kotlinx.coroutines.delay(400)
+        if (match == null) toast(context, "Finding the channels…")
+        kotlinx.coroutines.delay(5_600)
+        waited = true
+    }
+    if (match == null && !waited) {
+        androidx.activity.compose.BackHandler { onClose() }
+        return
+    }
     val options = remember(g.id, match, team, Session.liveAll) { gameOptions(context, g, match, team) }
     val tv = g.networks.takeIf { it.isNotEmpty() }?.let { " · TV: ${it.joinToString(", ")}" } ?: ""
     val sub = when {

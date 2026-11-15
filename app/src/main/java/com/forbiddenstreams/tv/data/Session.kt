@@ -153,22 +153,29 @@ object Session {
         val days = AppSettings.epgPastDays.coerceIn(1, 7)
         pastJob = scope.launch(Dispatchers.IO) {
             try {
-                val arch = liveAll.orEmpty().filter { it.hasArchive && !it.epgId.isNullOrBlank() }
+                // Catch-up channels, matched by guide id — or by name when the provider gave no id (Nov 15).
+                val arch = liveAll.orEmpty().filter { it.hasArchive }
                 if (arch.isEmpty()) return@launch
-                val byEpg = arch.groupBy { it.epgId!!.lowercase() }
-                val map = Http.stream(src.xmltvUrl()) { XmltvParser.parse(it, now - days * 86_400_000L, now, byEpg.keys) }
-                var n = 0
-                for ((k, progs) in map) {
-                    val past = progs.filter { it.start <= now }.map { it.copy(hasArchive = true) }
-                    if (past.isEmpty()) continue
-                    for (ch in byEpg[k].orEmpty()) {
-                        val current = epgCache[ch.id]?.second.orEmpty().filter { it.end > now - 3_600_000L }
-                        withHistory(ch.id, (past.filter { p -> current.none { it.start < p.end && it.end > p.start } } + current).sortedBy { it.start })
-                        n++
-                    }
+                val byEpg = arch.filter { !it.epgId.isNullOrBlank() }.groupBy { it.epgId!!.lowercase() }
+                val byName = arch.groupBy { it.name.trim().lowercase() }
+                val nameIds = HashMap<String, String>()
+                val map = Http.stream(src.xmltvUrl()) {
+                    XmltvParser.parse(it, now - days * 86_400_000L, now, byEpg.keys, byName.keys, nameIds)
                 }
+                var n = 0
+                val done = HashSet<String>()
+                fun save(ch: LiveChannel, progs: List<Program>) {
+                    if (!done.add(ch.id)) return
+                    val past = progs.filter { it.start <= now }.map { it.copy(hasArchive = true) }
+                    if (past.isEmpty()) return
+                    val current = epgCache[ch.id]?.second.orEmpty().filter { it.end > now - 3_600_000L }
+                    withHistory(ch.id, (past.filter { p -> current.none { it.start < p.end && it.end > p.start } } + current).sortedBy { it.start })
+                    n++
+                }
+                for ((k, progs) in map) byEpg[k]?.forEach { save(it, progs) }
+                for ((name, id) in nameIds) map[id]?.let { progs -> byName[name]?.forEach { save(it, progs) } }
                 sp.edit().putLong("past_guide_at", now).apply()
-                AppSettings.set("epg_status", "EPG updated for $n catch-up channels on " +
+                AppSettings.set("epg_status", "EPG updated for $n of ${arch.size} catch-up channels on " +
                     java.text.SimpleDateFormat("M/d/yyyy h:mm a", java.util.Locale.US).format(java.util.Date(now)))
                 if (n > 0) { epgCache.clear(); withContext(Dispatchers.Main) { guideVersion++ } }
             } catch (e: Exception) {
