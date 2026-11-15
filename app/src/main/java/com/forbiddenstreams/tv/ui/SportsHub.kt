@@ -296,7 +296,7 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
 }
 
 /**
- * Scoreboard ticker (Nov 15): one sport at a time for 5 seconds, then the next sport with live games
+ * Scoreboard ticker (Nov 15): one sport at a time for 10 seconds, then the next sport with live games
  * (in your Sports order). Each game shows both team logos and the score; scrolls if the sport has more
  * games than fit.
  */
@@ -308,7 +308,7 @@ private fun Ticker(today: Map<League, List<Game>>, order: List<League>) {
     var idx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     val leagues = liveBy.map { it.first }
     LaunchedEffect(leagues) {
-        while (true) { delay(5_000); if (leagues.size > 1) idx = (idx + 1) % leagues.size }
+        while (true) { delay(10_000); if (leagues.size > 1) idx = (idx + 1) % leagues.size }
     }
     val cur = liveBy.getOrNull(idx % liveBy.size.coerceAtLeast(1))
     Row(
