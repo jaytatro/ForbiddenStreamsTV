@@ -623,10 +623,52 @@ fun GameChannelsDialog(league: League, g: Game, onClose: () -> Unit) {
         match == null -> "Finding the channels…$tv"
         else -> (match?.note ?: "No channel found") + tv
     }
+    // Nov 15: a finished game gets "Game highlights" at the top (YouTube).
+    val highlights: List<Pair<String, () -> Unit>> =
+        if (g.isFinal) listOf("🎬  Game highlights" to { onClose(); openHighlights(context, league, g) }) else emptyList()
+    val picks = options.map { (label, action) -> label to { onClose(); action() } }
     ChoiceDialog(
         "${g.away.displayName} vs. ${g.home.displayName}", sub,
-        options.map { (label, action) -> label to { onClose(); action() } }
-            .ifEmpty { listOf<Pair<String, () -> Unit>>("OK" to onClose) },
+        (highlights + picks).ifEmpty { listOf<Pair<String, () -> Unit>>("OK" to onClose) },
         onDismiss = onClose,
     )
+}
+
+
+/**
+ * Game highlights on YouTube (Nov 15): looks up the top YouTube result for
+ * "<away> vs <home> highlights <date> <league>" and opens that video in the YouTube app;
+ * if that can't be found, opens YouTube's search for it.
+ */
+fun openHighlights(context: android.content.Context, league: League, g: Game) {
+    val date = java.text.SimpleDateFormat("MMMM d, yyyy", java.util.Locale.US).format(java.util.Date(g.start))
+    val q = "${g.away.displayName} vs ${g.home.displayName} highlights $date ${league.label}"
+    toast(context, "Finding the highlights…")
+    kotlinx.coroutines.MainScope().launch {
+        val id = try {
+            withContext(Dispatchers.IO) {
+                val req = okhttp3.Request.Builder()
+                    .url("https://www.youtube.com/results?search_query=" + java.net.URLEncoder.encode(q, "UTF-8"))
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+                    .header("Accept-Language", "en-US,en;q=0.9")
+                    .build()
+                com.forbiddenstreams.tv.data.Http.client.newCall(req).execute().use { r ->
+                    val html = r.body?.string().orEmpty()
+                    Regex("\"videoId\":\"([A-Za-z0-9_-]{11})\"").find(html)?.groupValues?.get(1)
+                }
+            }
+        } catch (e: Exception) { null }
+        if (id != null) {
+            val ok = tryStart(context, android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("vnd.youtube:$id"))) ||
+                tryStart(context, android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=$id")))
+            if (ok) return@launch
+        }
+        val ok = tryStart(context, android.content.Intent(android.content.Intent.ACTION_SEARCH)
+            .setPackage("com.google.android.youtube.tv").putExtra(android.app.SearchManager.QUERY, q)) ||
+            tryStart(context, android.content.Intent(android.content.Intent.ACTION_SEARCH)
+                .setPackage("com.google.android.youtube").putExtra(android.app.SearchManager.QUERY, q)) ||
+            tryStart(context, android.content.Intent(android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse("https://www.youtube.com/results?search_query=" + java.net.URLEncoder.encode(q, "UTF-8"))))
+        if (!ok) toast(context, "YouTube isn't installed on this box")
+    }
 }

@@ -641,13 +641,13 @@ internal fun openTrailer(context: android.content.Context, vodId: String, title:
     }
 }
 
-private fun youtubeId(t: String): String? {
+internal fun youtubeId(t: String): String? {
     val s = t.trim()
     Regex("(?:v=|youtu\\.be/|embed/|shorts/)([A-Za-z0-9_-]{11})").find(s)?.let { return it.groupValues[1] }
     return s.takeIf { it.matches(Regex("[A-Za-z0-9_-]{11}")) }
 }
 
-private fun tryStart(context: android.content.Context, i: android.content.Intent): Boolean = try {
+internal fun tryStart(context: android.content.Context, i: android.content.Intent): Boolean = try {
     context.startActivity(i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)); true
 } catch (e: Exception) { false }
 
