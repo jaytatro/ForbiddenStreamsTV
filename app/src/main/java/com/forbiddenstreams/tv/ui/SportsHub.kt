@@ -150,6 +150,7 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
     val firstGameReq = remember { FocusRequester() }
     val todayReq = remember { FocusRequester() }
     val redZoneReq = remember { FocusRequester() }
+    val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     fun focusRail() { scope.launch { repeat(6) { delay(50); try { railReq[league]?.requestFocus(); return@launch } catch (e: Exception) { } } } }
     fun focusGames(): Boolean = try { firstGameReq.requestFocus(); true } catch (e: Exception) { false }
 
@@ -312,6 +313,7 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                         "Pick another day above, or another league on the left.")
                     else -> LazyVerticalGrid(
                         columns = GridCells.Fixed(2),
+                        state = gridState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(start = 8.dp, end = 4.dp, top = 10.dp, bottom = 24.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -330,8 +332,12 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                                         if (i < 2 && ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
                                             ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP) {
                                             // NFL: ▲ goes to RedZone first, then ▲ again to TODAY.
-                                            try { (if (league == League.NFL) redZoneReq else todayReq).requestFocus() }
-                                            catch (e: Exception) { try { todayReq.requestFocus() } catch (e2: Exception) { } }
+                                            if (league == League.NFL) scope.launch {
+                                                // The RedZone box is the first thing in the list: bring it into view, then onto it.
+                                                try { gridState.animateScrollToItem(0) } catch (e: Exception) { }
+                                                repeat(5) { delay(40); try { redZoneReq.requestFocus(); return@launch } catch (e: Exception) { } }
+                                                try { todayReq.requestFocus() } catch (e: Exception) { }
+                                            } else try { todayReq.requestFocus() } catch (e: Exception) { }
                                             return@onPreviewKeyEvent true
                                         }
                                         if (i % 2 == 0 && ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
