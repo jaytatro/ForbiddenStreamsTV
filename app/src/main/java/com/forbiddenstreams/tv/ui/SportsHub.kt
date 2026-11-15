@@ -284,7 +284,7 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                             ),
                             border = ClickableSurfaceDefaults.border(
                                 border = Border(BorderStroke(1.dp, Color(0x66FFFFFF)), shape = shape),
-                                focusedBorder = Border(BorderStroke(2.dp, Color.White), shape = shape),
+                                focusedBorder = Border(BorderStroke(2.dp, FS.Green), shape = shape),
                             ),
                             scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
                         ) {

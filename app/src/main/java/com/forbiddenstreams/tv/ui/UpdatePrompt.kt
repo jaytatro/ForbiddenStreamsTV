@@ -46,7 +46,7 @@ object UpdateState {
             try {
                 val u = Updater.check(context)
                 if (u != null) available = u
-                else if (manual) toast(context, "You have the newest version (build ${Updater.currentBuild(context)})")
+                else if (manual) toast(context, "You have the newest version")
             } catch (e: Exception) {
                 if (manual) toast(context, e.message ?: "Couldn't check for updates")
             } finally {
@@ -89,7 +89,7 @@ fun UpdatePrompt() {
     val f = apk
     when {
         f != null -> ChoiceDialog(
-            title = "Ready to install build ${u.build}",
+            title = "Ready to install the update",
             subtitle = "Android will ask to install the update. Your login and settings stay.",
             options = listOf(
                 "⬆  Install" to { install(f) },
@@ -102,7 +102,7 @@ fun UpdatePrompt() {
                 Modifier.width(520.dp).background(FS.Panel, RoundedCornerShape(16.dp))
                     .border(2.dp, FS.GreenDeep, RoundedCornerShape(16.dp)).padding(28.dp),
             ) {
-                Text("Downloading build ${u.build}…", color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text("Downloading the update…", color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(16.dp))
                 Box(Modifier.fillMaxWidth().height(10.dp).background(FS.GreenDim, RoundedCornerShape(5.dp))) {
                     Box(Modifier.fillMaxWidth((if (p < 0) 0.5f else p / 100f).coerceIn(0.02f, 1f)).height(10.dp)
@@ -115,7 +115,7 @@ fun UpdatePrompt() {
         else -> ChoiceDialog(
             title = "Update available",
             subtitle = (error?.let { "$it\n" } ?: "") +
-                "Build ${u.build} is ready (you have build ${u.current}). Update now?",
+                "A new version of Forbidden Streams TV is ready. Update now?",
             options = listOf(
                 "⬇  Update now" to {
                     error = null

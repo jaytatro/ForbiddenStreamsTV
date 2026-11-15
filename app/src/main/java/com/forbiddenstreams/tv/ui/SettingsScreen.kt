@@ -345,7 +345,7 @@ fun SettingsScreen(
             "about" -> {
                 val ver = try {
                     val pi = context.packageManager.getPackageInfo(context.packageName, 0)
-                    "${pi.versionName} (build ${androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(pi)})"
+                    appVersion(pi.versionName)
                 } catch (e: Exception) { "?" }
                 listOf(
                     SRow.Info("Version", ver),
@@ -714,7 +714,7 @@ private fun sectionSummary(context: Context, key: String): String {
         "parental" -> if (CategoryPrefs.pin(context) != null) "Code on" else "Code off"
         "sports" -> "${com.forbiddenstreams.tv.sports.FavTeams.all(context).size} favorite teams · alert ${S.favAlertMin} min"
         "other" -> "Search · Reminders · Recording"
-        "about" -> try { "Version " + context.packageManager.getPackageInfo(context.packageName, 0).versionName } catch (e: Exception) { "" }
+        "about" -> try { "Version " + appVersion(context.packageManager.getPackageInfo(context.packageName, 0).versionName) } catch (e: Exception) { "" }
         else -> ""
     }
 }
@@ -760,3 +760,7 @@ private fun clearCache(context: Context) {
     try { android.webkit.WebView(context).apply { clearCache(true); destroy() } } catch (e: Exception) { }
     try { android.webkit.WebStorage.getInstance().deleteAllData() } catch (e: Exception) { }
 }
+
+
+/** The version to show, without the build number (Nov 15): "1.0.145" → "1.0". */
+fun appVersion(name: String?): String = (name ?: "1.0").split('.').take(2).joinToString(".")
