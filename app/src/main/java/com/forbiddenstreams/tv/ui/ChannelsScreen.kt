@@ -652,6 +652,9 @@ fun GuideView(
         }
         Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)) {
             TimeHeader(if (overlay) "" else group.title, ws, we, now, hState, overlay) { gridWidthPx = it }
+            // Nov 15: the TV Guide tab fits 5 channels in the space it has (the player's guide keeps its size).
+            androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+            val rowH = if (overlay) ROW_H.dp else (maxHeight / 5).coerceIn(44.dp, 90.dp)
             LazyColumn(state = listState, userScrollEnabled = false) {
                 itemsIndexed(channels, key = { _, ch -> ch.id }) { i, ch ->
                     GuideRow(
@@ -660,8 +663,10 @@ fun GuideView(
                         playing = PlayerHolder.current?.channelId == ch.id,
                         overlay = overlay,
                         onEpg = { epgTick++ },
+                        rowH = rowH,
                     )
                 }
+            }
             }
         }
     }
@@ -707,7 +712,7 @@ fun GuideView(
 private fun GuideInfoPanel(ch: LiveChannel?, p: Program?, previewReq: FocusRequester, onPreviewFocus: (Boolean) -> Unit) {
     // Nov 8: live preview on the left (10% bigger), the channel's info on the right.
     Row(
-        Modifier.fillMaxWidth().height(160.dp).padding(horizontal = 24.dp, vertical = 4.dp),
+        Modifier.fillMaxWidth().height(144.dp).padding(horizontal = 24.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MiniPlayer(
@@ -792,6 +797,7 @@ private fun GuideRow(
     playing: Boolean,
     overlay: Boolean,
     onEpg: () -> Unit,
+    rowH: androidx.compose.ui.unit.Dp = ROW_H.dp,
 ) {
     val epg by produceState(Session.cachedEpg(ch), ch.id, Session.guideVersion) { value = Session.epg(ch); onEpg() }
     val cells = remember(epg, ws) { buildCells(epg, ws, we) }
@@ -801,7 +807,7 @@ private fun GuideRow(
     val scrolledDp = with(density) { hState.value.toDp() }
     val line = Color(0xCCFFFFFF)
     val cellShape = RoundedCornerShape(8.dp)
-    Row(Modifier.fillMaxWidth().height(ROW_H.dp)) {
+    Row(Modifier.fillMaxWidth().height(rowH)) {
         Row(
             Modifier.width(CH_COL.dp).fillMaxHeight().padding(1.dp)
                 .then(

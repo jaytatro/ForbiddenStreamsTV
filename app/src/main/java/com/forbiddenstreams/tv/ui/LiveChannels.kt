@@ -180,10 +180,10 @@ fun LiveChannelsTab() {
 
         // Nov 13 restyle ("make the Live TV screen unique, same idea"): a broadcast control-room look —
         // an ON AIR strip, glass panels with neon edges, LED channel numbers and a timeline of shows.
-        OnAirStrip(now, Modifier.padding(top = 76.dp, start = 18.dp, end = 18.dp))
+        // Nov 15: the ON AIR / "pick a channel" + time bar was removed (user asked); the lists move up.
         val counts = remember(Session.liveAll) { Session.liveAll.orEmpty().groupingBy { it.categoryId }.eachCount() }
         Row(
-            Modifier.fillMaxSize().padding(top = 122.dp, start = 18.dp, end = 18.dp, bottom = 14.dp)
+            Modifier.fillMaxSize().padding(top = 80.dp, start = 18.dp, end = 18.dp, bottom = 14.dp)
                 // ▼ from the tabs lands on the category (step 1) or the channel (step 2).
                 .focusGroup(),
         ) {

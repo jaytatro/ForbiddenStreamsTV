@@ -140,8 +140,8 @@ fun LiveTvTab() {
     LaunchedEffect(Unit) { while (true) { delay(30_000); now = System.currentTimeMillis() } }
     val counts = remember(Session.liveAll) { Session.liveAll.orEmpty().groupingBy { it.categoryId }.eachCount() }
     Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFF07120A), Color.Black))))
-    OnAirStrip(now, Modifier.padding(top = 76.dp, start = 18.dp, end = 18.dp))
-    Row(Modifier.fillMaxSize().padding(top = 122.dp, start = 18.dp, end = 18.dp, bottom = 14.dp)) {
+    // Nov 15: the ON AIR / "pick a channel" + time bar was removed (user asked); the lists move up.
+    Row(Modifier.fillMaxSize().padding(top = 80.dp, start = 18.dp, end = 18.dp, bottom = 14.dp)) {
         if (listOpen || listW > 0.dp) {
             Box(
                 Modifier.width(listW).fillMaxHeight().clipToBounds().alpha(listA)
