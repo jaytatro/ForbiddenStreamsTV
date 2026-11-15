@@ -241,8 +241,22 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                     Spacer(Modifier.width(10.dp))
                     Text(league.label.uppercase(), color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                     Spacer(Modifier.width(14.dp))
-                    // Nov 15: NFL RedZone button next to 🏈 NFL.
-                    if (league == League.NFL) {
+
+                    val dg = week?.get(day).orEmpty()
+                    val lv = dg.count { it.isLive }
+                    Text(
+                        listOfNotNull(if (lv > 0) "$lv LIVE" else null, "${dg.size} game${if (dg.size == 1) "" else "s"}").joinToString("  ·  "),
+                        color = if (lv > 0) LiveRed else FS.TextDim, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 5.dp),
+                    )
+                }
+                if (moving != null) Text("Moving ${moving!!.icon} ${railName(moving!!)}  —  ▲▼ to move it, OK to set it here",
+                    color = Color(0xFFFFC83D), fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
+                DateBar(day, week, todayReq, onPick = { day = it })
+                // Nov 15: NFL RedZone — a box with the NFL logo, centered above the games (under TODAY).
+                if (league == League.NFL) {
+                    Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) {
+                        val shape = RoundedCornerShape(14.dp)
                         Surface(
                             onClick = {
                                 val rz = Session.liveAll.orEmpty().filter { c ->
@@ -255,31 +269,29 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                                     else -> redZone = rz
                                 }
                             },
-                            modifier = Modifier.padding(bottom = 3.dp),
-                            shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(50)),
+                            modifier = Modifier.width(280.dp).height(58.dp),
+                            shape = ClickableSurfaceDefaults.shape(shape = shape),
                             colors = ClickableSurfaceDefaults.colors(
-                                containerColor = Color(0xFFB71C1C), contentColor = Color.White,
-                                focusedContainerColor = Color(0xFFFF3B3B), focusedContentColor = Color.White,
+                                containerColor = Color(0xFF8E0E0E), contentColor = Color.White,
+                                focusedContainerColor = Color(0xFFD62828), focusedContentColor = Color.White,
                             ),
-                            border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Color.White), shape = RoundedCornerShape(50))),
-                            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+                            border = ClickableSurfaceDefaults.border(
+                                border = Border(BorderStroke(1.dp, Color(0x66FFFFFF)), shape = shape),
+                                focusedBorder = Border(BorderStroke(2.dp, Color.White), shape = shape),
+                            ),
+                            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
                         ) {
-                            Text("🔴 RedZone", fontSize = 13.sp, fontWeight = FontWeight.Black,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                            Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center) {
+                                Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                                    NetImage("https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png", Modifier.fillMaxSize())
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Text("RedZone", fontSize = 24.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                            }
                         }
-                        Spacer(Modifier.width(14.dp))
                     }
-                    val dg = week?.get(day).orEmpty()
-                    val lv = dg.count { it.isLive }
-                    Text(
-                        listOfNotNull(if (lv > 0) "$lv LIVE" else null, "${dg.size} game${if (dg.size == 1) "" else "s"}").joinToString("  ·  "),
-                        color = if (lv > 0) LiveRed else FS.TextDim, fontSize = 15.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 5.dp),
-                    )
                 }
-                if (moving != null) Text("Moving ${moving!!.icon} ${railName(moving!!)}  —  ▲▼ to move it, OK to set it here",
-                    color = Color(0xFFFFC83D), fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
-                DateBar(day, week, todayReq, onPick = { day = it })
                 val games = week?.get(day).orEmpty()
                 val sorted = remember(games, favV) {
                     games.distinctBy { it.id }.sortedWith(compareBy(
