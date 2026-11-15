@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -68,18 +69,18 @@ private sealed class SRow {
     data class Info(val title: String, val value: String) : SRow()
 }
 
-private data class Section(val key: String, val icon: String, val title: String)
+private data class Section(val key: String, val icon: String, val title: String, val about: String)
 
 private val SECTIONS = listOf(
-    Section("general", "⚙", "General"),
-    Section("playlists", "📋", "Playlists"),
-    Section("epg", "🗓", "EPG"),
-    Section("appearance", "🎨", "Appearance"),
-    Section("playback", "▶", "Playback"),
-    Section("parental", "🔒", "Parental controls"),
-    Section("sports", "🏈", "Sports"),
-    Section("other", "⋯", "Other"),
-    Section("about", "ℹ", "About"),
+    Section("general", "⚙", "General", "How the app starts, stops and behaves on your box"),
+    Section("playlists", "📋", "Playlists", "Your channel list and how often it refreshes"),
+    Section("epg", "🗓", "EPG", "The TV guide: where it comes from and how long it's kept"),
+    Section("appearance", "🎨", "Appearance", "Clock and what shows on the Home screen"),
+    Section("playback", "▶", "Playback", "How the player plays your streams"),
+    Section("parental", "🔒", "Parental controls", "A code to lock categories, 18+ and parts of the app"),
+    Section("sports", "🏈", "Sports", "Favorite teams and game alerts"),
+    Section("other", "⋯", "Other", "Search, reminders and recording"),
+    Section("about", "ℹ", "About", "Version, updates and your account"),
 )
 
 private val SUB_TITLES = mapOf("search" to "Search", "reminders" to "Reminders", "recording" to "Recording", "epgsources" to "EPG sources")
@@ -300,7 +301,6 @@ fun SettingsScreen(
                 SRow.Action("Recording") { open("recording") },
             )
             "search" -> listOf(
-                t("prefer_voice", "Prefer voice search", S.preferVoice, "🔍 opens the microphone first (if the box has voice search)"),
                 t("search_history", "Show search history", S.searchHistory),
                 t("search_fav_first", "Show favorite channels first", S.searchFavFirst),
                 t("search_past", "Show past programs without catch-up", S.searchPastNoCatchup),
@@ -360,21 +360,33 @@ fun SettingsScreen(
                 else -> onClose()
             }
         }
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xFF020402), Color(0xFF07140A))))) {
-            Row(Modifier.fillMaxSize().padding(horizontal = 40.dp, vertical = 32.dp)) {
-                // ---- Sections ----
-                Column(Modifier.width(360.dp).fillMaxHeight().glass().padding(vertical = 18.dp)) {
-                    Text("Settings", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Black,
-                        modifier = Modifier.padding(start = 24.dp, bottom = 4.dp))
-                    val acct by produceState<com.forbiddenstreams.tv.data.AccountInfo?>(null) {
-                        value = try { Session.source?.account() } catch (e: Exception) { null }
-                    }
-                    Text(acct?.let { serviceLine(it) } ?: " ", color = FS.TextDim, fontSize = 12.sp, maxLines = 2,
-                        modifier = Modifier.padding(start = 24.dp, end = 16.dp, bottom = 12.dp))
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF07140A), Color(0xFF010201))))) {
+          Column(Modifier.fillMaxSize().padding(horizontal = 36.dp, vertical = 22.dp)) {
+            // ---- Top strip: CONTROL CENTER · service · clock ----
+            val acct by produceState<com.forbiddenstreams.tv.data.AccountInfo?>(null) {
+                value = try { Session.source?.account() } catch (e: Exception) { null }
+            }
+            var now by remember { mutableStateOf(System.currentTimeMillis()) }
+            LaunchedEffect(Unit) { while (true) { delay(20_000); now = System.currentTimeMillis() } }
+            Row(Modifier.fillMaxWidth().height(44.dp).glass().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("⚙ CONTROL CENTER", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp,
+                    modifier = Modifier.background(FS.Green, RoundedCornerShape(6.dp)).padding(horizontal = 10.dp, vertical = 3.dp))
+                Spacer(Modifier.width(14.dp))
+                Text("Forbidden Streams TV", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(14.dp))
+                Text(acct?.let { serviceLine(it) } ?: "", color = FS.TextDim, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f))
+                Text(Fmt.time(now), color = FS.Green, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.weight(1f).fillMaxWidth()) {
+                // ---- Sections: icon tiles with a live status line ----
+                Column(Modifier.width(380.dp).fillMaxHeight().glass().padding(vertical = 12.dp)) {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(horizontal = 10.dp)) {
                         itemsIndexed(SECTIONS, key = { _, s -> s.key }) { i, s ->
+                            val sel = s.key == section
                             ListPill(
-                                selected = s.key == section,
+                                selected = sel,
                                 onClick = { enter() },
                                 modifier = Modifier.fillMaxWidth().focusRequester(secReq.getValue(s.key))
                                     .onFocusChanged {
@@ -395,34 +407,50 @@ fun SettingsScreen(
                                         }
                                     },
                             ) {
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.width(32.dp), contentAlignment = Alignment.Center) { Text(s.icon, fontSize = 18.sp) }
-                                    Spacer(Modifier.width(10.dp))
-                                    Text(s.title, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(42.dp).background(if (sel) Color(0x337CFF3A) else Color(0x14FFFFFF), RoundedCornerShape(11.dp))
+                                        .border(1.dp, if (sel) FS.Green else Color(0x22FFFFFF), RoundedCornerShape(11.dp)),
+                                        contentAlignment = Alignment.Center) { Text(s.icon, fontSize = 19.sp) }
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(s.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                        Text(remember(v, s.key) { sectionSummary(context, s.key) }, color = if (sel) FS.Green else FS.TextDim,
+                                            fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
                                     if (locked(s.key)) Text("🔒", fontSize = 14.sp)
-                                    Text("›", color = FS.TextDim, fontSize = 22.sp, modifier = Modifier.padding(start = 6.dp))
                                 }
                             }
                         }
                     }
                 }
-                Spacer(Modifier.width(22.dp))
-                // ---- The section's options ----
-                Column(Modifier.weight(1f).fillMaxHeight().glass().padding(vertical = 18.dp)) {
-                    Row(Modifier.padding(start = 28.dp, end = 24.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        val main = SECTIONS.first { it.key == section }
-                        Text(if (stack.isEmpty()) main.title else "${main.title}  ›  ${SUB_TITLES[page] ?: page}",
-                            color = FS.Green, fontSize = 24.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
-                        if (!inPage) Text("OK or ▶ to change", color = FS.TextDim, fontSize = 13.sp)
+                Spacer(Modifier.width(18.dp))
+                // ---- The section's page ----
+                Column(Modifier.weight(1f).fillMaxHeight().glass().padding(top = 16.dp, bottom = 10.dp)) {
+                    val main = SECTIONS.first { it.key == section }
+                    Row(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(54.dp).background(Color(0x227CFF3A), RoundedCornerShape(14.dp))
+                            .border(1.5.dp, FS.Green, RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
+                            Text(main.icon, fontSize = 26.sp)
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        Column(Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(main.title, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Black)
+                                if (stack.isNotEmpty()) Text("  ›  ${SUB_TITLES[page] ?: page}", color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Black)
+                            }
+                            Text(main.about, color = FS.TextDim, fontSize = 14.sp, maxLines = 1)
+                        }
                     }
+                    Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp).height(1.dp).background(Color(0x337CFF3A)))
                     if (locked(section)) {
                         Text("🔒  Locked with your parental code — press OK and enter it.", color = FS.TextDim, fontSize = 17.sp,
                             modifier = Modifier.padding(28.dp))
                     } else {
                         val firstFocusable = rows.indexOfFirst { it !is SRow.Header }
                         LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+                            Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                         ) {
                             itemsIndexed(rows, key = { i, _ -> i }) { i, r ->
                                 SettingRow(
@@ -441,6 +469,12 @@ fun SettingsScreen(
                     }
                 }
             }
+            // ---- Key hints ----
+            Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (inPage) { KeyCap("OK", "change"); KeyCap("◀", "back") } else { KeyCap("OK / ▶", "open"); KeyCap("▲ ▼", "move") }
+                KeyCap("BACK", if (inPage) "back" else "close")
+            }
+          }
         }
 
         // ---- pop-ups over Settings ----
@@ -506,52 +540,75 @@ fun SettingsScreen(
 @Composable
 private fun SettingRow(r: SRow, focusable: Boolean, modifier: Modifier) {
     if (r is SRow.Header) {
-        Text(r.text, color = FS.Green, fontSize = 15.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(start = 18.dp, top = 14.dp, bottom = 4.dp))
+        // Group label with a thin neon rule.
+        Row(Modifier.fillMaxWidth().padding(start = 8.dp, top = 12.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(r.text.uppercase(), color = FS.Green, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+            Spacer(Modifier.width(10.dp))
+            Box(Modifier.weight(1f).height(1.dp).background(Color(0x337CFF3A)))
+        }
         return
     }
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(14.dp)
     val (title, sub, click) = when (r) {
         is SRow.Toggle -> Triple(r.title, r.sub, { r.change(!r.on) })
-        is SRow.Value -> Triple(r.title, r.value, r.click)
+        is SRow.Value -> Triple(r.title, null, r.click)
         is SRow.Action -> Triple(r.title, r.sub, r.click)
-        is SRow.Info -> Triple(r.title, r.value, {})
+        is SRow.Info -> Triple(r.title, null, {})
         else -> Triple("", null, {})
     }
+    var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = click,
         enabled = focusable,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(shape = shape),
         colors = ClickableSurfaceDefaults.colors(
-            containerColor = Color.Transparent, contentColor = FS.Text,
+            containerColor = Color(0x0DFFFFFF), contentColor = FS.Text,
             focusedContainerColor = Color(0xFF12301B), focusedContentColor = Color.White,
-            disabledContainerColor = Color.Transparent, disabledContentColor = FS.Text,
+            disabledContainerColor = Color(0x0DFFFFFF), disabledContentColor = FS.Text,
         ),
-        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(1.5.dp, FS.Green), shape = shape)),
+        border = ClickableSurfaceDefaults.border(
+            border = Border(BorderStroke(1.dp, Color(0x1A7CFF3A)), shape = shape),
+            focusedBorder = Border(BorderStroke(1.5.dp, FS.Green), shape = shape),
+        ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.01f),
     ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(title, fontSize = 19.sp, fontWeight = FontWeight.SemiBold,
-                    color = if (r is SRow.Action && r.danger) Color(0xFFFF7070) else Color.Unspecified)
-                if (sub != null) Text(sub, color = if (r is SRow.Value) FS.Green else FS.TextDim, fontSize = 14.sp,
-                    fontWeight = if (r is SRow.Value) FontWeight.Bold else FontWeight.Normal,
-                    fontFamily = if (r is SRow.Info) FontFamily.Monospace else null,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-            }
-            when (r) {
-                is SRow.Toggle -> Switch(r.on)
-                is SRow.Action -> Text("›", color = FS.TextDim, fontSize = 24.sp)
-                else -> {}
+        Row(Modifier.fillMaxWidth().height(androidx.compose.foundation.layout.IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+            // Neon bar on the left of the highlighted line.
+            Box(Modifier.width(4.dp).fillMaxHeight().padding(vertical = 10.dp)
+                .background(if (focused) FS.Green else Color.Transparent, RoundedCornerShape(2.dp)))
+            Row(Modifier.weight(1f).padding(start = 14.dp, end = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(title, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        color = if (r is SRow.Action && r.danger) Color(0xFFFF7070) else Color.Unspecified)
+                    if (sub != null) Text(sub, color = FS.TextDim, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp))
+                }
+                Spacer(Modifier.width(14.dp))
+                when (r) {
+                    is SRow.Toggle -> Switch(r.on)
+                    // The value in a green chip on the right.
+                    is SRow.Value -> Text(r.value, color = FS.Green, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 380.dp).background(Color(0x1F7CFF3A), RoundedCornerShape(50))
+                            .border(1.dp, Color(0x557CFF3A), RoundedCornerShape(50)).padding(horizontal = 14.dp, vertical = 5.dp))
+                    is SRow.Info -> Text(r.value, color = FS.TextDim, fontSize = 13.sp, fontFamily = FontFamily.Monospace, maxLines = 2,
+                        overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                        modifier = Modifier.widthIn(max = 460.dp))
+                    is SRow.Action -> Text("›", color = if (focused) FS.Green else FS.TextDim, fontSize = 26.sp)
+                    else -> {}
+                }
             }
         }
     }
 }
 
-/** A green on/off switch. */
+/** A green on/off switch with ON / OFF next to it. */
 @Composable
 private fun Switch(on: Boolean) {
+  Row(verticalAlignment = Alignment.CenterVertically) {
+    Text(if (on) "ON" else "OFF", color = if (on) FS.Green else FS.TextDim, fontSize = 12.sp, fontWeight = FontWeight.Black,
+        letterSpacing = 1.sp, modifier = Modifier.padding(end = 8.dp))
     Box(
         Modifier.width(52.dp).height(28.dp)
             .background(if (on) FS.GreenDeep else Color(0x33FFFFFF), RoundedCornerShape(50))
@@ -561,6 +618,7 @@ private fun Switch(on: Boolean) {
     ) {
         Box(Modifier.size(22.dp).background(if (on) FS.Green else Color(0xFFBBBBBB), RoundedCornerShape(50)))
     }
+  }
 }
 
 /**
@@ -630,5 +688,36 @@ fun TextInputDialog(title: String, hint: String, button: String = "Add", onDone:
                 Pill("Cancel", selected = false, onClick = onCancel)
             }
         }
+    }
+}
+
+
+/** The live status line under each section on the left (Nov 15 "make it unique"). */
+private fun sectionSummary(context: Context, key: String): String {
+    val S = AppSettings
+    fun on(b: Boolean) = if (b) "on" else "off"
+    return when (key) {
+        "general" -> "Boot start ${on(S.autoStartBoot)} · PiP ${on(S.pipOnHome)}"
+        "playlists" -> "${Session.liveAll?.size ?: 0} channels · " + (if (S.playlistEveryH == 0) "manual" else "every ${S.playlistEveryH} h")
+        "epg" -> "${S.epgSources().size} source${if (S.epgSources().size == 1) "" else "s"} · keeps ${S.epgPastDays} days"
+        "appearance" -> (if (S.clock24) "24-hour" else "12-hour") + " clock · " + (if (S.showClock) "shown" else "hidden")
+        "playback" -> "${S.bufferSize} buffer · ${S.videoDecoder}" + if (S.externalPlayer) " · external" else ""
+        "parental" -> if (CategoryPrefs.pin(context) != null) "Code on" else "Code off"
+        "sports" -> "${com.forbiddenstreams.tv.sports.FavTeams.all(context).size} favorite teams · alert ${S.favAlertMin} min"
+        "other" -> "Search · Reminders · Recording"
+        "about" -> try { "Version " + context.packageManager.getPackageInfo(context.packageName, 0).versionName } catch (e: Exception) { "" }
+        else -> ""
+    }
+}
+
+/** A key cap for the hint bar at the bottom. */
+@Composable
+private fun KeyCap(key: String, what: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(key, color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Black,
+            modifier = Modifier.background(FS.Green, RoundedCornerShape(5.dp)).padding(horizontal = 7.dp, vertical = 1.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(what, color = FS.TextDim, fontSize = 13.sp)
+        Spacer(Modifier.width(18.dp))
     }
 }

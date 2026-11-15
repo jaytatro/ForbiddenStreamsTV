@@ -91,7 +91,8 @@ object AppSettings {
     fun removeEpgSource(url: String) = set("epg_sources", epgSources().filter { it != url }.joinToString("\u0001"))
 
     // ---- Other › Search ----
-    val preferVoice get() = b("prefer_voice", false)
+    /** Voice search was removed from Settings (Nov 15). */
+    val preferVoice get() = false
     val searchPastNoCatchup get() = b("search_past", false)
     val searchHistory get() = b("search_history", true)
     val searchFavFirst get() = b("search_fav_first", true)
