@@ -688,14 +688,18 @@ fun openHighlights(context: android.content.Context, league: League, g: Game) {
                     val pkg = Highlights.tizenTube(context)
                     if (pkg != null && Highlights.openInTizenTube(context, pkg, id)) return@launch
                     toast(context, "TizenTube isn't installed — playing here")
-                    Highlights.playing = Highlight(id, "${g.away.displayName} vs ${g.home.displayName}", q); return@launch
+                    Highlights.playing = Highlight(id, "${g.away.displayName} vs ${g.home.displayName}", q,
+                        g.away.displayName, g.home.displayName, g.away.logo, g.home.logo, g.away.score?.toString(), g.home.score?.toString(),
+                        league.label, league.icon, java.text.SimpleDateFormat("EEEE, MMMM d", java.util.Locale.US).format(java.util.Date(g.start))); return@launch
                 }
                 "YouTube app" -> {
                     val ok = tryStart(context, android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("vnd.youtube:$id"))) ||
                         tryStart(context, android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=$id")))
                     if (ok) return@launch
                 }
-                else -> { Highlights.playing = Highlight(id, "${g.away.displayName} vs ${g.home.displayName}", q); return@launch }
+                else -> { Highlights.playing = Highlight(id, "${g.away.displayName} vs ${g.home.displayName}", q,
+                        g.away.displayName, g.home.displayName, g.away.logo, g.home.logo, g.away.score?.toString(), g.home.score?.toString(),
+                        league.label, league.icon, java.text.SimpleDateFormat("EEEE, MMMM d", java.util.Locale.US).format(java.util.Date(g.start))); return@launch }
             }
         }
         val ok = tryStart(context, android.content.Intent(android.content.Intent.ACTION_SEARCH)

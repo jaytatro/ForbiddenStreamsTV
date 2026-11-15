@@ -16,6 +16,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -42,7 +45,12 @@ import com.forbiddenstreams.tv.data.AppSettings
 import kotlinx.coroutines.delay
 
 /** A YouTube video playing inside the app (Nov 15: game highlights without leaving Forbidden Streams). */
-data class Highlight(val videoId: String, val title: String, val search: String)
+data class Highlight(
+    val videoId: String, val title: String, val search: String,
+    /** For the loading screen (Nov 15): both teams, their logos and the final score. */
+    val away: String = "", val home: String = "", val awayLogo: String? = null, val homeLogo: String? = null,
+    val awayScore: String? = null, val homeScore: String? = null, val league: String = "", val icon: String = "", val date: String = "",
+)
 
 object Highlights {
     /** Set to play a highlight full screen; shown by [HighlightPlayerHost] in the app shell. */
@@ -82,6 +90,9 @@ fun HighlightPlayerHost() {
         com.forbiddenstreams.tv.player.PlayerHolder.pause()
         context.startActivity(android.content.Intent(context, HighlightActivity::class.java)
             .putExtra("id", h.videoId).putExtra("title", h.title)
+            .putExtra("away", h.away).putExtra("home", h.home).putExtra("awayLogo", h.awayLogo).putExtra("homeLogo", h.homeLogo)
+            .putExtra("awayScore", h.awayScore).putExtra("homeScore", h.homeScore)
+            .putExtra("league", h.league).putExtra("icon", h.icon).putExtra("date", h.date)
             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 }
@@ -89,6 +100,7 @@ fun HighlightPlayerHost() {
 class HighlightActivity : androidx.activity.ComponentActivity() {
     private var web: WebView? = null
     private var hint: android.widget.TextView? = null
+    private var cover: android.view.View? = null
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val hideHint = Runnable { hint?.visibility = android.view.View.GONE }
 
@@ -130,6 +142,8 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
                     }
                 }
                 @JavascriptInterface fun onEnded() { post { finish() } }
+                // The video is playing: take the teams screen away.
+                @JavascriptInterface fun onPlaying() { post { cover?.visibility = android.view.View.GONE } }
             }, "FS")
         }
         root.addView(w, android.widget.FrameLayout.LayoutParams(-1, -1))
@@ -146,6 +160,24 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
         root.addView(hint, android.widget.FrameLayout.LayoutParams(-2, -2).apply {
             leftMargin = (28 * d).toInt(); topMargin = (28 * d).toInt()
         })
+        // Loading screen with the two teams (instead of YouTube's grey play-button screen) until the video plays.
+        val c = androidx.compose.ui.platform.ComposeView(this).apply {
+            setContent {
+                HighlightCover(
+                    away = intent.getStringExtra("away") ?: "", home = intent.getStringExtra("home") ?: "",
+                    awayLogo = intent.getStringExtra("awayLogo"), homeLogo = intent.getStringExtra("homeLogo"),
+                    awayScore = intent.getStringExtra("awayScore"), homeScore = intent.getStringExtra("homeScore"),
+                    league = intent.getStringExtra("league") ?: "", icon = intent.getStringExtra("icon") ?: "",
+                    date = intent.getStringExtra("date") ?: "",
+                )
+            }
+        }
+        root.addView(c, android.widget.FrameLayout.LayoutParams(-1, -1))
+        cover = c
+        hint?.bringToFront()
+        // Still not playing after 12 s (autoplay blocked on some boxes): show the video so OK can start it.
+        handler.postDelayed({ if (cover?.visibility == android.view.View.VISIBLE) { js("if(window.p){p.playVideo();}") } }, 6_000)
+        handler.postDelayed({ cover?.visibility = android.view.View.GONE }, 12_000)
         setContentView(root)
         web = w
         val html = """
@@ -161,7 +193,7 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
                   events:{
                     onReady:function(e){e.target.playVideo();},
                     onError:function(e){FS.onError(e.data);},
-                    onStateChange:function(e){ if(e.data==0) FS.onEnded(); }
+                    onStateChange:function(e){ if(e.data==0) FS.onEnded(); if(e.data==1) FS.onPlaying(); }
                   }});
               }
             </script></body></html>
@@ -194,9 +226,54 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
     }
 
     override fun onDestroy() {
-        handler.removeCallbacks(hideHint)
+        handler.removeCallbacksAndMessages(null)
         try { web?.destroy() } catch (e: Exception) { }
         web = null
         super.onDestroy()
+    }
+}
+
+
+/** The loading screen: league, both teams with logos and the final score, "Loading highlights…". */
+@Composable
+private fun HighlightCover(
+    away: String, home: String, awayLogo: String?, homeLogo: String?, awayScore: String?, homeScore: String?,
+    league: String, icon: String, date: String,
+) {
+    val pulse = androidx.compose.animation.core.rememberInfiniteTransition(label = "l").animateFloat(
+        0.35f, 1f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(800),
+            androidx.compose.animation.core.RepeatMode.Reverse), label = "a")
+    androidx.compose.foundation.layout.Column(
+        Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFF0A1F10), Color.Black))),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+    ) {
+        Text("$icon  ${league.uppercase()}  ·  GAME HIGHLIGHTS", color = FS.Green, fontSize = 18.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp)
+        if (date.isNotBlank()) Text(date, color = FS.TextDim, fontSize = 15.sp, modifier = Modifier.padding(top = 4.dp))
+        Spacer(Modifier.height(36.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            CoverTeam(away, awayLogo)
+            androidx.compose.foundation.layout.Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 48.dp)) {
+                if (awayScore != null || homeScore != null) {
+                    Text("${awayScore ?: 0}  –  ${homeScore ?: 0}", color = Color.White, fontSize = 64.sp, fontWeight = FontWeight.Black,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                    Text("FINAL", color = FS.TextDim, fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
+                } else Text("VS", color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.Black)
+            }
+            CoverTeam(home, homeLogo)
+        }
+        Spacer(Modifier.height(44.dp))
+        Text("Loading highlights…", color = FS.Green, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.alpha(pulse.value))
+    }
+}
+
+@Composable
+private fun CoverTeam(name: String, logo: String?) {
+    androidx.compose.foundation.layout.Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(300.dp)) {
+        Box(Modifier.size(150.dp), contentAlignment = Alignment.Center) { NetImage(logo, Modifier.fillMaxSize()) }
+        Spacer(Modifier.height(14.dp))
+        Text(name, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 2,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
     }
 }
