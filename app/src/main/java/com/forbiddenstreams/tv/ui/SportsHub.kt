@@ -149,6 +149,7 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
     fun setOrder() { SportOrder.set(context, order.toList()); moving = null }
     val firstGameReq = remember { FocusRequester() }
     val todayReq = remember { FocusRequester() }
+    val redZoneReq = remember { FocusRequester() }
     fun focusRail() { scope.launch { repeat(6) { delay(50); try { railReq[league]?.requestFocus(); return@launch } catch (e: Exception) { } } } }
     fun focusGames(): Boolean = try { firstGameReq.requestFocus(); true } catch (e: Exception) { false }
 
@@ -258,18 +259,23 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                     Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) {
                         val shape = RoundedCornerShape(14.dp)
                         Surface(
+                            // Nov 15: plays the "NFL REDZONE SUNDAY" channel straight away (no picking).
                             onClick = {
-                                val rz = Session.liveAll.orEmpty().filter { c ->
-                                    val n = c.name.lowercase().replace(Regex("[^a-z0-9]+"), " ")
-                                    n.contains("redzone") || n.contains("red zone")
-                                }.sortedBy { it.name.length }
-                                when (rz.size) {
-                                    0 -> toast(context, "No RedZone channel in your playlist")
-                                    1 -> playChannels(context, rz, 0)
-                                    else -> redZone = rz
-                                }
+                                fun norm(x: String) = x.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+                                val all = Session.liveAll.orEmpty()
+                                val ch = all.firstOrNull { norm(it.name) == "nfl redzone sunday" }
+                                    ?: all.filter { norm(it.name).contains("nfl redzone sunday") }.minByOrNull { it.name.length }
+                                if (ch != null) playChannels(context, listOf(ch), 0)
+                                else toast(context, "\"NFL REDZONE SUNDAY\" isn't in your playlist")
                             },
-                            modifier = Modifier.width(280.dp).height(58.dp),
+                            modifier = Modifier.width(280.dp).height(58.dp).focusRequester(redZoneReq)
+                                .onPreviewKeyEvent { ev ->
+                                    // ▲ from RedZone → TODAY.
+                                    if (ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                        ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP) {
+                                        try { todayReq.requestFocus() } catch (e: Exception) { }; true
+                                    } else false
+                                },
                             shape = ClickableSurfaceDefaults.shape(shape = shape),
                             colors = ClickableSurfaceDefaults.colors(
                                 containerColor = Color(0xFF8E0E0E), contentColor = Color.White,
@@ -321,7 +327,9 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                                         // ▲ on the top row → always TODAY on the date bar (Nov 15).
                                         if (i < 2 && ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
                                             ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP) {
-                                            try { todayReq.requestFocus() } catch (e: Exception) { }
+                                            // NFL: ▲ goes to RedZone first, then ▲ again to TODAY.
+                                            try { (if (league == League.NFL) redZoneReq else todayReq).requestFocus() }
+                                            catch (e: Exception) { try { todayReq.requestFocus() } catch (e2: Exception) { } }
                                             return@onPreviewKeyEvent true
                                         }
                                         if (i % 2 == 0 && ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
