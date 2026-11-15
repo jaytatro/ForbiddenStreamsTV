@@ -1,6 +1,7 @@
 package com.forbiddenstreams.tv.ui
 
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -294,39 +295,88 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
     if (favOpen) FavoriteTeamsDialog(onClose = { favOpen = false; focusRail() })
 }
 
-/** A thin scoreboard ticker of every game being played right now, scrolling right to left. */
+/**
+ * Scoreboard ticker (Nov 15): one sport at a time for 5 seconds, then the next sport with live games
+ * (in your Sports order). Each game shows both team logos and the score; scrolls if the sport has more
+ * games than fit.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Ticker(today: Map<League, List<Game>>, order: List<League>) {
-    val live = order.flatMap { l -> today[l].orEmpty().filter { it.isLive }.map { l to it } }
+    val liveBy = order.mapNotNull { l -> today[l].orEmpty().filter { it.isLive }.takeIf { it.isNotEmpty() }?.let { l to it } }
     val pulse = rememberInfiniteTransition(label = "pulse").animateFloat(0.35f, 1f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "a")
+    var idx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    val leagues = liveBy.map { it.first }
+    LaunchedEffect(leagues) {
+        while (true) { delay(5_000); if (leagues.size > 1) idx = (idx + 1) % leagues.size }
+    }
+    val cur = liveBy.getOrNull(idx % liveBy.size.coerceAtLeast(1))
     Row(
-        Modifier.fillMaxWidth().height(34.dp).background(Color(0xFF070D08))
+        Modifier.fillMaxWidth().height(40.dp).background(Color(0xFF070D08))
             .border(BorderStroke(1.dp, Color(0xFF16301C))),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.fillMaxHeight().background(if (live.isNotEmpty()) LiveRed else FS.GreenDeep).padding(horizontal = 14.dp),
+        Box(Modifier.fillMaxHeight().background(if (cur != null) LiveRed else FS.GreenDeep).padding(horizontal = 14.dp),
             contentAlignment = Alignment.Center) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(8.dp).alpha(if (live.isNotEmpty()) pulse.value else 1f).background(Color.White, RoundedCornerShape(50)))
+                Box(Modifier.size(8.dp).alpha(if (cur != null) pulse.value else 1f).background(Color.White, RoundedCornerShape(50)))
                 Spacer(Modifier.width(8.dp))
-                Text(if (live.isNotEmpty()) "LIVE" else "SCORES", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                Text(if (cur != null) "LIVE" else "SCORES", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
             }
         }
-        val text = if (live.isEmpty()) {
+        if (cur == null) {
             val next = SPORTS_ORDER.flatMap { l -> today[l].orEmpty().filter { !it.isFinal && !it.isLive }.map { l to it } }.minByOrNull { it.second.start }
-            next?.let { (l, g) -> "No games live right now   ·   Next up: ${l.icon} ${g.away.abbreviation} @ ${g.home.abbreviation}  ${Fmt.time(g.start)}" }
-                ?: "No games live right now"
-        } else live.joinToString("        ") { (l, g) ->
-            "${l.icon} ${g.away.abbreviation} ${g.away.score ?: 0}  –  ${g.home.score ?: 0} ${g.home.abbreviation}   ${g.detail}"
+            Row(Modifier.weight(1f).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("No games live right now", color = Led, fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                next?.let { (l, g) ->
+                    Text("   ·   Next up: ${l.icon} ", color = Led, fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    TickerLogo(g.away.logo); Text(" ${g.away.abbreviation} @ ${g.home.abbreviation} ", color = Led, fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    TickerLogo(g.home.logo); Text("  ${Fmt.time(g.start)}", color = Led, fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                }
+            }
+        } else {
+            androidx.compose.animation.AnimatedContent(
+                targetState = cur.first,
+                transitionSpec = {
+                    (androidx.compose.animation.slideInVertically { it } + androidx.compose.animation.fadeIn()) togetherWith
+                        (androidx.compose.animation.slideOutVertically { -it } + androidx.compose.animation.fadeOut())
+                },
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                label = "ticker",
+            ) { l ->
+                val games = liveBy.firstOrNull { it.first == l }?.second.orEmpty()
+                Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                    // The sport, then its games.
+                    Row(Modifier.fillMaxHeight().background(Color(0xFF0E1F12)).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(l.icon, fontSize = 16.sp)
+                        Spacer(Modifier.width(6.dp))
+                        Text(railName(l).uppercase(), color = FS.Green, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp, maxLines = 1)
+                        if (leagues.size > 1) Text("  ${leagues.indexOf(l) + 1}/${leagues.size}", color = FS.TextDim, fontSize = 11.sp)
+                    }
+                    Row(
+                        Modifier.weight(1f).padding(start = 14.dp).basicMarquee(iterations = Int.MAX_VALUE, velocity = 45.dp, initialDelayMillis = 1_200),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        games.forEach { g ->
+                            TickerLogo(g.away.logo)
+                            Text(" ${g.away.abbreviation} ${g.away.score ?: 0}", color = Led, fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            Text("  –  ", color = FS.TextDim, fontSize = 15.sp)
+                            Text("${g.home.score ?: 0} ${g.home.abbreviation} ", color = Led, fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                            TickerLogo(g.home.logo)
+                            Text("  ${g.detail}", color = LiveRed, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Spacer(Modifier.width(30.dp))
+                        }
+                    }
+                }
+            }
         }
-        Text(
-            text, color = Led, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier.weight(1f).padding(horizontal = 14.dp)
-                .then(if (live.isNotEmpty()) Modifier.basicMarquee(iterations = Int.MAX_VALUE, velocity = 60.dp) else Modifier),
-        )
     }
+}
+
+@Composable
+private fun TickerLogo(url: String?) {
+    Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { NetImage(url, Modifier.fillMaxSize()) }
 }
 
 /** One league on the rail: icon, name, and today's live / total counts. */
