@@ -254,8 +254,8 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                 if (moving != null) Text("Moving ${moving!!.icon} ${railName(moving!!)}  —  ▲▼ to move it, OK to set it here",
                     color = Color(0xFFFFC83D), fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
                 DateBar(day, week, todayReq, onPick = { day = it })
-                // Nov 15: NFL RedZone — a box with the NFL logo, centered above the games (under TODAY).
-                if (league == League.NFL) {
+                // Nov 15: NFL RedZone — a box with the NFL logo, centered, part of the games list (scrolls with it).
+                val redZoneBox: @Composable () -> Unit = {
                     Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) {
                         val shape = RoundedCornerShape(14.dp)
                         Surface(
@@ -305,6 +305,7 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                         { if (it.isLive) 0 else if (it.isFinal) 2 else 1 }, { it.start },
                     ))
                 }
+                if (league == League.NFL && (week == null || sorted.isEmpty())) redZoneBox()
                 when {
                     week == null -> LoadingBox("Loading ${league.label}")
                     sorted.isEmpty() -> MessageBox(if (day == dayKeyOffset(0)) "No games today" else "No games this day",
@@ -316,6 +317,7 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
+                        if (league == League.NFL) item(key = "redzone", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) { redZoneBox() }
                         items(sorted.size, key = { sorted[it].id }) { i ->
                             val g = sorted[i]
                             ScoreCard(
