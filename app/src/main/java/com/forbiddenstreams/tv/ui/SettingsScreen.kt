@@ -173,6 +173,9 @@ fun SettingsScreen(
                 t("last_channel", "Turn on last channel on app start", S.lastChannelOnStart),
                 t("pip", "Switch to picture-in-picture mode on press Home", S.pipOnHome, "Android 8 and newer"),
                 t("confirm_exit", "Confirm exit by second press Back", S.confirmExit),
+                SRow.Action("Clear cache", "Pictures, logos and temporary files · ${cacheSizeText(context)} · keeps your login and settings") {
+                    clearCache(context); S.set("x", 0); toast(context, "Cache cleared")
+                },
             )
             "playlists" -> {
                 val login = Prefs(context).loadLogin()
@@ -726,4 +729,34 @@ private fun KeyCap(key: String, what: String) {
         Text(what, color = FS.TextDim, fontSize = 13.sp)
         Spacer(Modifier.width(18.dp))
     }
+}
+
+
+private fun dirSize(f: java.io.File?): Long = try {
+    if (f == null || !f.exists()) 0L else if (f.isFile) f.length() else f.listFiles()?.sumOf { dirSize(it) } ?: 0L
+} catch (e: Exception) { 0L }
+
+/** How much the cache holds now ("84 MB"). */
+private fun cacheSizeText(context: Context): String {
+    val b = dirSize(context.cacheDir) + dirSize(context.externalCacheDir) + dirSize(java.io.File(context.dataDir(), "app_webview"))
+    return when {
+        b >= 1L shl 30 -> "%.1f GB".format(b / (1L shl 30).toDouble())
+        b >= 1L shl 20 -> "%.0f MB".format(b / (1L shl 20).toDouble())
+        else -> "${b / 1024} KB"
+    }
+}
+
+private fun Context.dataDir(): java.io.File = filesDir.parentFile ?: filesDir
+
+/**
+ * Settings › General › Clear cache (Nov 15): picture / logo cache, temporary files and the highlights
+ * player's web cache. Login, settings, favorites, recordings and the saved guide are kept.
+ */
+private fun clearCache(context: Context) {
+    try { coil.Coil.imageLoader(context).memoryCache?.clear() } catch (e: Exception) { }
+    try { coil.Coil.imageLoader(context).diskCache?.clear() } catch (e: Exception) { }
+    try { context.cacheDir.listFiles()?.forEach { it.deleteRecursively() } } catch (e: Exception) { }
+    try { context.externalCacheDir?.listFiles()?.forEach { it.deleteRecursively() } } catch (e: Exception) { }
+    try { android.webkit.WebView(context).apply { clearCache(true); destroy() } } catch (e: Exception) { }
+    try { android.webkit.WebStorage.getInstance().deleteAllData() } catch (e: Exception) { }
 }
