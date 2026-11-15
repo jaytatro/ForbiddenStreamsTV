@@ -69,6 +69,15 @@
             android:screenOrientation="landscape"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize|uiMode" />
 
+        <!-- Game highlights (YouTube) playing inside the app, Nov 15. -->
+        <activity
+            android:name=".ui.HighlightActivity"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.ForbiddenStreams"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize|uiMode" />
+
         <receiver android:name=".reminders.ReminderReceiver" android:exported="false" />
         <receiver android:name=".recording.RecordAlarmReceiver" android:exported="false" />
         <!-- Settings › General › Auto start app on boot (Nov 15). -->
