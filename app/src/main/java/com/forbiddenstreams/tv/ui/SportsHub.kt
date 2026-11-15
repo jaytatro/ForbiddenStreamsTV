@@ -9,6 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -74,6 +75,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -307,8 +309,14 @@ private fun Ticker(today: Map<League, List<Game>>, order: List<League>) {
     val pulse = rememberInfiniteTransition(label = "pulse").animateFloat(0.35f, 1f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "a")
     var idx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     val leagues = liveBy.map { it.first }
-    LaunchedEffect(leagues) {
-        while (true) { delay(10_000); if (leagues.size > 1) idx = (idx + 1) % leagues.size }
+    // Nov 15: a sport stays at least 10 s, and longer if its games scroll — the next sport only comes
+    // once every game has been shown (the row reports when it reached its end: doneFor).
+    var doneFor by remember { mutableStateOf<League?>(null) }
+    LaunchedEffect(idx, leagues) {
+        val l = leagues.getOrNull(idx % leagues.size.coerceAtLeast(1)) ?: return@LaunchedEffect
+        delay(10_000)
+        androidx.compose.runtime.snapshotFlow { doneFor }.first { it == l }
+        if (leagues.size > 1) idx = (idx + 1) % leagues.size
     }
     val cur = liveBy.getOrNull(idx % liveBy.size.coerceAtLeast(1))
     Row(
@@ -354,8 +362,26 @@ private fun Ticker(today: Map<League, List<Game>>, order: List<League>) {
                         Text(railName(l).uppercase(), color = FS.Green, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp, maxLines = 1)
                         if (leagues.size > 1) Text("  ${leagues.indexOf(l) + 1}/${leagues.size}", color = FS.TextDim, fontSize = 11.sp)
                     }
+                    // Scrolls slowly from the first game to the last (only when they don't all fit), then holds.
+                    val scroll = androidx.compose.foundation.rememberScrollState()
+                    val density = androidx.compose.ui.platform.LocalDensity.current
+                    LaunchedEffect(l) {
+                        while (true) {
+                            scroll.scrollTo(0)
+                            if (doneFor == l) doneFor = null
+                            delay(1_500)
+                            val max = scroll.maxValue
+                            if (max > 0 && max != Int.MAX_VALUE) {
+                                val pxPerSec = with(density) { 32.dp.toPx() }
+                                scroll.animateScrollTo(max, tween((max / pxPerSec * 1000).toInt().coerceAtLeast(500), easing = androidx.compose.animation.core.LinearEasing))
+                                delay(1_500) // a moment on the last game
+                            }
+                            doneFor = l
+                            delay(if (max > 0) 2_000 else 60_000)
+                        }
+                    }
                     Row(
-                        Modifier.weight(1f).padding(start = 14.dp).basicMarquee(iterations = Int.MAX_VALUE, velocity = 45.dp, initialDelayMillis = 1_200),
+                        Modifier.weight(1f).padding(start = 14.dp, end = 14.dp).horizontalScroll(scroll, enabled = false),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         games.forEach { g ->
