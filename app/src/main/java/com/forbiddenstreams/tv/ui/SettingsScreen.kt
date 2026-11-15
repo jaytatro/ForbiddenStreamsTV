@@ -76,14 +76,13 @@ private val SECTIONS = listOf(
     Section("epg", "🗓", "EPG"),
     Section("appearance", "🎨", "Appearance"),
     Section("playback", "▶", "Playback"),
-    Section("remote", "🎮", "Remote control"),
     Section("parental", "🔒", "Parental controls"),
     Section("sports", "🏈", "Sports"),
     Section("other", "⋯", "Other"),
     Section("about", "ℹ", "About"),
 )
 
-private val SUB_TITLES = mapOf("search" to "Search", "reminders" to "Reminders", "recording" to "Recording")
+private val SUB_TITLES = mapOf("search" to "Search", "reminders" to "Reminders", "recording" to "Recording", "epgsources" to "EPG sources")
 
 /** User-Agents the provider can be asked with (Settings › General › User-Agent). */
 private val USER_AGENTS = listOf(
@@ -130,12 +129,16 @@ fun SettingsScreen(
     var pinFlow by remember { mutableStateOf<String?>(null) } // parental: "set", "off"
     var firstCode by remember { mutableStateOf<String?>(null) }
     var hiddenList by remember { mutableStateOf(false) }
+    var addSource by remember { mutableStateOf(false) }
+
 
     val secReq = remember { SECTIONS.associate { it.key to FocusRequester() } }
     val firstRowReq = remember { FocusRequester() }
 
     fun focusSection() { scope.launch { repeat(6) { delay(40); try { secReq[section]?.requestFocus(); return@launch } catch (e: Exception) { } } } }
     fun focusRows() { scope.launch { repeat(8) { delay(50); try { firstRowReq.requestFocus(); return@launch } catch (e: Exception) { } } } }
+    /** Opens a page inside a section (Other › Search …) with the cursor on its first line. */
+    fun open(sub: String) { stack += sub; inPage = true; focusRows() }
     fun withPin(flag: Boolean, then: () -> Unit) {
         if (pinNeeded(context, flag)) { pinTitle = "Enter your parental code"; pinFor = then } else then()
     }
@@ -166,14 +169,6 @@ fun SettingsScreen(
                 t("last_channel", "Turn on last channel on app start", S.lastChannelOnStart),
                 t("pip", "Switch to picture-in-picture mode on press Home", S.pipOnHome, "Android 8 and newer"),
                 t("confirm_exit", "Confirm exit by second press Back", S.confirmExit),
-                SRow.Value("User-Agent", USER_AGENTS.firstOrNull { it.second == Http.userAgent }?.first ?: Http.userAgent) {
-                    pick("User-Agent", USER_AGENTS.map { it.first }) { name ->
-                        val ua = USER_AGENTS.first { it.first == name }.second
-                        Http.userAgent = ua; Prefs(context).userAgent = ua
-                        PlayerHolder.settingsChanged()
-                        toast(context, "User-Agent: $name · if channels stop loading, switch back")
-                    }
-                },
             )
             "playlists" -> {
                 val login = Prefs(context).loadLogin()
@@ -194,10 +189,10 @@ fun SettingsScreen(
                         pick("Update interval, hours", listOf("Off", "6", "12", "24", "48")) { S.set("playlist_every", it.toIntOrNull() ?: 0) }
                     },
                     t("playlist_on_start", "Update on app start", S.playlistOnStart),
-                    SRow.Action("Log out", "Sign in with another playlist", danger = true) { onLogout() },
                 )
             }
             "epg" -> listOf(
+                SRow.Action("EPG sources", if (S.epgSources().isEmpty()) "Only your provider's guide" else "${S.epgSources().size} added") { open("epgsources") },
                 SRow.Value("Past days to keep EPG", "${S.epgPastDays}") {
                     pick("Past days to keep EPG", (1..7).map { "$it" }) { S.set("epg_days", it.toInt()) }
                 },
@@ -207,17 +202,24 @@ fun SettingsScreen(
                     pick("Update interval, hours", listOf("1", "3", "6", "12", "24")) { S.set("epg_every", it.toInt()) }
                 },
                 t("epg_on_start", "Update on app start", S.epgOnStart),
-                SRow.Action("Update EPG", "Earlier days' show names for catch-up channels") {
-                    Session.importPastGuide(context, force = true); toast(context, "Updating the EPG… (can take a minute)")
+                SRow.Action("Update EPG", "Your provider's guide and your EPG sources") {
+                    Session.importPastGuide(context, force = true); Session.loadEpgSources(context, force = true)
+                    toast(context, "Updating the EPG… (can take a minute)")
                 },
                 SRow.Action("Clear EPG", danger = true) { Session.clearEpg(context); toast(context, "EPG cleared") },
                 SRow.Info("Latest update status", S.epgStatus),
             )
+            "epgsources" -> listOf<SRow>(
+                SRow.Info("Your provider's guide", "Always used"),
+            ) + S.epgSources().map { u ->
+                SRow.Action(u, "OK to remove") {
+                    pick("Remove this EPG source?", listOf("Remove", "Keep")) { if (it == "Remove") { S.removeEpgSource(u); Session.loadEpgSources(context, force = true) } }
+                }
+            } + listOf(SRow.Action("➕  Add EPG source", "An XMLTV address (.xml or .xml.gz)") { addSource = true })
             "appearance" -> listOf(
                 t("clock24", "24-hour clock", S.clock24),
                 t("show_clock", "Show clock in the top bar", S.showClock),
                 SRow.Header("Home screen"),
-                t("home_keep", "Keep watching row", S.homeKeepWatching),
                 t("home_recent", "Continue watching · Live TV row", S.homeRecentChannels),
                 t("home_games", "Live games row", S.homeLiveGames),
             )
@@ -236,23 +238,22 @@ fun SettingsScreen(
                 },
                 t("surround", "Select surround audio track by default", S.surroundFirst) { playbackChanged() },
                 t("passthrough", "Audio passthrough", S.passthrough, "Dolby / DTS straight to your TV or receiver") { playbackChanged() },
-                SRow.Value("Use external player", if (S.externalPlayer) "Yes" else "No") {
-                    pick("Use external player", listOf("No", "Yes")) { S.set("external", it == "Yes") }
+                SRow.Value("Use external player", if (!S.externalPlayer) "No" else S.externalName.ifBlank { "Ask each time" }) {
+                    // Nov 15: the players installed on this box.
+                    val players = installedPlayers(context)
+                    pick(if (players.isEmpty()) "No other video players found on this box" else "Use external player",
+                        listOf("No (built-in player)") + players.map { it.first } + listOf("Ask each time")) { name ->
+                        when (name) {
+                            "No (built-in player)" -> S.set("external", false)
+                            "Ask each time" -> { S.set("external_pkg", ""); S.set("external_name", ""); S.set("external", true) }
+                            else -> players.firstOrNull { it.first == name }?.let { (n, pkg) ->
+                                S.set("external_pkg", pkg); S.set("external_name", n); S.set("external", true)
+                            }
+                        }
+                    }
                 },
                 SRow.Value("Skip steps", "${S.skipSec} seconds") {
                     pick("Skip steps (◀ ▶ in movies, recordings, start over)", listOf("5", "10", "15", "30", "60")) { S.set("skip", it.toInt()) }
-                },
-            )
-            "remote" -> listOf(
-                SRow.Value("▲ ▼ change channel", if (S.channelKeysReversed) "Reversed (▲ = next)" else "Normal (▼ = next)") {
-                    pick("▲ ▼ change channel", listOf("Normal (▼ = next)", "Reversed (▲ = next)")) { S.set("ch_reversed", it.startsWith("Reversed")) }
-                },
-                t("number_keys", "Number keys change channel", S.numberKeys, "Type a channel number while watching"),
-                SRow.Value("◀ in the TV Guide", if (ButtonPrefs.leftOpensCategories) "Opens the categories" else "One show back") {
-                    pick("◀ in the TV Guide", listOf("Opens the categories", "One show back")) { ButtonPrefs.setLeft(context, it.startsWith("Opens")); S.set("x", 0) }
-                },
-                SRow.Value("Hold ◀ ▶ to scroll the guide after", "${ButtonPrefs.holdMs / 1000.0} s".replace(".0 s", " s")) {
-                    pick("Hold ◀ ▶ to scroll the guide after", listOf("1 s", "2 s", "3 s")) { ButtonPrefs.setHold(context, it.take(1).toInt() * 1000); S.set("x", 0) }
                 },
             )
             "parental" -> {
@@ -284,18 +285,22 @@ fun SettingsScreen(
             }
             "sports" -> listOf(
                 SRow.Action("Favorite teams", "Their games go first · alerts before they start") { onFavTeams() },
-                t("fav_alerts", "Alert 1 minute before a favorite team's game", S.favGameAlerts),
+                t("fav_alerts", "Alert before a favorite team's game", S.favGameAlerts),
+                SRow.Value("Alert pop-up time", "${S.favAlertMin} minute${if (S.favAlertMin == 1) "" else "s"} before") {
+                    pick("Alert pop-up time", (1..5).map { "$it minute${if (it == 1) "" else "s"} before" }) { S.set("fav_alert_min", it.take(1).toInt()) }
+                },
                 SRow.Info("Re-order sports", "In the Sports tab, hold OK on a sport and move it ▲ ▼"),
             )
             "other" -> listOf(
-                SRow.Action("Search") { stack += "search" },
-                SRow.Action("Reminders") { stack += "reminders" },
-                SRow.Action("Recording") { stack += "recording" },
-                SRow.Action("Last crash report") { onCrash() },
+                SRow.Action("Search") { open("search") },
+                SRow.Action("Reminders") { open("reminders") },
+                SRow.Action("Recording") { open("recording") },
             )
             "search" -> listOf(
+                t("prefer_voice", "Prefer voice search", S.preferVoice, "🔍 opens the microphone first (if the box has voice search)"),
                 t("search_history", "Show search history", S.searchHistory),
                 t("search_fav_first", "Show favorite channels first", S.searchFavFirst),
+                t("search_past", "Show past programs without catch-up", S.searchPastNoCatchup),
                 t("search_stay", "Stay on search screen when switching channels", S.searchStay),
                 SRow.Action("Clear search history") { S.clearSearches(); toast(context, "Search history cleared") },
             )
@@ -309,11 +314,20 @@ fun SettingsScreen(
                 SRow.Value("Default action", S.reminderAction) {
                     pick("When the pop-up times out", listOf("Watch", "Dismiss")) { S.set("remind_action", it) }
                 },
+                t("remind_wake", "Wake up from sleep mode", S.reminderWake, "May not work on all devices"),
             )
             "recording" -> {
-                val dir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_MOVIES) ?: context.filesDir
+                // Every storage the box has: its own, plus USB drives / SD cards.
+                val dirs = context.getExternalFilesDirs(android.os.Environment.DIRECTORY_MOVIES).filterNotNull()
+                val cur = S.recFolder.ifBlank { (dirs.firstOrNull() ?: context.filesDir).absolutePath }
                 listOf(
-                    SRow.Info("Recordings folder", dir.absolutePath),
+                    SRow.Value("Recordings folder", cur) {
+                        val names = dirs.mapIndexed { i, d -> (if (i == 0) "Box storage" else "USB / SD card ${i}") + "  ·  " + d.absolutePath }
+                        pick("Recordings folder", names) { n ->
+                            val d = dirs[names.indexOf(n)]
+                            d.mkdirs(); S.set("rec_folder", if (dirs.indexOf(d) == 0) "" else d.absolutePath)
+                        }
+                    },
                     SRow.Value("Start recording before program start, min", "${S.recStartBeforeMin}") {
                         pick("Start recording before program start, min", listOf("0", "1", "2", "5", "10")) { S.set("rec_before", it.toInt()) }
                     },
@@ -334,6 +348,7 @@ fun SettingsScreen(
                         UpdateState.check(context, kotlinx.coroutines.MainScope(), manual = true)
                     },
                     SRow.Action("Last crash report") { onCrash() },
+                    SRow.Action("Log out", "Sign in with another playlist", danger = true) { onLogout() },
                 )
             }
             else -> emptyList()
@@ -365,7 +380,7 @@ fun SettingsScreen(
                                 selected = s.key == section,
                                 onClick = { enter() },
                                 modifier = Modifier.fillMaxWidth().focusRequester(secReq.getValue(s.key))
-                                    .onFocusChanged { if (it.isFocused) { if (section != s.key) { section = s.key; stack.clear() }; inPage = false } }
+                                    .onFocusChanged { if (it.isFocused && section != s.key) { section = s.key; stack.clear(); inPage = false } }
                                     .onPreviewKeyEvent { ev ->
                                         val ne = ev.nativeKeyEvent
                                         if (ne.action != android.view.KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
@@ -462,6 +477,13 @@ fun SettingsScreen(
                 } else toast(context, "Wrong code")
             }, onCancel = { pinFlow = null })
         }
+        if (addSource) TextInputDialog("Add EPG source", "XMLTV address, e.g. http://example.com/guide.xml.gz",
+            onDone = { u ->
+                if (u.startsWith("http")) {
+                    AppSettings.addEpgSource(u); addSource = false
+                    Session.loadEpgSources(context, force = true); toast(context, "Loading the EPG source…")
+                } else toast(context, "Enter an address starting with http")
+            }, onCancel = { addSource = false })
         if (hiddenList) {
             val cats = Session.liveCats.orEmpty()
             val hidden = CategoryPrefs.hidden(context)
@@ -573,4 +595,36 @@ fun ReminderPopup() {
         options = listOf("▶  Watch now" to { watch() }, "Dismiss" to { dismiss() }),
         onDismiss = { dismiss() },
     )
+}
+
+
+/** Video players installed on the box: (name, package). */
+private fun installedPlayers(context: Context): List<Pair<String, String>> = try {
+    val pm = context.packageManager
+    val i = android.content.Intent(android.content.Intent.ACTION_VIEW).setDataAndType(android.net.Uri.parse("http://example.com/live.ts"), "video/*")
+    @Suppress("DEPRECATION")
+    pm.queryIntentActivities(i, 0)
+        .filter { it.activityInfo.packageName != context.packageName }
+        .map { it.loadLabel(pm).toString() to it.activityInfo.packageName }
+        .distinctBy { it.second }.sortedBy { it.first.lowercase() }
+} catch (e: Exception) { emptyList() }
+
+/** A pop-up with one text box (keyboard opens). */
+@Composable
+fun TextInputDialog(title: String, hint: String, onDone: (String) -> Unit, onCancel: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    Dialog(onDismissRequest = onCancel) {
+        Column(
+            Modifier.width(640.dp).background(FS.Panel, RoundedCornerShape(16.dp))
+                .border(2.dp, FS.GreenDeep, RoundedCornerShape(16.dp)).padding(26.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(title, color = FS.Green, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            FsTextField(hint, text, { text = it }, androidx.compose.ui.text.input.KeyboardType.Uri, done = { onDone(text.trim()) })
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Pill("Add", selected = true, onClick = { onDone(text.trim()) })
+                Pill("Cancel", selected = false, onClick = onCancel)
+            }
+        }
+    }
 }

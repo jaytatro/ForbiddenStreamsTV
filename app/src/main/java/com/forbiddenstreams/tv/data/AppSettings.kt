@@ -67,6 +67,9 @@ object AppSettings {
     val surroundFirst get() = b("surround", false)
     val passthrough get() = b("passthrough", false)
     val externalPlayer get() = b("external", false)
+    /** The installed player picked in Settings › Playback › Use external player ("" = ask each time). */
+    val externalPkg get() = s("external_pkg", "")
+    val externalName get() = s("external_name", "")
     val skipSec get() = i("skip", 10)
 
     // ---- Remote control ----
@@ -82,7 +85,14 @@ object AppSettings {
     val pinCategoryOptions get() = b("pin_cat_options", false)
     val pinDvr get() = b("pin_dvr", false)
 
+    /** Your own XMLTV guide addresses (Settings › EPG › EPG sources). */
+    fun epgSources(): List<String> = s("epg_sources", "").split('\u0001').filter { it.isNotBlank() }
+    fun addEpgSource(url: String) = set("epg_sources", (epgSources().filter { it != url.trim() } + url.trim()).joinToString("\u0001"))
+    fun removeEpgSource(url: String) = set("epg_sources", epgSources().filter { it != url }.joinToString("\u0001"))
+
     // ---- Other › Search ----
+    val preferVoice get() = b("prefer_voice", false)
+    val searchPastNoCatchup get() = b("search_past", false)
     val searchHistory get() = b("search_history", true)
     val searchFavFirst get() = b("search_fav_first", true)
     val searchStay get() = b("search_stay", false)
@@ -98,13 +108,18 @@ object AppSettings {
     val reminderTimeoutSec get() = i("remind_timeout", 20)
     /** What happens when the reminder pop-up times out: "Watch" · "Dismiss" */
     val reminderAction get() = s("remind_action", "Watch")
+    val reminderWake get() = b("remind_wake", false)
 
     // ---- Other › Recording ----
     val recStartBeforeMin get() = i("rec_before", 0)
     val recStopAfterMin get() = i("rec_after", 0)
+    /** Folder for new recordings ("" = the app's folder on the box's own storage). */
+    val recFolder get() = s("rec_folder", "")
 
     // ---- Other › Sports ----
     val favGameAlerts get() = b("fav_alerts", true)
+    /** Minutes before a favorite team's game the pop-up comes up (1–5). */
+    val favAlertMin get() = i("fav_alert_min", 1)
 
     /** Parental: the code was entered this session (when "Until the app closes"). */
     @Volatile var pinUnlocked = false

@@ -60,7 +60,9 @@ fun BoxScope.FavGameStartAlert(onWatch: (League, String) -> Unit) {
                         val key = l.name + ":" + g.id
                         if (key in shown || g.isFinal) continue
                         // Starts within the next ~75 seconds (checked every 20 s, so it lands about 1 minute before).
-                        if (g.start - now in 0..75_000 && FavTeams.inGame(context, l, g)) {
+                        // Settings › Sports: 1–5 minutes before (Nov 15).
+                        val lead = com.forbiddenstreams.tv.data.AppSettings.favAlertMin * 60_000L
+                        if (g.start - now in 0..(lead + 15_000) && FavTeams.inGame(context, l, g)) {
                             shown += key; alert = l to g; break@loop
                         }
                     }
@@ -84,7 +86,7 @@ fun BoxScope.FavGameStartAlert(onWatch: (League, String) -> Unit) {
             .padding(horizontal = 18.dp, vertical = 14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            GText("⭐ ${l.icon} ${l.label} · Game starting in 1 minute", color = FS.Green, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            GText("⭐ ${l.icon} ${l.label} · Game starting in ${((g.start - System.currentTimeMillis() + 30_000) / 60_000).coerceAtLeast(1)} minute${if ((g.start - System.currentTimeMillis() + 30_000) / 60_000 > 1) "s" else ""}", color = FS.Green, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
             Text("OK = channels to watch it on · BACK = dismiss", color = FS.TextDim, fontSize = 15.sp)
         }

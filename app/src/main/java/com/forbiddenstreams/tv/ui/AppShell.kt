@@ -388,7 +388,7 @@ private fun HomeTab(onOpenGame: (com.forbiddenstreams.tv.sports.League, String) 
         ) {
             // Keep watching (movies and shows you stopped part-way) at the top (Nov 8).
             val S = com.forbiddenstreams.tv.data.AppSettings
-            if (S.homeKeepWatching && (shows.isNotEmpty() || movies.isNotEmpty())) item {
+            if (shows.isNotEmpty() || movies.isNotEmpty()) item {
                 KeepWatchingRow(
                     refresh = recents,
                     onFocusKey = { k -> focused = (shows + movies).firstOrNull { it.key == k } ?: focused },

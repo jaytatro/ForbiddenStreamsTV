@@ -172,7 +172,9 @@ object PlayerHolder {
                 val u = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".updates", f)
                 i.setDataAndType(u, "video/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            context.startActivity(Intent.createChooser(i, "Play with").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            val pkg = com.forbiddenstreams.tv.data.AppSettings.externalPkg
+            if (pkg.isNotBlank()) { i.setPackage(pkg); context.startActivity(i) }
+            else context.startActivity(Intent.createChooser(i, "Play with").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             stop()
             true
         } catch (e: Exception) { false }

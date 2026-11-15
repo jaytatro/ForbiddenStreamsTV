@@ -82,7 +82,9 @@ object Recordings {
 
     /** Records [program]; starts now if it is already on, otherwise at its start time. */
     fun schedule(context: Context, channel: LiveChannel, program: Program): Recording {
-        val dir = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: context.filesDir
+        // Settings › Other › Recording › Recordings folder (the box's storage, or a USB drive / SD card).
+        val dir = com.forbiddenstreams.tv.data.AppSettings.recFolder.takeIf { it.isNotBlank() }?.let { File(it) }?.takeIf { it.exists() || it.mkdirs() }
+            ?: context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: context.filesDir
         val stamp = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date(program.start))
         val safe = program.title.replace(Regex("[^A-Za-z0-9]+"), "_").take(40)
         val rec = Recording(

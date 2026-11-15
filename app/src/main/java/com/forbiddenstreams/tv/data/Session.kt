@@ -125,6 +125,7 @@ object Session {
                 epgCache.clear()
                 withContext(Dispatchers.IO) { save(context, cats, all) }
                 importPastGuide(context)
+                loadEpgSources(context)
             } catch (e: Exception) {
                 if (liveAll == null) liveError = e.message ?: "Couldn't load channels"
             } finally {
@@ -174,6 +175,49 @@ object Session {
                 // No XMLTV on this provider: the hour-by-hour list still works.
                 AppSettings.set("epg_status", "Last update failed: ${e.message ?: "no answer"}")
             }
+        }
+    }
+
+    // ---- Settings › EPG › EPG sources (Nov 15): your own XMLTV guides fill in what the provider's guide is missing ----
+    @Volatile private var extGuide: Map<String, List<Program>> = emptyMap()
+    private var extJob: Job? = null
+
+    private fun extFor(ch: LiveChannel): List<Program> =
+        ch.epgId?.lowercase()?.let { extGuide[it] } ?: extGuide[ch.name.lowercase()] ?: emptyList()
+
+    fun loadEpgSources(context: Context, force: Boolean = false) {
+        val urls = AppSettings.epgSources()
+        if (urls.isEmpty()) { if (extGuide.isNotEmpty()) { extGuide = emptyMap(); epgCache.clear(); guideVersion++ }; return }
+        if (extJob?.isActive == true) return
+        val sp = context.applicationContext.getSharedPreferences("forbidden_streams", Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        if (!force && extGuide.isNotEmpty() && now - sp.getLong("ext_epg_at", 0L) < AppSettings.epgEveryH.coerceAtLeast(1) * 3_600_000L) return
+        val all = liveAll ?: return
+        extJob = scope.launch(Dispatchers.IO) {
+            val keys = HashSet<String>()
+            all.forEach { c -> c.epgId?.lowercase()?.let { keys += it }; keys += c.name.lowercase() }
+            val days = AppSettings.epgPastDays.coerceIn(1, 7)
+            val map = HashMap<String, MutableList<Program>>()
+            var ok = 0
+            for (u in urls) {
+                try {
+                    val part = Http.stream(u) { raw ->
+                        val b = java.io.BufferedInputStream(raw)
+                        b.mark(4)
+                        val gz = b.read() == 0x1f && b.read() == 0x8b
+                        b.reset()
+                        XmltvParser.parse(if (gz) java.util.zip.GZIPInputStream(b) else b, now - days * 86_400_000L, now + 4 * 86_400_000L, keys)
+                    }
+                    part.forEach { (k, v) -> map.getOrPut(k) { ArrayList() } += v }
+                    ok++
+                } catch (e: Exception) { }
+            }
+            extGuide = map.mapValues { (_, v) -> v.sortedBy { it.start }.distinctBy { it.start } }
+            sp.edit().putLong("ext_epg_at", now).apply()
+            AppSettings.set("epg_status", "EPG sources: $ok of ${urls.size} loaded · ${map.size} channels · " +
+                java.text.SimpleDateFormat("M/d h:mm a", java.util.Locale.US).format(java.util.Date(now)))
+            epgCache.clear()
+            withContext(Dispatchers.Main) { guideVersion++ }
         }
     }
 
@@ -248,8 +292,12 @@ object Session {
         } catch (e: Exception) {
             withContext(Dispatchers.IO) { withHistory(channel.id, emptyList()) }
         }
-        epgCache[channel.id] = now to list
-        return list
+        // Shows from your own EPG sources fill the gaps.
+        val ext = extFor(channel)
+        val merged = if (ext.isEmpty()) list else (list + ext.filter { e -> list.none { it.start < e.end && it.end > e.start } }
+            .map { if (channel.hasArchive && it.end <= now) it.copy(hasArchive = true) else it }).sortedBy { it.start }
+        epgCache[channel.id] = now to merged
+        return merged
     }
 
     /**

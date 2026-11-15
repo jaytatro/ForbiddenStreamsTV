@@ -146,6 +146,34 @@ fun ChannelSearchDialog(onClose: () -> Unit) {
             (if (com.forbiddenstreams.tv.data.AppSettings.searchFavFirst) m.sortedBy { if (it.id in favs) 0 else 1 } else m).take(200)
         }
     }
+    // Shows on now / later / earlier whose name matches (from the guides already loaded) — Nov 15.
+    val shows = remember(q, all) {
+        if (q.length < 3) emptyList() else {
+            val now = System.currentTimeMillis()
+            val pastToo = com.forbiddenstreams.tv.data.AppSettings.searchPastNoCatchup
+            all.asSequence().flatMap { c ->
+                (com.forbiddenstreams.tv.data.Session.cachedEpg(c) ?: emptyList()).asSequence()
+                    .filter { p -> channelMatches(p.title, q) && (p.end > now || pastToo || c.hasArchive) }
+                    .map { c to it }
+            }.sortedWith(compareBy({ if (it.second.isLive(now)) 0 else if (it.second.start > now) 1 else 2 }, { kotlin.math.abs(it.second.start - now) }))
+                .take(60).toList()
+        }
+    }
+    // Settings › Other › Search › Prefer voice search: the microphone opens first.
+    val voice = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+    ) { res ->
+        res.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { query = it }
+    }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (com.forbiddenstreams.tv.data.AppSettings.preferVoice) {
+            try {
+                voice.launch(android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                    .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Say a channel or show"))
+            } catch (e: Exception) { toast(context, "Voice search isn't available on this box") }
+        }
+    }
     androidx.compose.ui.window.Dialog(onDismissRequest = onClose,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
         androidx.activity.compose.BackHandler { onClose() }
@@ -211,8 +239,8 @@ fun ChannelSearchDialog(onClose: () -> Unit) {
             Text(
                 when {
                     q.length < 2 -> "Type at least 2 letters"
-                    results.isEmpty() -> "No channels match \"$q\""
-                    else -> "${results.size} channels · ▼ to pick one · OK to watch"
+                    results.isEmpty() && shows.isEmpty() -> "No channels or shows match \"$q\""
+                    else -> "${results.size} channels · ${shows.size} shows · ▼ to pick one · OK to watch"
                 },
                 color = FS.TextDim, fontSize = 15.sp,
             )
@@ -242,6 +270,42 @@ fun ChannelSearchDialog(onClose: () -> Unit) {
                             androidx.compose.foundation.layout.Column {
                                 Text(c.name, color = FS.Green, fontSize = 19.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, maxLines = 1)
                                 if (on != null) Text(on, color = FS.TextDim, fontSize = 14.sp, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+                if (shows.isNotEmpty()) item(key = "shows_h") {
+                    Text("SHOWS", color = FS.GreenMid, fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
+                        modifier = Modifier.padding(top = 10.dp, start = 6.dp))
+                }
+                items(shows.size, key = { "s${shows[it].first.id}:${shows[it].second.start}" }) { i ->
+                    val (c, p) = shows[i]
+                    val now = System.currentTimeMillis()
+                    val live = p.isLive(now)
+                    val past = p.end <= now
+                    FocusCard(
+                        onClick = {
+                            com.forbiddenstreams.tv.data.AppSettings.addSearch(q)
+                            when {
+                                live -> { if (!com.forbiddenstreams.tv.data.AppSettings.searchStay) onClose(); playChannels(context, listOf(c), 0, fullScreen = !com.forbiddenstreams.tv.data.AppSettings.searchStay) }
+                                past -> {
+                                    val it = if (c.hasArchive) com.forbiddenstreams.tv.player.playbackItem(c, p) else null
+                                    if (it != null) { if (!com.forbiddenstreams.tv.data.AppSettings.searchStay) onClose(); com.forbiddenstreams.tv.player.Playback.one(context, it) }
+                                    else toast(context, "Playback isn't available for this show")
+                                }
+                                else -> { com.forbiddenstreams.tv.reminders.Reminders.add(context, c, p); toast(context, "Reminder set for ${Fmt.day(p.start)} ${Fmt.time(p.start)}") }
+                            }
+                        },
+                        focusedScale = 1.01f,
+                        modifier = Modifier.fillMaxWidth().height(64.dp),
+                    ) {
+                        Row(Modifier.padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(if (live) "● NOW" else if (past) "⟲ ${Fmt.day(p.start)}" else Fmt.day(p.start),
+                                color = if (live) Color(0xFFFF5A5A) else FS.TextDim, fontSize = 13.sp, modifier = Modifier.width(110.dp))
+                            androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
+                                Text(p.title, color = FS.Text, fontSize = 18.sp, maxLines = 1)
+                                Text("${c.name} · ${Fmt.range(p.start, p.end)}" + if (!live && !past) "  ·  OK = reminder" else "",
+                                    color = FS.TextDim, fontSize = 13.sp, maxLines = 1)
                             }
                         }
                     }

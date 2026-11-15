@@ -113,6 +113,16 @@ class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val title = intent.getStringExtra("title") ?: return
         val channel = intent.getStringExtra("channel") ?: ""
+        // Settings › Other › Reminders › Wake up from sleep mode: turn the screen on and open the app.
+        com.forbiddenstreams.tv.data.AppSettings.init(context)
+        if (com.forbiddenstreams.tv.data.AppSettings.reminderWake) {
+            try {
+                val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                @Suppress("DEPRECATION")
+                pm.newWakeLock(android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP, "fs:reminder").acquire(10_000)
+            } catch (e: Exception) { }
+            com.forbiddenstreams.tv.startMain(context)
+        }
         Alarms.createChannels(context)
         val open = PendingIntent.getActivity(
             context, 0,
