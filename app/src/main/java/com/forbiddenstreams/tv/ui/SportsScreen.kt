@@ -652,7 +652,7 @@ fun GameChannelsDialog(league: League, g: Game, onClose: () -> Unit) {
  */
 fun openHighlights(context: android.content.Context, league: League, g: Game) {
     val q = com.forbiddenstreams.tv.sports.HighlightFinder.query(league, g)
-    toast(context, "Finding the highlights…")
+    if (com.forbiddenstreams.tv.sports.HighlightFinder.cached(league, g) == null) toast(context, "Finding the highlights…")
     kotlinx.coroutines.MainScope().launch {
         // Nov 16: checks every result so it's this game's highlights (see HighlightFinder).
         val id = try { com.forbiddenstreams.tv.sports.HighlightFinder.find(league, g) } catch (e: Exception) { null }

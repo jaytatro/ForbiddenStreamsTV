@@ -17,6 +17,7 @@ object HighlightFinder {
     private val cache = java.util.concurrent.ConcurrentHashMap<String, String>()
     /** Other good matches for a picked video, tried in order if it won't play inside the app (embedding off). */
     private val backups = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
+    fun cached(league: League, g: Game): String? = cache[league.name + ":" + g.id]
     fun backupsFor(id: String): List<String> = backups[id].orEmpty()
 
     private data class Video(val id: String, val title: String, val channel: String, val published: String?, val length: String?, val pos: Int)

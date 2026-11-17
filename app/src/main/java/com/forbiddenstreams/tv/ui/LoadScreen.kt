@@ -39,6 +39,7 @@ import androidx.tv.material3.Text
 import com.forbiddenstreams.tv.R
 import com.forbiddenstreams.tv.data.Session
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 
@@ -106,6 +107,32 @@ fun LoadScreenHost() {
                     }.awaitAll()
                 }
             }
+            LoadScreen.progress = 0.84f
+            // 3c. Nov 17: replays and highlights for finished games (today and yesterday, favorite teams first) —
+            // the replay channels and the right highlight video are found now. Waits up to 20 s here; whatever
+            // isn't done keeps going in the background after Home opens.
+            val finishedJob = SportsPreload.scope.launch {
+                val sports = com.forbiddenstreams.tv.sports.SPORTS_ORDER
+                val finished = sports.flatMap { l ->
+                    (try { com.forbiddenstreams.tv.sports.Espn.week(l, -1, 0) } catch (e: Exception) { emptyMap() }).values.flatten()
+                        .filter { it.isFinal }.map { l to it }
+                }.distinctBy { it.first.name + it.second.id }
+                    .sortedWith(compareBy({ if (com.forbiddenstreams.tv.sports.FavTeams.inGame(context, it.first, it.second)) 0 else 1 }, { -it.second.start }))
+                    .take(60)
+                val gate = kotlinx.coroutines.sync.Semaphore(4)
+                kotlinx.coroutines.coroutineScope {
+                    finished.map { (l, g) ->
+                        async {
+                            gate.acquire()
+                            try {
+                                try { GameChannelCache.prepare(l, g) } catch (e: Exception) { }
+                                try { com.forbiddenstreams.tv.sports.HighlightFinder.find(l, g) } catch (e: Exception) { }
+                            } finally { gate.release() }
+                        }
+                    }.awaitAll()
+                }
+            }
+            kotlinx.coroutines.withTimeoutOrNull(20_000) { finishedJob.join() }
             LoadScreen.progress = 0.88f
             // 4. Home's pictures (Keep watching, channel logos)
             LoadScreen.step = "Getting Home ready…"
@@ -148,4 +175,10 @@ fun LoadScreenHost() {
             }
         }
     }
+}
+
+
+/** Sports work that may outlive the loading screen (finishes in the background). */
+object SportsPreload {
+    val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
 }
