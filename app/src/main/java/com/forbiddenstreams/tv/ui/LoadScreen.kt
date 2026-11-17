@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -46,6 +47,8 @@ object LoadScreen {
     var showing by mutableStateOf(true)
     var step by mutableStateOf("Starting…")
     var progress by mutableStateOf(0f)
+    /** The intro video (res/raw/intro.mp4) has finished (or couldn't play). */
+    var videoDone by mutableStateOf(false)
 }
 
 /**
@@ -102,33 +105,69 @@ fun LoadScreenHost() {
             LoadScreen.progress = 1f
             LoadScreen.step = "Ready"
         }
-        // Never shorter than 1.2 s so it doesn't just flash.
+        // Never shorter than 1.2 s so it doesn't just flash — and the intro video plays to its end first.
         val e = System.currentTimeMillis() - t0
         if (e < 1_200) delay(1_200 - e)
+        while (!LoadScreen.videoDone) delay(100)
         LoadScreen.showing = false
     }
     AnimatedVisibility(visible = LoadScreen.showing, exit = fadeOut(tween(400))) {
         val pulse = rememberInfiniteTransition(label = "load")
         val bar = pulse.animateFloat(0f, 1f, infiniteRepeatable(tween(1_100), RepeatMode.Restart), label = "bar")
         val glow = pulse.animateFloat(0.55f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "glow")
+        val shown by androidx.compose.animation.core.animateFloatAsState(LoadScreen.progress, tween(500), label = "p")
         Box(
             Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0xFF0B2412), Color.Black), radius = 1400f)),
             contentAlignment = Alignment.Center,
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Image(painterResource(R.drawable.logo), null, Modifier.size(220.dp).alpha(glow.value))
-                Spacer(Modifier.height(18.dp))
-                Text("FORBIDDEN STREAMS TV", color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Black, letterSpacing = 4.sp)
-                Spacer(Modifier.height(22.dp))
-                // How far along it is (green), with a soft shimmer.
-                val shown by androidx.compose.animation.core.animateFloatAsState(LoadScreen.progress, tween(500), label = "p")
-                Box(Modifier.width(360.dp).height(8.dp).background(Color(0x22FFFFFF), RoundedCornerShape(4.dp))) {
-                    Box(Modifier.fillMaxWidth(shown.coerceAtLeast(0.03f)).fillMaxHeight().alpha(0.75f + 0.25f * bar.value)
-                        .background(FS.Green, RoundedCornerShape(4.dp)))
+            if (!LoadScreen.videoDone) {
+                // Nov 16: the user's intro video plays while the app loads; then his logo.
+                IntroVideo(Modifier.fillMaxSize())
+            } else {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Image(painterResource(R.drawable.logo), null, Modifier.size(260.dp).alpha(glow.value))
                 }
-                Spacer(Modifier.height(12.dp))
-                Text(LoadScreen.step, color = FS.TextDim, fontSize = 16.sp)
+            }
+            // "Plugging in the revolution…" and a thin green bar, at the bottom.
+            Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Plugging in the revolution…", color = FS.Green, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp,
+                    style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black, blurRadius = 8f)))
+                Spacer(Modifier.height(10.dp))
+                Box(Modifier.width(320.dp).height(6.dp).background(Color(0x44000000), RoundedCornerShape(3.dp))) {
+                    Box(Modifier.fillMaxWidth(shown.coerceAtLeast(0.03f)).fillMaxHeight().alpha(0.75f + 0.25f * bar.value)
+                        .background(FS.Green, RoundedCornerShape(3.dp)))
+                }
             }
         }
     }
+}
+
+/** Plays res/raw/intro.mp4 once (with its sound) on a TextureView, then marks [LoadScreen.videoDone]. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@Composable
+private fun IntroVideo(modifier: Modifier) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val player = androidx.compose.runtime.remember {
+        androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
+            try {
+                setMediaItem(androidx.media3.common.MediaItem.fromUri(
+                    android.net.Uri.parse("android.resource://${context.packageName}/${R.raw.intro}")))
+                addListener(object : androidx.media3.common.Player.Listener {
+                    override fun onPlaybackStateChanged(state: Int) {
+                        if (state == androidx.media3.common.Player.STATE_ENDED) LoadScreen.videoDone = true
+                    }
+                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) { LoadScreen.videoDone = true }
+                })
+                prepare()
+                playWhenReady = true
+            } catch (e: Exception) { LoadScreen.videoDone = true }
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { player.release() } }
+    // Safety: never hold the app longer than the video should take.
+    LaunchedEffect(Unit) { delay(15_000); LoadScreen.videoDone = true }
+    androidx.compose.ui.viewinterop.AndroidView(
+        factory = { ctx -> android.view.TextureView(ctx).also { player.setVideoTextureView(it) } },
+        modifier = modifier,
+    )
 }
