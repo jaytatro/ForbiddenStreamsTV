@@ -31,7 +31,7 @@ object HighlightFinder {
     private val BAD = listOf(
         "preview", "prediction", "predictions", "picks", "odds", "betting", "reaction", "reacts", "full game", "full match",
         "#shorts", "live stream", "livestream", "watch party", "press conference", "postgame", "post game", "pregame", "pre-game",
-        "podcast", "fantasy", "madden", "nba 2k", "nhl 2", "fifa", "ea fc", "simulation", "mock draft", "every goal of", "top 10",
+        "podcast", "fantasy", "madden", "nba 2k", "nhl 25 ", "nhl 26 ", "fifa", "ea fc", "simulation", "mock draft", "every goal of", "top 10",
         "season highlights", "career highlights", "mixtape", "recap show",
     )
 
