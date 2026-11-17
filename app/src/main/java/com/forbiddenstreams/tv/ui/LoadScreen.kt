@@ -108,7 +108,6 @@ fun LoadScreenHost() {
         // Never shorter than 1.2 s so it doesn't just flash — and the intro video plays to its end first.
         val e = System.currentTimeMillis() - t0
         if (e < 1_200) delay(1_200 - e)
-        while (!LoadScreen.videoDone) delay(100)
         LoadScreen.showing = false
     }
     AnimatedVisibility(visible = LoadScreen.showing, exit = fadeOut(tween(400))) {
@@ -120,17 +119,11 @@ fun LoadScreenHost() {
             Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0xFF0B2412), Color.Black), radius = 1400f)),
             contentAlignment = Alignment.Center,
         ) {
-            if (!LoadScreen.videoDone) {
-                // Nov 16: the user's intro video plays while the app loads; then his logo.
-                IntroVideo(Modifier.fillMaxSize())
-            } else {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    Image(painterResource(R.drawable.logo), null, Modifier.size(260.dp).alpha(glow.value))
-                }
-            }
+            // Nov 16: just the logo (the intro video was taken out again).
+            Image(painterResource(R.drawable.logo), null, Modifier.size(260.dp).alpha(glow.value))
             // "Plugging in the revolution…" and a thin green bar, at the bottom.
             Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Plugging in the revolution…", color = FS.Green, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp,
+                Text("PLUGGING IN THE REVOLUTION", color = FS.Green, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp,
                     style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black, blurRadius = 8f)))
                 Spacer(Modifier.height(10.dp))
                 Box(Modifier.width(320.dp).height(6.dp).background(Color(0x44000000), RoundedCornerShape(3.dp))) {
@@ -140,34 +133,4 @@ fun LoadScreenHost() {
             }
         }
     }
-}
-
-/** Plays res/raw/intro.mp4 once (with its sound) on a TextureView, then marks [LoadScreen.videoDone]. */
-@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-@Composable
-private fun IntroVideo(modifier: Modifier) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val player = androidx.compose.runtime.remember {
-        androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
-            try {
-                setMediaItem(androidx.media3.common.MediaItem.fromUri(
-                    android.net.Uri.parse("android.resource://${context.packageName}/${R.raw.intro}")))
-                addListener(object : androidx.media3.common.Player.Listener {
-                    override fun onPlaybackStateChanged(state: Int) {
-                        if (state == androidx.media3.common.Player.STATE_ENDED) LoadScreen.videoDone = true
-                    }
-                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) { LoadScreen.videoDone = true }
-                })
-                prepare()
-                playWhenReady = true
-            } catch (e: Exception) { LoadScreen.videoDone = true }
-        }
-    }
-    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { player.release() } }
-    // Safety: never hold the app longer than the video should take.
-    LaunchedEffect(Unit) { delay(15_000); LoadScreen.videoDone = true }
-    androidx.compose.ui.viewinterop.AndroidView(
-        factory = { ctx -> android.view.TextureView(ctx).also { player.setVideoTextureView(it) } },
-        modifier = modifier,
-    )
 }
