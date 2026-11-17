@@ -118,6 +118,7 @@ fun SportsScreen(league: League, openGameId: String? = null, onOpened: () -> Uni
             val m = HashMap(matches)
             for (g in all) {
                 if (m.containsKey(g.id)) continue
+                GameChannelCache.get(league, g)?.let { m[g.id] = it.match; continue }
                 m[g.id] = GameMatcher.match(g, league, ch) { c -> epgCache[c.id] ?: Session.cachedEpg(c).orEmpty() }
             }
             m
@@ -604,30 +605,15 @@ fun GameChannelsDialog(league: League, g: Game, onClose: () -> Unit) {
         val grp = cats?.let { GameMatcher.findGroup(it, league) }
         if (grp == null) emptyList() else Session.channelsIn(grp.id)
     }
-    val match by androidx.compose.runtime.produceState<GameChannels?>(SportsCache.matches[league]?.get(g.id), g.id, team) {
-        if (value == null) value = withContext(Dispatchers.Default) {
-            GameMatcher.match(g, league, team) { c -> Session.cachedEpg(c) ?: Session.epg(c) }
-        }
+    // Nov 16: found ahead of time on the loading screen (GameChannelCache) — then the pop-up opens instantly.
+    val cached = GameChannelCache.get(league, g)
+    val prepared by androidx.compose.runtime.produceState(cached, g.id, team) {
+        if (value == null) value = GameChannelCache.prepare(league, g, team)
     }
-    // Nov 15: the pop-up only opens once the channels are found (it used to open as "Finding the
-    // channels…" and then change, which looked like it popped up twice). Gives up waiting after 6 s.
+    val match = prepared?.match ?: SportsCache.matches[league]?.get(g.id)
+    val networks = prepared?.networks
+    val wrongTeam = prepared?.wrongTeam ?: emptySet()
     var waited by remember(g.id) { mutableStateOf(false) }
-    var wrongTeam by remember(g.id) { mutableStateOf<Set<String>>(emptySet()) }
-    // Network channels checked against their guides at game time (right channel, right game).
-    val networks by androidx.compose.runtime.produceState<List<Pair<String, LiveChannel>>?>(null, g.id, match) {
-        val m = match ?: return@produceState
-        val used = m.options.map { it.id }.toSet()
-        wrongTeam = withContext(Dispatchers.Default) {
-            kotlinx.coroutines.withTimeoutOrNull(5_000) {
-                m.options.filter { GameMatcher.guideShowsGame(it, g) { c -> Session.cachedEpg(c) ?: Session.epg(c) } == false }.map { it.id }.toSet()
-            } ?: emptySet()
-        }
-        value = withContext(Dispatchers.Default) {
-            kotlinx.coroutines.withTimeoutOrNull(8_000) {
-                GameMatcher.verifiedNetworkChannels(g, Session.liveAll.orEmpty(), used) { c -> Session.cachedEpg(c) ?: Session.epg(c) }
-            } ?: GameMatcher.verifiedNetworkChannels(g, Session.liveAll.orEmpty(), used) { c -> Session.cachedEpg(c).orEmpty() }
-        }
-    }
     androidx.compose.runtime.LaunchedEffect(g.id) {
         kotlinx.coroutines.delay(400)
         if (match == null || networks == null) toast(context, "Finding the channels…")
@@ -710,4 +696,44 @@ fun openHighlights(context: android.content.Context, league: League, g: Game) {
                 android.net.Uri.parse("https://www.youtube.com/results?search_query=" + java.net.URLEncoder.encode(q, "UTF-8"))))
         if (!ok) toast(context, "YouTube isn't installed on this box")
     }
+}
+
+
+/** A game's channels, worked out once: team feeds, network channels checked against their guides, and team feeds whose guide shows another game. */
+data class PreparedGame(
+    val match: GameChannels,
+    val networks: List<Pair<String, LiveChannel>>,
+    val wrongTeam: Set<String>,
+    val at: Long = System.currentTimeMillis(),
+)
+
+/**
+ * Nov 16 ("load the sports channels while loading so it doesn't have to search"): the loading screen works
+ * out today's games' channels ahead of time; the game pop-up then opens with them straight away.
+ * Results are kept 2 hours.
+ */
+object GameChannelCache {
+    private val map = java.util.concurrent.ConcurrentHashMap<String, PreparedGame>()
+
+    fun get(league: League, g: Game): PreparedGame? =
+        map[league.name + ":" + g.id]?.takeIf { System.currentTimeMillis() - it.at < 2 * 3_600_000L }
+
+    fun teamChannels(league: League): List<LiveChannel> {
+        val grp = Session.liveCats?.let { GameMatcher.findGroup(it, league) } ?: return emptyList()
+        return Session.channelsIn(grp.id)
+    }
+
+    suspend fun prepare(league: League, g: Game, team: List<LiveChannel> = teamChannels(league)): PreparedGame =
+        get(league, g) ?: withContext(Dispatchers.Default) {
+            val epg: suspend (LiveChannel) -> List<com.forbiddenstreams.tv.data.Program> = { c -> Session.cachedEpg(c) ?: Session.epg(c) }
+            val m = GameMatcher.match(g, league, team, epg)
+            val wrong = kotlinx.coroutines.withTimeoutOrNull(5_000) {
+                m.options.filter { GameMatcher.guideShowsGame(it, g, epg) == false }.map { it.id }.toSet()
+            } ?: emptySet()
+            val used = m.options.map { it.id }.toSet()
+            val nets = kotlinx.coroutines.withTimeoutOrNull(8_000) {
+                GameMatcher.verifiedNetworkChannels(g, Session.liveAll.orEmpty(), used, epg)
+            } ?: GameMatcher.verifiedNetworkChannels(g, Session.liveAll.orEmpty(), used) { c -> Session.cachedEpg(c).orEmpty() }
+            PreparedGame(m, nets, wrong).also { map[league.name + ":" + g.id] = it }
+        }
 }

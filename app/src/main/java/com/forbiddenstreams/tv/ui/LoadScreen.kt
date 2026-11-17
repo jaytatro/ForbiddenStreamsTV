@@ -91,6 +91,21 @@ fun LoadScreenHost() {
                     }.awaitAll()
                 }
             }
+            LoadScreen.progress = 0.8f
+            // 3b. Channels for today's games (live first, then the next ones), so the game pop-ups open instantly.
+            kotlinx.coroutines.withTimeoutOrNull(25_000) {
+                val now = System.currentTimeMillis()
+                val games = com.forbiddenstreams.tv.sports.SPORTS_ORDER.flatMap { l ->
+                    (try { com.forbiddenstreams.tv.sports.Espn.week(l, 0, 0) } catch (e: Exception) { emptyMap() }).values.flatten().map { l to it }
+                }.filter { (_, g) -> g.isLive || (!g.isFinal && g.start - now < 8 * 3_600_000L) }
+                    .sortedWith(compareBy({ if (it.second.isLive) 0 else 1 }, { it.second.start })).take(40)
+                val gate = kotlinx.coroutines.sync.Semaphore(4)
+                kotlinx.coroutines.coroutineScope {
+                    games.map { (l, g) ->
+                        async { gate.acquire(); try { GameChannelCache.prepare(l, g) } catch (e: Exception) { } finally { gate.release() } }
+                    }.awaitAll()
+                }
+            }
             LoadScreen.progress = 0.88f
             // 4. Home's pictures (Keep watching, channel logos)
             LoadScreen.step = "Getting Home ready…"
