@@ -413,9 +413,9 @@ fun GuideView(
 
     /**
      * Scroll so [t] sits in the middle of the grid — or, in the Live TV tab (Nov 16, like the user's photo),
-     * a little right of the channel names (15 %, Nov 16: "move the live channels and live line over a little more").
+     * a little right of the channel names (25 %, Nov 16: "move the live channels and live line over a little more").
      */
-    fun centerOn(t: Long): Int = (px(t - ws) - (gridWidthPx * (if (overlay) 0.5f else 0.15f)).toInt()).coerceAtLeast(0)
+    fun centerOn(t: Long): Int = (px(t - ws) - (gridWidthPx * (if (overlay) 0.5f else 0.25f)).toInt()).coerceAtLeast(0)
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -427,7 +427,7 @@ fun GuideView(
                 cursor = now
                 if (gridWidthPx > 0) {
                     val x = px(now - ws) - hState.value
-                    if (x < 0 || x > gridWidthPx * (if (overlay) 0.8f else 0.45f)) {
+                    if (x < 0 || x > gridWidthPx * (if (overlay) 0.8f else 0.55f)) {
                         hState.animateScrollTo(centerOn(now))
                     }
                 }
@@ -956,17 +956,18 @@ private fun PhotoGuideRow(
                     val sel = cursor != null && cursor >= cell.start && cursor < cell.end
                     val startDp = widthDp(cell.start - ws)
                     val endDp = widthDp(cell.end - ws)
-                    val shift = if (startDp < scrolledDp && endDp > scrolledDp + 24.dp) scrolledDp - startDp else 0.dp
+                    // Nov 16: a show cut off by the channel column starts its box at the edge, so its corners stay rounded.
+                    val shift = if (startDp < scrolledDp && endDp > scrolledDp) minOf(scrolledDp - startDp, (endDp - startDp - 8.dp).coerceAtLeast(0.dp)) else 0.dp
                     val catchup = past && inArchive(ch, cell.start) && (p == null || p.hasArchive || ch.hasArchive)
                     Column(
-                        Modifier.width(widthDp(cell.end - cell.start)).fillMaxHeight().padding(horizontal = 2.dp)
+                        Modifier.width(widthDp(cell.end - cell.start)).fillMaxHeight().padding(start = shift).padding(horizontal = 2.dp)
                             .then(if (live) Modifier.background(Color(0x2EFF2A2A), tile) else Modifier)
                             .background(
                                 when { sel && !live -> Color(0xFF173A22); sel -> Color(0x33FFFFFF); rowSel -> Color(0x26FFFFFF); else -> Color(0x12FFFFFF) }, tile)
                             .border(
                                 when { live && sel -> 3.dp; live -> 2.dp; sel -> 2.dp; else -> 1.dp },
                                 when { live -> Color(0xFFFF3B3B); sel -> FS.Green; else -> Color(0x10FFFFFF) }, tile)
-                            .padding(start = 10.dp + shift, end = 8.dp),
+                            .padding(start = 10.dp, end = 8.dp),
                         verticalArrangement = Arrangement.Center,
                     ) {
                         val playingBack = PlayerHolder.current?.let { it.playbackOf == ch.id && it.progStart == cell.start } == true
