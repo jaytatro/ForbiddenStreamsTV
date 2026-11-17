@@ -96,7 +96,19 @@ fun AppShell(onLogout: () -> Unit) {
     var tabsFocused by remember { mutableStateOf(false) }
     var exitHint by remember { mutableStateOf(false) }
     val activity = context as? android.app.Activity
-    LaunchedEffect(Unit) { delay(150); try { tabReq[0].requestFocus() } catch (e: Exception) { } }
+    // Nov 16: always opens on Home with the side menu closed — the cursor goes into Home (after the
+    // loading screen); only if Home has nothing to pick yet does it go to the menu.
+    val contentReq = remember { FocusRequester() }
+    var contentFocused by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        while (LoadScreen.showing) delay(100)
+        repeat(15) {
+            try { contentReq.requestFocus() } catch (e: Exception) { }
+            delay(120)
+            if (contentFocused) return@LaunchedEffect
+        }
+        try { tabReq[0].requestFocus() } catch (e: Exception) { }
+    }
     // Movie and show categories load in the background so those tabs open fast.
     // The playlist refreshes by itself every 24 hours (checked every 30 minutes while the app is open).
     LaunchedEffect(Session.source) {
@@ -150,7 +162,8 @@ fun AppShell(onLogout: () -> Unit) {
       // Nov 16: screens sit right of the side menu, and move over when it opens (nothing is covered).
       val railW by androidx.compose.animation.core.animateDpAsState(if (tabsFocused) SIDE_RAIL_OPEN_W else SIDE_RAIL_W,
           androidx.compose.animation.core.tween(180), label = "railPad")
-      Box(Modifier.fillMaxSize().padding(start = railW)) {
+      Box(Modifier.fillMaxSize().padding(start = railW).focusRequester(contentReq)
+          .onFocusChanged { contentFocused = it.hasFocus }.focusGroup()) {
         when (tab) {
             0 -> HomeTab(onOpenGame = { l, id -> sportsOpen = l to id; tab = 2 })
             1 -> LiveTvTab()

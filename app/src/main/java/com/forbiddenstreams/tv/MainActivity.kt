@@ -89,6 +89,11 @@ class BootReceiver : android.content.BroadcastReceiver() {
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Nov 16: Android's splash (black + logo) stays up until the saved channel list is read (max ~1.5 s),
+        // then our own loading screen takes over until the app is ready.
+        val splash = androidx.core.splashscreen.SplashScreen.installSplashScreen(this)
+        val t0 = android.os.SystemClock.uptimeMillis()
+        splash.setKeepOnScreenCondition { Session.source != null && Session.liveAll == null && android.os.SystemClock.uptimeMillis() - t0 < 1_500 }
         super.onCreate(savedInstanceState)
         volumeControlStream = android.media.AudioManager.STREAM_MUSIC // remote volume keys = media volume
         if (Build.VERSION.SDK_INT >= 33) {
@@ -111,6 +116,8 @@ class MainActivity : ComponentActivity() {
                             com.forbiddenstreams.tv.data.MovieMatcher.reset(); com.forbiddenstreams.tv.ui.resetLibrary()
                             loggedIn = false
                         })
+                        // Loading screen over the app while it gets ready behind it (channels, guide, Home).
+                        com.forbiddenstreams.tv.ui.LoadScreenHost()
                     }
                 }
             }
