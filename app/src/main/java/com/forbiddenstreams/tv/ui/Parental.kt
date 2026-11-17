@@ -3,6 +3,7 @@ package com.forbiddenstreams.tv.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -177,6 +178,34 @@ fun ReorderCategories(onClose: () -> Unit) {
             if (list.isEmpty()) { Text("No categories loaded yet.", color = FS.TextDim, fontSize = 17.sp); return@Column }
             androidx.compose.foundation.lazy.LazyColumn(state = state, verticalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 30.dp)) {
+                // Nov 16: "Hide all" on top — on = every category hidden, off = all shown again.
+                item(key = "hide_all") {
+                    val allHidden = list.isNotEmpty() && list.all { it.id in hidden }
+                    val flip = { if (moving == null) {
+                        CategoryPrefs.setAllHidden(context, list.map { it.id }, !allHidden)
+                        toast(context, if (allHidden) "All categories shown" else "All categories hidden")
+                    } }
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            FocusCard(onClick = flip, focusedScale = 1.01f,
+                                modifier = Modifier.weight(1f).height(54.dp).focusRequester(firstReq)) {
+                                Row(Modifier.fillMaxSize().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Hide all", color = FS.Green, fontSize = 19.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                    Text(if (allHidden) "All hidden" else "${list.count { it.id in hidden }} of ${list.size} hidden",
+                                        color = FS.TextDim, fontSize = 14.sp)
+                                }
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            FocusCard(onClick = flip, focusedScale = 1.05f,
+                                container = androidx.compose.ui.graphics.Color.Transparent,
+                                modifier = Modifier.width(84.dp).height(54.dp)) {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { OnOffSwitch(allHidden) }
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Box(Modifier.fillMaxWidth().height(1.dp).background(FS.Green.copy(alpha = 0.25f)))
+                    }
+                }
                 // Keyed by category: the picked-up row slides to its new place and keeps the cursor.
                 items(list.size, key = { list[it].id }) { i ->
                     val c = list[i]
@@ -191,7 +220,6 @@ fun ReorderCategories(onClose: () -> Unit) {
                             selected = isMoving,
                             focusedScale = 1.01f,
                             modifier = Modifier.weight(1f).height(54.dp)
-                                .then(if (i == 0) Modifier.focusRequester(firstReq) else Modifier)
                                 .onPreviewKeyEvent { ev ->
                                     if (!isMoving || ev.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return@onPreviewKeyEvent false
                                     val step = when (ev.nativeKeyEvent.keyCode) {

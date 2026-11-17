@@ -115,6 +115,13 @@ object CategoryPrefs {
         version++
     }
 
+    /** Hide all (Nov 16): hides every category in [ids], or shows them all again. */
+    fun setAllHidden(context: Context, ids: Collection<String>, hide: Boolean) {
+        val h = if (hide) hidden(context) + ids else hidden(context) - ids.toSet()
+        sp(context).edit().putStringSet("cat_hidden", h).apply()
+        version++
+    }
+
     fun reset(context: Context) {
         sp(context).edit().remove("cat_order").remove("cat_hidden").apply()
         version++
