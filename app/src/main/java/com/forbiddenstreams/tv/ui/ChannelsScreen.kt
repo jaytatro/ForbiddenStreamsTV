@@ -413,9 +413,9 @@ fun GuideView(
 
     /**
      * Scroll so [t] sits in the middle of the grid — or, in the Live TV tab (Nov 16, like the user's photo),
-     * just right of the channel names, so what's live is next to the channel.
+     * a little right of the channel names (15 %, Nov 16: "move the live channels and live line over a little more").
      */
-    fun centerOn(t: Long): Int = (px(t - ws) - (gridWidthPx * (if (overlay) 0.5f else 0.05f)).toInt()).coerceAtLeast(0)
+    fun centerOn(t: Long): Int = (px(t - ws) - (gridWidthPx * (if (overlay) 0.5f else 0.15f)).toInt()).coerceAtLeast(0)
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -427,7 +427,7 @@ fun GuideView(
                 cursor = now
                 if (gridWidthPx > 0) {
                     val x = px(now - ws) - hState.value
-                    if (x < 0 || x > gridWidthPx * (if (overlay) 0.8f else 0.35f)) {
+                    if (x < 0 || x > gridWidthPx * (if (overlay) 0.8f else 0.45f)) {
                         hState.animateScrollTo(centerOn(now))
                     }
                 }
