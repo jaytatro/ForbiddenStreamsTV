@@ -61,7 +61,7 @@ fun LiveTvTab() {
     remember { ButtonPrefs.load(context); true }
     val cats = Session.liveCats
     if (cats == null) {
-        Box(Modifier.fillMaxSize().padding(top = 76.dp)) {
+        Box(Modifier.fillMaxSize().padding(top = 16.dp)) {
             val err = Session.liveError
             if (err != null && !Session.refreshing) MessageBox("Couldn't load channels", err, "Retry") { Session.refreshInBackground(context) }
             else LoadingBox("Loading channels")
@@ -141,7 +141,7 @@ fun LiveTvTab() {
     val counts = remember(Session.liveAll) { Session.liveAll.orEmpty().groupingBy { it.categoryId }.eachCount() }
     Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFF07120A), Color.Black))))
     // Nov 15: the ON AIR / "pick a channel" + time bar was removed (user asked); the lists move up.
-    Row(Modifier.fillMaxSize().padding(top = 78.dp, start = 10.dp, end = 10.dp, bottom = 8.dp)) {
+    Row(Modifier.fillMaxSize().padding(top = 10.dp, start = 8.dp, end = 10.dp, bottom = 8.dp)) {
         if (listOpen || listW > 0.dp) {
             Box(
                 Modifier.width(listW).fillMaxHeight().clipToBounds().alpha(listA)

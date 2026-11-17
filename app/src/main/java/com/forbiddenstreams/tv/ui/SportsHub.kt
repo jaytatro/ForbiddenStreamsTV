@@ -163,7 +163,7 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
         onDispose { if (TabDown.handler === goIn) TabDown.handler = null }
     }
 
-    Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF050A06), Color.Black))).padding(top = 76.dp)) {
+    Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF050A06), Color.Black))).padding(top = 12.dp)) {
         Ticker(today, order)
         Row(Modifier.fillMaxSize().padding(top = 8.dp)) {
             // ---- League rail ----

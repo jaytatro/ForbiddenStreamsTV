@@ -129,7 +129,7 @@ fun DvrTab() {
     }
 
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF07120A), Color.Black)))) {
-        Column(Modifier.fillMaxSize().padding(top = 84.dp, start = 36.dp, end = 36.dp)) {
+        Column(Modifier.fillMaxSize().padding(top = 24.dp, start = 28.dp, end = 36.dp)) {
             // Header: DVR · counts · storage
             Row(verticalAlignment = Alignment.Bottom) {
                 Text("DVR", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.Black, letterSpacing = 4.sp)

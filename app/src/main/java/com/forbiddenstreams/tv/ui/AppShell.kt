@@ -147,6 +147,8 @@ fun AppShell(onLogout: () -> Unit) {
     }
 
     Box(Modifier.fillMaxSize()) {
+      // Nov 16: screens sit right of the side menu.
+      Box(Modifier.fillMaxSize().padding(start = RAIL_W)) {
         when (tab) {
             0 -> HomeTab(onOpenGame = { l, id -> sportsOpen = l to id; tab = 2 })
             1 -> LiveTvTab()
@@ -158,10 +160,11 @@ fun AppShell(onLogout: () -> Unit) {
                     TabDown.handler = ask
                     onDispose { if (TabDown.handler === ask) TabDown.handler = null }
                 }
-                MessageBox("🔒  DVR is locked", "Press ▼ and enter your parental code.")
+                MessageBox("🔒  DVR is locked", "Press ▶ and enter your parental code.")
             } else DvrTab()
         }
-        TopBar(
+      }
+        SideRail(
             tab = tab, reqs = tabReq,
             onTab = { tab = it },
             onEnter = { if (it == 2) sportsEnter++; if (it == 3 && !dvrUnlocked && pinNeeded(context, com.forbiddenstreams.tv.data.AppSettings.pinDvr)) dvrPin = true },

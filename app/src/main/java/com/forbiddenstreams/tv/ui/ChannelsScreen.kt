@@ -735,20 +735,8 @@ private fun GuideInfoPanel(ch: LiveChannel?, p: Program?, previewReq: FocusReque
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val pill = Modifier.background(Color(0x33000000), RoundedCornerShape(50)).border(1.dp, Color(0x557CFF3A), RoundedCornerShape(50))
                 .padding(horizontal = 14.dp, vertical = 4.dp)
-            Text(Fmt.time(now) + " - " + java.text.SimpleDateFormat("EEE, d MMM yyyy", java.util.Locale.US).format(java.util.Date(now)),
-                color = FS.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = pill)
             Text("Group: $groupTitle", color = FS.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, modifier = pill.widthIn(max = 320.dp))
-            ch?.let { c ->
-                val context = androidx.compose.ui.platform.LocalContext.current
-                val q = com.forbiddenstreams.tv.player.StreamQuality.label(context, c.id, c.name)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (q != null) Text(q, color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.background(FS.Green, RoundedCornerShape(4.dp)).padding(horizontal = 7.dp, vertical = 1.dp))
-                    if (c.hasArchive) GText("⟲ CATCH-UP", color = FS.Green, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.border(1.dp, FS.GreenDeep, RoundedCornerShape(4.dp)).padding(horizontal = 7.dp, vertical = 1.dp))
-                }
-            }
         }
     }
 }
@@ -929,10 +917,7 @@ private fun PhotoGuideRow(
     val density = LocalDensity.current
     val scrolledDp = with(density) { hState.value.toDp() }
     val tile = RoundedCornerShape(12.dp)
-    // Nov 16: shows that are live glow red (a slow pulse).
-    val glow = androidx.compose.animation.core.rememberInfiniteTransition(label = "live").animateFloat(
-        0.45f, 1f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(1_100),
-            androidx.compose.animation.core.RepeatMode.Reverse), label = "g")
+    // Nov 16: shows that are live are a steady red (no glow).
     Row(Modifier.fillMaxWidth().height(rowH).padding(vertical = 2.dp)) {
         Row(
             Modifier.width(GUIDE_CH_COL.dp).fillMaxHeight().padding(end = 4.dp)
@@ -945,8 +930,14 @@ private fun PhotoGuideRow(
                 NetImage(ch.logo, Modifier.fillMaxSize())
             }
             Spacer(Modifier.width(10.dp))
-            Text(ch.name, color = if (rowSel) Color.White else FS.Text, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 2,
-                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f), lineHeight = 16.sp)
+            // Nov 16: what's on now is always readable, right under the channel name.
+            Column(Modifier.weight(1f)) {
+                Text(ch.name, color = if (rowSel) Color.White else FS.Text, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis)
+                val onNow = cells.firstOrNull { now >= it.start && now < it.end }?.program?.title
+                if (onNow != null) Text(onNow, color = if (rowSel) Color.White else Color(0xFFFF6B6B), fontSize = 11.sp, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis)
+            }
             Column(Modifier.fillMaxHeight().padding(vertical = 4.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.SpaceBetween) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (ch.hasArchive) GText("⟲ ", color = FS.TextDim, fontSize = 11.sp)
@@ -964,16 +955,16 @@ private fun PhotoGuideRow(
                     val sel = cursor != null && cursor >= cell.start && cursor < cell.end
                     val startDp = widthDp(cell.start - ws)
                     val endDp = widthDp(cell.end - ws)
-                    val shift = if (startDp < scrolledDp && endDp > scrolledDp + 60.dp) scrolledDp - startDp else 0.dp
+                    val shift = if (startDp < scrolledDp && endDp > scrolledDp + 24.dp) scrolledDp - startDp else 0.dp
                     val catchup = past && inArchive(ch, cell.start) && (p == null || p.hasArchive || ch.hasArchive)
                     Column(
                         Modifier.width(widthDp(cell.end - cell.start)).fillMaxHeight().padding(horizontal = 2.dp)
-                            .then(if (live) Modifier.background(Color(0xFFFF2A2A).copy(alpha = 0.10f + 0.12f * glow.value), tile) else Modifier)
+                            .then(if (live) Modifier.background(Color(0x2EFF2A2A), tile) else Modifier)
                             .background(
                                 when { sel && !live -> Color(0xFF173A22); sel -> Color(0x33FFFFFF); rowSel -> Color(0x26FFFFFF); else -> Color(0x12FFFFFF) }, tile)
                             .border(
                                 when { live && sel -> 3.dp; live -> 2.dp; sel -> 2.dp; else -> 1.dp },
-                                when { live -> Color(0xFFFF3B3B).copy(alpha = glow.value); sel -> FS.Green; else -> Color(0x10FFFFFF) }, tile)
+                                when { live -> Color(0xFFFF3B3B); sel -> FS.Green; else -> Color(0x10FFFFFF) }, tile)
                             .padding(start = 10.dp + shift, end = 8.dp),
                         verticalArrangement = Arrangement.Center,
                     ) {
