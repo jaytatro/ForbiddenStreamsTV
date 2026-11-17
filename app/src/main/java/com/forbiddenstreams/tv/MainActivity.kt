@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Application
 import android.os.Build
 import android.os.Bundle
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -91,7 +92,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         // Nov 16: Android's splash (black + logo) stays up until the saved channel list is read (max ~1.5 s),
         // then our own loading screen takes over until the app is ready.
-        val splash = androidx.core.splashscreen.SplashScreen.installSplashScreen(this)
+        val splash = installSplashScreen()
         val t0 = android.os.SystemClock.uptimeMillis()
         splash.setKeepOnScreenCondition { Session.source != null && Session.liveAll == null && android.os.SystemClock.uptimeMillis() - t0 < 1_500 }
         super.onCreate(savedInstanceState)
