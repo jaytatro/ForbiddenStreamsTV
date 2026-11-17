@@ -118,7 +118,8 @@ fun SportsScreen(league: League, openGameId: String? = null, onOpened: () -> Uni
             val m = HashMap(matches)
             for (g in all) {
                 if (m.containsKey(g.id)) continue
-                GameChannelCache.get(league, g)?.let { m[g.id] = it.match; continue }
+                val pre = GameChannelCache.get(league, g)
+                if (pre != null) { m[g.id] = pre.match; continue }
                 m[g.id] = GameMatcher.match(g, league, ch) { c -> epgCache[c.id] ?: Session.cachedEpg(c).orEmpty() }
             }
             m
