@@ -738,6 +738,15 @@ private fun GuideInfoPanel(ch: LiveChannel?, p: Program?, previewReq: FocusReque
                 .padding(horizontal = 14.dp, vertical = 4.dp)
             Text("Group: $groupTitle", color = FS.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, modifier = pill.widthIn(max = 320.dp))
+            // Nov 16: the time and date under the group, top-right.
+            val clock by androidx.compose.runtime.produceState(System.currentTimeMillis()) {
+                while (true) { value = System.currentTimeMillis(); kotlinx.coroutines.delay(1_000L - value % 1_000L) }
+            }
+            Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(end = 4.dp, top = 2.dp)) {
+                Text(Fmt.time(clock), color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(java.text.SimpleDateFormat("EEEE, MMMM d", java.util.Locale.US).format(java.util.Date(clock)),
+                    color = FS.TextDim, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            }
         }
     }
 }
