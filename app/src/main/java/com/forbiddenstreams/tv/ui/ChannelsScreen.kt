@@ -459,7 +459,13 @@ fun GuideView(
         }
     }
 
-    fun step(dir: Int) {
+    /** Nov 16: the show the cursor is on goes to the left, right against the channel names. */
+    fun alignCursorLeft() {
+        val start = (cellAt(row)?.start ?: cursor).coerceAtLeast(ws)
+        scope.launch { try { hState.animateScrollTo(px(start - ws).coerceAtLeast(0)) } catch (e: Exception) { } }
+    }
+
+    fun step(dir: Int, alignLeft: Boolean = false) {
         val cells = cellsOf(row)
         val i = cells.indexOfFirst { cursor >= it.start && cursor < it.end }
         val j = i + dir
@@ -472,7 +478,7 @@ fun GuideView(
         val t = System.currentTimeMillis()
         followNow = dayOffset == 0 && cellAt(row)?.let { t >= it.start && t < it.end } == true
         if (followNow) cursor = t
-        keepCursorVisible()
+        if (alignLeft) alignCursorLeft() else keepCursorVisible()
     }
 
     fun changeDay(d: Int) {
@@ -594,24 +600,25 @@ fun GuideView(
                     AKeyEvent.KEYCODE_CHANNEL_DOWN -> { if (down) { row = (row + 8).coerceAtMost(channels.size - 1); keepRowVisible() }; true }
                     AKeyEvent.KEYCODE_DPAD_LEFT, AKeyEvent.KEYCODE_DPAD_RIGHT -> {
                         val dir = if (ne.keyCode == AKeyEvent.KEYCODE_DPAD_LEFT) -1 else 1
+                        // Nov 16: ▶ = the next show, moved over to the left against the channel.
+                        //         ◀ held for 1 second = one show back (catch-up); it steps once per hold —
+                        //         let go and hold again for the next one. A short ◀ opens the categories.
                         if (down) {
                             if (ne.repeatCount == 0) {
                                 lrLong = false
                                 lrDown = true
                                 lrDownAt = System.currentTimeMillis()
+                            } else if (dir < 0) {
+                                if (!lrLong && System.currentTimeMillis() - lrDownAt >= 1_000) { lrLong = true; step(-1, alignLeft = true) }
                             } else {
-                                // Held down for the set time (Settings › Buttons, 2 s by default):
-                                // scroll through time, a few steps per second.
-                                lrLong = true
+                                // ▶ held (Settings hold time): keeps going a show every 2 seconds.
                                 val t = System.currentTimeMillis()
-                                // After that, it stops on each show for 2 seconds before moving to the next.
-                                if (t - lrDownAt >= ButtonPrefs.holdMs && t - lastStep >= 2_000) { lastStep = t; step(dir) }
+                                if (t - lrDownAt >= ButtonPrefs.holdMs && t - lastStep >= 2_000) { lrLong = true; lastStep = t; step(1, alignLeft = true) }
                             }
                         } else {
                             if (lrDown && !lrLong) {
-                                // Short press: ◀ = back to the categories (or one show back, see Settings › Buttons); ▶ = next show.
                                 if (dir < 0 && leftOpensCategories && (ButtonPrefs.leftOpensCategories || onPlayChannel != null)) onCategories()
-                                else step(dir)
+                                else step(dir, alignLeft = true)
                             }
                             lrDown = false
                         }
