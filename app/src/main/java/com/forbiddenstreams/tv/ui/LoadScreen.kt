@@ -37,11 +37,15 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Text
 import com.forbiddenstreams.tv.R
 import com.forbiddenstreams.tv.data.Session
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 
 /** True while the opening loading screen is up (AppShell waits with its focus until it's gone). */
 object LoadScreen {
     var showing by mutableStateOf(true)
+    var step by mutableStateOf("Starting…")
+    var progress by mutableStateOf(0f)
 }
 
 /**
@@ -51,13 +55,56 @@ object LoadScreen {
  */
 @Composable
 fun LoadScreenHost() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // Nov 16 ("don't skip the wait, load everything beforehand"): the loading screen stays until the
+    // playlist is updated, the guide for your recent channels is in, Home's pictures are loaded and
+    // today's games are fetched. (Gives up after 90 s and opens with what it has.)
     LaunchedEffect(Unit) {
         val t0 = System.currentTimeMillis()
-        while (true) {
-            val e = System.currentTimeMillis() - t0
-            if ((Session.liveAll != null && e >= 1_200) || e >= 6_000) break
-            delay(100)
+        kotlinx.coroutines.withTimeoutOrNull(90_000) {
+            // 1. Playlist
+            LoadScreen.step = "Updating your playlist…"; LoadScreen.progress = 0.05f
+            while (Session.source == null) delay(100)
+            Session.refreshInBackground(context)
+            delay(200)
+            Session.awaitRefresh()
+            while (Session.liveAll == null && Session.liveError == null) delay(100)
+            LoadScreen.progress = 0.55f
+            // 2. Guide for the channels you watch
+            LoadScreen.step = "Loading the TV guide…"
+            val recent = com.forbiddenstreams.tv.data.Prefs(context).history.mapNotNull { Session.channelById(it) }.take(20)
+            kotlinx.coroutines.withTimeoutOrNull(12_000) {
+                kotlinx.coroutines.coroutineScope {
+                    recent.map { c -> async { try { Session.epg(c) } catch (e: Exception) { } } }.awaitAll()
+                }
+            }
+            LoadScreen.progress = 0.75f
+            // 3. Today's games (Home's live games, Sports)
+            LoadScreen.step = "Getting today's games…"
+            kotlinx.coroutines.withTimeoutOrNull(8_000) {
+                kotlinx.coroutines.coroutineScope {
+                    com.forbiddenstreams.tv.sports.SPORTS_ORDER.map { l ->
+                        async { try { com.forbiddenstreams.tv.sports.Espn.week(l, 0, 0) } catch (e: Exception) { } }
+                    }.awaitAll()
+                }
+            }
+            LoadScreen.progress = 0.88f
+            // 4. Home's pictures (Keep watching, channel logos)
+            LoadScreen.step = "Getting Home ready…"
+            val urls = (com.forbiddenstreams.tv.data.Recents.all(context).mapNotNull { it.image } + recent.mapNotNull { it.logo })
+                .distinct().take(40)
+            val loader = coil.Coil.imageLoader(context)
+            kotlinx.coroutines.withTimeoutOrNull(10_000) {
+                kotlinx.coroutines.coroutineScope {
+                    urls.map { u -> async { try { loader.execute(coil.request.ImageRequest.Builder(context).data(u).build()) } catch (e: Exception) { } } }.awaitAll()
+                }
+            }
+            LoadScreen.progress = 1f
+            LoadScreen.step = "Ready"
         }
+        // Never shorter than 1.2 s so it doesn't just flash.
+        val e = System.currentTimeMillis() - t0
+        if (e < 1_200) delay(1_200 - e)
         LoadScreen.showing = false
     }
     AnimatedVisibility(visible = LoadScreen.showing, exit = fadeOut(tween(400))) {
@@ -73,13 +120,14 @@ fun LoadScreenHost() {
                 Spacer(Modifier.height(18.dp))
                 Text("FORBIDDEN STREAMS TV", color = FS.Green, fontSize = 26.sp, fontWeight = FontWeight.Black, letterSpacing = 4.sp)
                 Spacer(Modifier.height(22.dp))
-                // A green bar sweeping across.
-                Box(Modifier.width(320.dp).height(6.dp).background(Color(0x22FFFFFF), RoundedCornerShape(3.dp))) {
-                    Box(Modifier.fillMaxWidth(0.25f + 0.75f * bar.value).fillMaxHeight().background(FS.Green, RoundedCornerShape(3.dp)))
+                // How far along it is (green), with a soft shimmer.
+                val shown by androidx.compose.animation.core.animateFloatAsState(LoadScreen.progress, tween(500), label = "p")
+                Box(Modifier.width(360.dp).height(8.dp).background(Color(0x22FFFFFF), RoundedCornerShape(4.dp))) {
+                    Box(Modifier.fillMaxWidth(shown.coerceAtLeast(0.03f)).fillMaxHeight().alpha(0.75f + 0.25f * bar.value)
+                        .background(FS.Green, RoundedCornerShape(4.dp)))
                 }
                 Spacer(Modifier.height(12.dp))
-                Text(if (Session.liveAll == null) "Loading your channels…" else "Getting everything ready…",
-                    color = FS.TextDim, fontSize = 15.sp)
+                Text(LoadScreen.step, color = FS.TextDim, fontSize = 16.sp)
             }
         }
     }

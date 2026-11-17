@@ -237,6 +237,9 @@ object Session {
         guideVersion++
     }
 
+    /** Nov 16 (loading screen): waits until the playlist refresh that's running (if any) is finished. */
+    suspend fun awaitRefresh() { refreshJob?.join() }
+
     fun channelsIn(categoryId: String): List<LiveChannel> = liveAll.orEmpty().filter { it.categoryId == categoryId }
 
     fun channelById(id: String): LiveChannel? = liveAll?.firstOrNull { it.id == id }
