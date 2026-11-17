@@ -148,7 +148,7 @@ fun AppShell(onLogout: () -> Unit) {
 
     Box(Modifier.fillMaxSize()) {
       // Nov 16: screens sit right of the side menu.
-      Box(Modifier.fillMaxSize().padding(start = RAIL_W)) {
+      Box(Modifier.fillMaxSize().padding(start = SIDE_RAIL_W)) {
         when (tab) {
             0 -> HomeTab(onOpenGame = { l, id -> sportsOpen = l to id; tab = 2 })
             1 -> LiveTvTab()

@@ -15,8 +15,6 @@ import androidx.compose.ui.unit.Dp
 
 /** Single-line (outline) icons for the left rail, drawn on a 24×24 grid. */
 enum class RailIcon(val d: String) {
-    /** A ball (Sports, Nov 16 side menu). */
-    SPORTS("M12 3a9 9 0 1 1 0 18a9 9 0 1 1 0 -18z M3.6 9h16.8 M3.6 15h16.8 M12 3a13 13 0 0 1 0 18 M12 3a13 13 0 0 0 0 18"),
     /** A record button (DVR). */
     DVR("M12 3a9 9 0 1 1 0 18a9 9 0 1 1 0 -18z M12 8a4 4 0 1 1 0 8a4 4 0 1 1 0 -8z"),
     HOME("M3 11l9 -7l9 7v9a1 1 0 0 1 -1 1h-5v-6h-6v6h-5a1 1 0 0 1 -1 -1z"),

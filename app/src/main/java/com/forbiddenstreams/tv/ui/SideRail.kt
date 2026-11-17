@@ -43,7 +43,7 @@ import androidx.tv.material3.Text
 import com.forbiddenstreams.tv.R
 
 /** Width of the side menu when it's closed (icons only); screens start right of it. */
-val RAIL_W = 72.dp
+val SIDE_RAIL_W = 72.dp
 
 private data class RailEntry(val name: String, val icon: RailIcon)
 
@@ -64,7 +64,7 @@ private val RAIL = listOf(
 @Composable
 fun SideRail(tab: Int, reqs: List<FocusRequester>, onTab: (Int) -> Unit, onEnter: (Int) -> Unit, onFocusChange: (Boolean) -> Unit, onSettings: () -> Unit) {
     var open by remember { mutableStateOf(false) }
-    val w by animateDpAsState(if (open) 230.dp else RAIL_W, tween(180), label = "rail")
+    val w by animateDpAsState(if (open) 230.dp else SIDE_RAIL_W, tween(180), label = "rail")
     Box(
         Modifier.width(w).fillMaxHeight().clipToBounds()
             .background(if (open) Color(0xF5020402) else Color(0xFF030503))
