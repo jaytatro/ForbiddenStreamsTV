@@ -102,6 +102,7 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
     private var web: WebView? = null
     private var hint: android.widget.TextView? = null
     private var cover: android.view.View? = null
+    private val tries = ArrayList<String>()
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val hideHint = Runnable { hint?.visibility = android.view.View.GONE }
 
@@ -124,6 +125,7 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val id = intent.getStringExtra("id") ?: run { finish(); return }
         val title = intent.getStringExtra("title") ?: ""
+        tries.clear(); tries.addAll(com.forbiddenstreams.tv.sports.HighlightFinder.backupsFor(id))
         val root = android.widget.FrameLayout(this).apply { setBackgroundColor(android.graphics.Color.BLACK) }
         val w = WebView(this).apply {
             isFocusable = false
@@ -138,6 +140,9 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
             addJavascriptInterface(object {
                 @JavascriptInterface fun onError(code: Int) {
                     post {
+                        // Nov 16: some channels turn off playing in other apps — try the next match for this game first.
+                        val next = tries.removeFirstOrNull()
+                        if (next != null) { js("if(window.p){p.loadVideoById('$next');}"); return@post }
                         toast(this@HighlightActivity, "This video can't play here — opening YouTube")
                         openInYouTube(id); finish()
                     }

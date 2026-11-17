@@ -651,23 +651,12 @@ fun GameChannelsDialog(league: League, g: Game, onClose: () -> Unit) {
  * if that can't be found, opens YouTube's search for it.
  */
 fun openHighlights(context: android.content.Context, league: League, g: Game) {
-    val date = java.text.SimpleDateFormat("MMMM d, yyyy", java.util.Locale.US).format(java.util.Date(g.start))
-    val q = "${g.away.displayName} vs ${g.home.displayName} highlights $date ${league.label}"
+    val q = com.forbiddenstreams.tv.sports.HighlightFinder.query(league, g)
     toast(context, "Finding the highlights…")
     kotlinx.coroutines.MainScope().launch {
-        val id = try {
-            withContext(Dispatchers.IO) {
-                val req = okhttp3.Request.Builder()
-                    .url("https://www.youtube.com/results?search_query=" + java.net.URLEncoder.encode(q, "UTF-8"))
-                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
-                    .header("Accept-Language", "en-US,en;q=0.9")
-                    .build()
-                com.forbiddenstreams.tv.data.Http.client.newCall(req).execute().use { r ->
-                    val html = r.body?.string().orEmpty()
-                    Regex("\"videoId\":\"([A-Za-z0-9_-]{11})\"").find(html)?.groupValues?.get(1)
-                }
-            }
-        } catch (e: Exception) { null }
+        // Nov 16: checks every result so it's this game's highlights (see HighlightFinder).
+        val id = try { com.forbiddenstreams.tv.sports.HighlightFinder.find(league, g) } catch (e: Exception) { null }
+        if (id == null) toast(context, "Couldn't find highlights for this game yet — showing YouTube search")
         if (id != null) {
             // Settings › Sports › Play highlights in: here in the app (default), TizenTube, or the YouTube app.
             when (com.forbiddenstreams.tv.data.AppSettings.highlightsIn) {
