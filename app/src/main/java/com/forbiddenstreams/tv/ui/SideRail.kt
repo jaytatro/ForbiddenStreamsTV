@@ -40,10 +40,13 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import kotlinx.coroutines.launch
 import com.forbiddenstreams.tv.R
 
 /** Width of the side menu when it's closed (icons only); screens start right of it. */
 val SIDE_RAIL_W = 72.dp
+/** Width when the cursor is in the menu (the screen moves over by this much). */
+val SIDE_RAIL_OPEN_W = 230.dp
 
 private data class RailEntry(val name: String, val icon: RailIcon)
 
@@ -64,7 +67,9 @@ private val RAIL = listOf(
 @Composable
 fun SideRail(tab: Int, reqs: List<FocusRequester>, onTab: (Int) -> Unit, onEnter: (Int) -> Unit, onFocusChange: (Boolean) -> Unit, onSettings: () -> Unit) {
     var open by remember { mutableStateOf(false) }
-    val w by animateDpAsState(if (open) 230.dp else SIDE_RAIL_W, tween(180), label = "rail")
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val w by animateDpAsState(if (open) SIDE_RAIL_OPEN_W else SIDE_RAIL_W, tween(180), label = "rail")
     Box(
         Modifier.width(w).fillMaxHeight().clipToBounds()
             .background(if (open) Color(0xF5020402) else Color(0xFF030503))
@@ -84,7 +89,7 @@ fun SideRail(tab: Int, reqs: List<FocusRequester>, onTab: (Int) -> Unit, onEnter
             }
             Spacer(Modifier.weight(1f))
             Column(
-                Modifier.fillMaxWidth()
+                Modifier.fillMaxWidth().weight(3f)
                     // Coming into the menu always lands on the tab you're on.
                     .focusProperties { enter = { reqs[tab] } }
                     .focusGroup()
@@ -93,21 +98,31 @@ fun SideRail(tab: Int, reqs: List<FocusRequester>, onTab: (Int) -> Unit, onEnter
             ) {
                 RAIL.forEachIndexed { i, e ->
                     RailButton(e.name, e.icon, selected = i == tab, open = open,
-                        modifier = Modifier.focusRequester(reqs[i]).onFocusChanged { if (it.isFocused) onTab(i) }
+                        // Nov 16: highlighting a tab doesn't open it — OK does. ▶ goes into the screen you're on.
+                        modifier = Modifier.focusRequester(reqs[i])
                             .onPreviewKeyEvent { ev ->
                                 ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
                                     ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT &&
-                                    i == tab && TabDown.handler?.invoke() == true
+                                    (i != tab || TabDown.handler?.invoke() == true)
                             },
                         onClick = {
-                            onTab(i); onEnter(i)
-                            TabDown.handler?.invoke()
+                            if (i != tab) {
+                                onTab(i); onEnter(i)
+                                // Into the new screen once it's there.
+                                scope.launch {
+                                    kotlinx.coroutines.delay(250)
+                                    if (TabDown.handler?.invoke() != true) focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Right)
+                                }
+                            } else {
+                                onEnter(i)
+                                TabDown.handler?.invoke()
+                            }
                         })
                 }
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.weight(1f))
+                // ⚙ Settings all the way at the bottom.
                 RailButton("Settings", RailIcon.SETTINGS, selected = false, open = open, modifier = Modifier, onClick = onSettings)
             }
-            Spacer(Modifier.weight(1.4f))
         }
     }
 }

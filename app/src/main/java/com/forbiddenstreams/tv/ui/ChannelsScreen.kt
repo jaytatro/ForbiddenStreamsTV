@@ -535,8 +535,9 @@ fun GuideView(
 
     // Nov 8: BACK in the guide → the live preview (top left); BACK again (handled by the app) → the tabs.
     var guideHasFocus by remember { mutableStateOf(false) }
+    // Nov 16: BACK while the preview plays (top left) → the channel full screen.
     BackHandler(enabled = !overlay && guideHasFocus && !previewFocused && PlayerHolder.isMiniActive) {
-        try { previewReq.requestFocus() } catch (e: Exception) { }
+        PlayerHolder.openFullScreen(context)
     }
 
     Column(

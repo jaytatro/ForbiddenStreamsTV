@@ -147,8 +147,10 @@ fun AppShell(onLogout: () -> Unit) {
     }
 
     Box(Modifier.fillMaxSize()) {
-      // Nov 16: screens sit right of the side menu.
-      Box(Modifier.fillMaxSize().padding(start = SIDE_RAIL_W)) {
+      // Nov 16: screens sit right of the side menu, and move over when it opens (nothing is covered).
+      val railW by androidx.compose.animation.core.animateDpAsState(if (tabsFocused) SIDE_RAIL_OPEN_W else SIDE_RAIL_W,
+          androidx.compose.animation.core.tween(180), label = "railPad")
+      Box(Modifier.fillMaxSize().padding(start = railW)) {
         when (tab) {
             0 -> HomeTab(onOpenGame = { l, id -> sportsOpen = l to id; tab = 2 })
             1 -> LiveTvTab()
