@@ -42,6 +42,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
@@ -410,8 +411,11 @@ fun GuideView(
 
     fun px(ms: Long): Int = with(density) { widthDp(ms).toPx() }.toInt()
 
-    /** Scroll so [t] sits in the middle of the grid. */
-    fun centerOn(t: Long): Int = (px(t - ws) - (gridWidthPx * 0.5f).toInt()).coerceAtLeast(0)
+    /**
+     * Scroll so [t] sits in the middle of the grid — or, in the Live TV tab (Nov 16, like the user's photo),
+     * just right of the channel names, so what's live is next to the channel.
+     */
+    fun centerOn(t: Long): Int = (px(t - ws) - (gridWidthPx * (if (overlay) 0.5f else 0.05f)).toInt()).coerceAtLeast(0)
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -423,8 +427,8 @@ fun GuideView(
                 cursor = now
                 if (gridWidthPx > 0) {
                     val x = px(now - ws) - hState.value
-                    if (x < 0 || x > gridWidthPx * 0.8f) {
-                        hState.animateScrollTo((px(now - ws) - (gridWidthPx * 0.3f).toInt()).coerceAtLeast(0))
+                    if (x < 0 || x > gridWidthPx * (if (overlay) 0.8f else 0.35f)) {
+                        hState.animateScrollTo(centerOn(now))
                     }
                 }
             }
@@ -763,8 +767,8 @@ private fun GuideHeader(day: Long, dateMode: Boolean, ws: Long, we: Long, now: L
                         modifier = Modifier.offset(x = widthDp(t - ws) + 8.dp).align(Alignment.CenterStart))
                     t += 30 * MIN
                 }
-                if (now in ws until we) Text("ON NOW", color = Color(0xFFFF4040), fontSize = 14.sp, fontWeight = FontWeight.Black,
-                    modifier = Modifier.offset(x = (widthDp(now - ws) - 34.dp).coerceAtLeast(0.dp)).align(Alignment.BottomStart)
+                if (now in ws until we) Text("LIVE", color = Color(0xFFFF4040), fontSize = 14.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp,
+                    modifier = Modifier.offset(x = (widthDp(now - ws) - 22.dp).coerceAtLeast(0.dp)).align(Alignment.BottomStart)
                         .background(Color(0xE6040604), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp))
             }
         }
@@ -918,6 +922,10 @@ private fun PhotoGuideRow(
     val density = LocalDensity.current
     val scrolledDp = with(density) { hState.value.toDp() }
     val tile = RoundedCornerShape(12.dp)
+    // Nov 16: shows that are live glow red (a slow pulse).
+    val glow = androidx.compose.animation.core.rememberInfiniteTransition(label = "live").animateFloat(
+        0.45f, 1f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(1_100),
+            androidx.compose.animation.core.RepeatMode.Reverse), label = "g")
     Row(Modifier.fillMaxWidth().height(rowH).padding(vertical = 2.dp)) {
         Row(
             Modifier.width(GUIDE_CH_COL.dp).fillMaxHeight().padding(end = 4.dp)
@@ -953,9 +961,12 @@ private fun PhotoGuideRow(
                     val catchup = past && inArchive(ch, cell.start) && (p == null || p.hasArchive || ch.hasArchive)
                     Column(
                         Modifier.width(widthDp(cell.end - cell.start)).fillMaxHeight().padding(horizontal = 2.dp)
+                            .then(if (live) Modifier.background(Color(0xFFFF2A2A).copy(alpha = 0.10f + 0.12f * glow.value), tile) else Modifier)
                             .background(
-                                when { sel -> Color(0xFF173A22); rowSel -> Color(0x26FFFFFF); live -> Color(0x1AFFFFFF); else -> Color(0x12FFFFFF) }, tile)
-                            .border(if (sel) 2.dp else 1.dp, if (sel) FS.Green else Color(0x10FFFFFF), tile)
+                                when { sel && !live -> Color(0xFF173A22); sel -> Color(0x33FFFFFF); rowSel -> Color(0x26FFFFFF); else -> Color(0x12FFFFFF) }, tile)
+                            .border(
+                                when { live && sel -> 3.dp; live -> 2.dp; sel -> 2.dp; else -> 1.dp },
+                                when { live -> Color(0xFFFF3B3B).copy(alpha = glow.value); sel -> FS.Green; else -> Color(0x10FFFFFF) }, tile)
                             .padding(start = 10.dp + shift, end = 8.dp),
                         verticalArrangement = Arrangement.Center,
                     ) {
