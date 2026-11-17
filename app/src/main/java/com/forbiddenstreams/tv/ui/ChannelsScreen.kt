@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -79,6 +80,8 @@ import java.util.Calendar
 private const val DP_PER_MIN = 6f
 private const val CH_COL = 210
 private const val ROW_H = 62
+/** Channel column of the TV Guide tab (Nov 16 photo layout). */
+private const val GUIDE_CH_COL = 250
 private const val HOUR = 3_600_000L
 private const val MIN = 60_000L
 private const val DAY = 24 * HOUR
@@ -625,33 +628,11 @@ fun GuideView(
             }
             .focusable(),
     ) {
-        if (!overlay) GuideInfoPanel(curCh, curProg, previewReq) { previewFocused = it }
-        // Day strip (moves by itself when you hold ◀ ▶ past midnight)
-        if (!overlay) Row(
-            Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(if (dateMode) "◀ ▶ DAY" else "DAY", color = if (dateMode) FS.Green else FS.GreenMid, fontSize = 12.sp,
-                fontWeight = FontWeight.Black, letterSpacing = 3.sp, modifier = Modifier.padding(end = 12.dp))
-            // The 7 days spread evenly across the full width.
-            for (d in -3..3) {
-                val sel = d == dayOffset
-                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    Text(
-                        if (d == 0) "TODAY" else Fmt.day(dayStart(d)),
-                        color = if (sel && dateMode) androidx.compose.ui.graphics.Color.Black else if (sel) FS.Green else FS.TextDim,
-                        fontSize = 13.sp, fontWeight = if (sel) FontWeight.Black else FontWeight.Normal,
-                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                        modifier = Modifier
-                            .then(if (sel && dateMode) Modifier.background(FS.Green, RoundedCornerShape(50)) else Modifier)
-                            .then(if (sel) Modifier.border(2.dp, FS.Green, RoundedCornerShape(50)) else Modifier)
-                            .padding(horizontal = 14.dp, vertical = 3.dp),
-                    )
-                }
-            }
-        }
+        if (!overlay) GuideInfoPanel(curCh, curProg, previewReq, group.title, now) { previewFocused = it }
         Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp)) {
-            TimeHeader(if (overlay) "" else group.title, ws, we, now, hState, overlay) { gridWidthPx = it }
+            // Nov 16 (user's photo): "‹ Mon, 16 Nov 2026" over the channels, "ON NOW" + bold times over the grid.
+            if (overlay) TimeHeader("", ws, we, now, hState, true) { gridWidthPx = it }
+            else GuideHeader(dayStart(dayOffset), dateMode, ws, we, now, hState) { gridWidthPx = it }
             // Nov 15: the TV Guide tab fits 5 channels in the space it has (the player's guide keeps its size).
             androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
             val rowH = if (overlay) ROW_H.dp else (maxHeight / 5).coerceIn(44.dp, 90.dp)
@@ -708,53 +689,84 @@ fun GuideView(
     LaunchedEffect(menu) { if (menu == null && active) { delay(80); try { focus.requestFocus() } catch (e: Exception) { } } }
 }
 
+/**
+ * Nov 16 (user's photo): big live preview top-left; next to it the show — title, time, a progress bar with
+ * "N Minutes Left" and the description; top-right two pills: the clock + date and the category ("Group: …").
+ */
 @Composable
-private fun GuideInfoPanel(ch: LiveChannel?, p: Program?, previewReq: FocusRequester, onPreviewFocus: (Boolean) -> Unit) {
-    // Nov 8: live preview on the left (10% bigger), the channel's info on the right.
-    Row(
-        Modifier.fillMaxWidth().height(144.dp).padding(horizontal = 24.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        MiniPlayer(
-            231.dp, focusable = true,
-            cardModifier = Modifier.focusRequester(previewReq).onFocusChanged { onPreviewFocus(it.isFocused) },
-        )
-        Spacer(Modifier.width(24.dp))
-        Column(Modifier.weight(1f), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                (ch?.let { "${it.num}  ·  ${it.name}" } ?: "TV Guide").uppercase(),
-                color = FS.Green, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp, maxLines = 1,
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(p?.title ?: ch?.name ?: "", color = FS.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+private fun GuideInfoPanel(ch: LiveChannel?, p: Program?, previewReq: FocusRequester, groupTitle: String, now: Long, onPreviewFocus: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().height(170.dp).padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 6.dp)) {
+        Box(Modifier.width(290.dp).fillMaxHeight().background(Color.Black, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+            if (PlayerHolder.isMiniActive) MiniPlayer(
+                290.dp, focusable = true,
+                cardModifier = Modifier.focusRequester(previewReq).onFocusChanged { onPreviewFocus(it.isFocused) },
+            ) else Box(Modifier.size(width = 150.dp, height = 84.dp), contentAlignment = Alignment.Center) { NetImage(ch?.logo, Modifier.fillMaxSize()) }
+        }
+        Spacer(Modifier.width(18.dp))
+        Column(Modifier.weight(1f).fillMaxHeight().padding(top = 2.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(p?.title ?: ch?.name ?: "", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 1,
                 overflow = TextOverflow.Ellipsis)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (p != null) {
-                    Text(Fmt.range(p.start, p.end), color = FS.Text, fontSize = 15.sp)
-                    Spacer(Modifier.width(12.dp))
+            if (p != null) {
+                Text(Fmt.range(p.start, p.end), color = FS.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                if (p.isLive(now)) Row(verticalAlignment = Alignment.CenterVertically) {
+                    val f = ((now - p.start).toFloat() / (p.end - p.start).coerceAtLeast(1)).coerceIn(0f, 1f)
+                    Box(Modifier.width(150.dp).height(5.dp).background(Color(0x33FFFFFF), RoundedCornerShape(3.dp))) {
+                        Box(Modifier.fillMaxWidth(f).fillMaxHeight().background(FS.Green, RoundedCornerShape(3.dp)))
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text("${((p.end - now) / 60_000).coerceAtLeast(0)} Minutes Left", color = FS.TextDim, fontSize = 13.sp)
                 }
+                if (p.description.isNotBlank()) Text(p.description, color = FS.Text, fontSize = 15.sp, maxLines = 3,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+            } else if (ch != null) Text("No Information", color = FS.TextDim, fontSize = 15.sp)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val pill = Modifier.background(Color(0x33000000), RoundedCornerShape(50)).border(1.dp, Color(0x557CFF3A), RoundedCornerShape(50))
+                .padding(horizontal = 14.dp, vertical = 4.dp)
+            Text(Fmt.time(now) + " - " + java.text.SimpleDateFormat("EEE, d MMM yyyy", java.util.Locale.US).format(java.util.Date(now)),
+                color = FS.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = pill)
+            Text("Group: $groupTitle", color = FS.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                overflow = TextOverflow.Ellipsis, modifier = pill.widthIn(max = 320.dp))
+            ch?.let { c ->
                 val context = androidx.compose.ui.platform.LocalContext.current
-                ch?.let { c -> com.forbiddenstreams.tv.player.StreamQuality.label(context, c.id, c.name) }?.let { q ->
-                    Text(q, color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                val q = com.forbiddenstreams.tv.player.StreamQuality.label(context, c.id, c.name)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (q != null) Text(q, color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.background(FS.Green, RoundedCornerShape(4.dp)).padding(horizontal = 7.dp, vertical = 1.dp))
-                    Spacer(Modifier.width(8.dp))
-                }
-                if (ch?.hasArchive == true) {
-                    GText("⟲ CATCH-UP", color = FS.Green, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    if (c.hasArchive) GText("⟲ CATCH-UP", color = FS.Green, fontSize = 12.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.border(1.dp, FS.GreenDeep, RoundedCornerShape(4.dp)).padding(horizontal = 7.dp, vertical = 1.dp))
                 }
             }
-            if (p != null && p.description.isNotBlank()) {
-                Text(p.description, color = FS.TextDim, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.End)
-            } else if (p == null && ch != null) {
-                Text("No program information", color = FS.TextDim, fontSize = 14.sp)
-            }
         }
-        Spacer(Modifier.width(18.dp))
-        Box(Modifier.size(width = 150.dp, height = 84.dp), contentAlignment = Alignment.Center) {
-            NetImage(ch?.logo, Modifier.fillMaxSize())
+    }
+}
+
+/** Header row (non-overlay guide): the date over the channels ("‹" = categories; ◀ ▶ in date mode), then the times. */
+@Composable
+private fun GuideHeader(day: Long, dateMode: Boolean, ws: Long, we: Long, now: Long, hState: ScrollState, onWidth: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth().height(34.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.width(GUIDE_CH_COL.dp).fillMaxHeight()
+            .then(if (dateMode) Modifier.background(FS.GreenDeep, RoundedCornerShape(50)).border(1.5.dp, FS.Green, RoundedCornerShape(50)) else Modifier)
+            .padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (dateMode) "◀" else "‹", color = FS.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(8.dp))
+            Text(java.text.SimpleDateFormat("EEE, d MMM yyyy", java.util.Locale.US).format(java.util.Date(day)),
+                color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f))
+            if (dateMode) Text("▶", color = FS.Text, fontSize = 16.sp)
+        }
+        Box(Modifier.weight(1f).fillMaxHeight().onSizeChanged { onWidth(it.width) }.horizontalScroll(hState, enabled = false)) {
+            Box(Modifier.width(widthDp(we - ws)).fillMaxHeight()) {
+                var t = ws
+                while (t < we) {
+                    Text(Fmt.time(t), color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.offset(x = widthDp(t - ws) + 8.dp).align(Alignment.CenterStart))
+                    t += 30 * MIN
+                }
+                if (now in ws until we) Text("ON NOW", color = Color(0xFFFF4040), fontSize = 14.sp, fontWeight = FontWeight.Black,
+                    modifier = Modifier.offset(x = (widthDp(now - ws) - 34.dp).coerceAtLeast(0.dp)).align(Alignment.BottomStart)
+                        .background(Color(0xE6040604), RoundedCornerShape(4.dp)).padding(horizontal = 4.dp))
+            }
         }
     }
 }
@@ -801,6 +813,7 @@ private fun GuideRow(
 ) {
     val epg by produceState(Session.cachedEpg(ch), ch.id, Session.guideVersion) { value = Session.epg(ch); onEpg() }
     val cells = remember(epg, ws) { buildCells(epg, ws, we) }
+    if (!overlay) { PhotoGuideRow(ch, cells, epg == null, ws, we, now, hState, cursor, playing, rowH); return }
     val shape = RoundedCornerShape(4.dp)
     val rowSel = cursor != null
     val density = LocalDensity.current
@@ -885,6 +898,83 @@ private fun GuideRow(
             }
             if (now in ws until we) {
                 Box(Modifier.offset(x = widthDp(now - ws)).width(2.dp).fillMaxHeight().background(if (overlay) FS.Green else Color(0xCCFF4040)))
+            }
+        }
+    }
+}
+
+
+/**
+ * Nov 16 (user's photo): a TV Guide row — the channel as a rounded tile (logo, name, number, ⟲) and the shows
+ * as rounded tiles with the title and the time underneath. The highlighted channel is filled green; the
+ * highlighted show gets a green edge. Colors stay black / green.
+ */
+@Composable
+private fun PhotoGuideRow(
+    ch: LiveChannel, cells: List<Cell>, loading: Boolean, ws: Long, we: Long, now: Long, hState: ScrollState,
+    cursor: Long?, playing: Boolean, rowH: androidx.compose.ui.unit.Dp,
+) {
+    val rowSel = cursor != null
+    val density = LocalDensity.current
+    val scrolledDp = with(density) { hState.value.toDp() }
+    val tile = RoundedCornerShape(12.dp)
+    Row(Modifier.fillMaxWidth().height(rowH).padding(vertical = 2.dp)) {
+        Row(
+            Modifier.width(GUIDE_CH_COL.dp).fillMaxHeight().padding(end = 4.dp)
+                .background(if (rowSel) FS.GreenDeep else Color(0x1FFFFFFF), tile)
+                .border(if (rowSel) 2.dp else 1.dp, if (rowSel) FS.Green else Color(0x14FFFFFF), tile)
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(width = 64.dp, height = (rowH - 16.dp).coerceAtLeast(24.dp)), contentAlignment = Alignment.Center) {
+                NetImage(ch.logo, Modifier.fillMaxSize())
+            }
+            Spacer(Modifier.width(10.dp))
+            Text(ch.name, color = if (rowSel) Color.White else FS.Text, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 2,
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f), lineHeight = 16.sp)
+            Column(Modifier.fillMaxHeight().padding(vertical = 4.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.SpaceBetween) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (ch.hasArchive) GText("⟲ ", color = FS.TextDim, fontSize = 11.sp)
+                    Text("${ch.num}", color = if (playing) Color(0xFFFF5A5A) else FS.TextDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                if (playing) GText("▶", color = if (rowSel) Color.White else FS.Green, fontSize = 14.sp)
+            }
+        }
+        Box(Modifier.weight(1f).fillMaxHeight().horizontalScroll(hState, enabled = false)) {
+            Row(Modifier.width(widthDp(we - ws)).fillMaxHeight()) {
+                cells.forEach { cell ->
+                    val p = cell.program
+                    val live = now >= cell.start && now < cell.end
+                    val past = cell.end <= now
+                    val sel = cursor != null && cursor >= cell.start && cursor < cell.end
+                    val startDp = widthDp(cell.start - ws)
+                    val endDp = widthDp(cell.end - ws)
+                    val shift = if (startDp < scrolledDp && endDp > scrolledDp + 60.dp) scrolledDp - startDp else 0.dp
+                    val catchup = past && inArchive(ch, cell.start) && (p == null || p.hasArchive || ch.hasArchive)
+                    Column(
+                        Modifier.width(widthDp(cell.end - cell.start)).fillMaxHeight().padding(horizontal = 2.dp)
+                            .background(
+                                when { sel -> Color(0xFF173A22); rowSel -> Color(0x26FFFFFF); live -> Color(0x1AFFFFFF); else -> Color(0x12FFFFFF) }, tile)
+                            .border(if (sel) 2.dp else 1.dp, if (sel) FS.Green else Color(0x10FFFFFF), tile)
+                            .padding(start = 10.dp + shift, end = 8.dp),
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        val playingBack = PlayerHolder.current?.let { it.playbackOf == ch.id && it.progStart == cell.start } == true
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (playingBack) Text("▶ ", color = FS.Green, fontSize = 13.sp, fontWeight = FontWeight.Black)
+                            if (catchup) GText("⟲ ", color = FS.Green, fontSize = 13.sp)
+                            Text(
+                                p?.title ?: if (loading) "…" else if (catchup) "${ch.name} · ${Fmt.time(cell.start)}" else "No Information",
+                                color = if (sel) Color.White else if (past) FS.TextDim else Color.White,
+                                fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        if (p != null && rowH >= 46.dp) Text(Fmt.range(p.start, p.end), color = FS.TextDim, fontSize = 11.sp, maxLines = 1)
+                    }
+                }
+            }
+            if (now in ws until we) {
+                Box(Modifier.offset(x = widthDp(now - ws)).width(2.dp).fillMaxHeight().background(Color(0xCCFF4040)))
             }
         }
     }
