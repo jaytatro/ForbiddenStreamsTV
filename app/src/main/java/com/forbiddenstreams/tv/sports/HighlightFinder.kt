@@ -94,6 +94,72 @@ object HighlightFinder {
         com.forbiddenstreams.tv.data.Http.client.newCall(req).execute().use { r -> parse(r.body?.string().orEmpty()) }
     } catch (e: Exception) { emptyList() }
 
+    private val MONTHS = listOf("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+
+    /** True if the title names a date that isn't the game's (e.g. last season's "Nov 12" meeting). */
+    private fun otherDateIn(title: String, start: Long): Boolean {
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = start }
+        val m = cal.get(java.util.Calendar.MONTH); val d = cal.get(java.util.Calendar.DAY_OF_MONTH); val y = cal.get(java.util.Calendar.YEAR)
+        val t = norm(title)
+        Regex("\\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b").findAll(t).forEach {
+            val mm = MONTHS.indexOf(it.groupValues[1]); val dd = it.groupValues[2].toInt()
+            if (mm >= 0 && dd in 1..31 && (mm != m || dd != d)) return true
+        }
+        Regex("\\b(\\d{1,2})/(\\d{1,2})(?:/(\\d{2,4}))?\\b").findAll(t).forEach {
+            val mm = it.groupValues[1].toInt() - 1; val dd = it.groupValues[2].toInt()
+            if (mm in 0..11 && dd in 1..31 && (mm != m || dd != d)) return true
+        }
+        Regex("\\b(20\\d\\d)\\b").findAll(t).forEach {
+            val yy = it.groupValues[1].toInt()
+            if (yy != y && yy != y - 1 && yy != y + 1) return true
+        }
+        return false
+    }
+
+    /**
+     * Opens each top match's YouTube page for its exact upload time: it must be put up after this game started
+     * and within 36 h. Matches whose description has the final score go first.
+     */
+    private suspend fun verify(list: List<Pair<Video, Int>>, g: Game, earliest: Long, latest: Long): List<String> = withContext(Dispatchers.IO) {
+        val score = listOfNotNull(g.away.score, g.home.score).takeIf { it.size == 2 }
+        coroutineScope {
+            list.map { (v, sc) ->
+                async {
+                    val page = try {
+                        val req = okhttp3.Request.Builder().url("https://www.youtube.com/watch?v=${v.id}&hl=en&gl=US")
+                            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+                            .header("Accept-Language", "en-US,en;q=0.9").header("Cookie", "CONSENT=YES+1; SOCS=CAI").build()
+                        com.forbiddenstreams.tv.data.Http.client.newCall(req).execute().use { it.body?.string().orEmpty() }
+                    } catch (e: Exception) { "" }
+                    val iso = Regex("\"(?:uploadDate|publishDate)\":\"([^\"]+)\"").find(page)?.groupValues?.get(1)
+                    val at = iso?.let { parseIso(it) }
+                    when {
+                        at == null -> v.id to sc                                   // couldn't check: keep its search-page score
+                        at.second && (at.first < earliest - 86_400_000L || at.first > latest) -> null   // date only
+                        !at.second && (at.first < earliest || at.first > latest) -> null
+                        else -> {
+                            val desc = Regex("\"shortDescription\":\"((?:[^\"\\\\]|\\\\.)*)\"").find(page)?.groupValues?.get(1).orEmpty()
+                            val hasScore = score != null && Regex("(^|[^0-9])(${score[0]}\\s*[-–]\\s*${score[1]}|${score[1]}\\s*[-–]\\s*${score[0]})([^0-9]|$)")
+                                .containsMatchIn(v.title + " " + desc)
+                            v.id to (sc + 25 + if (hasScore) 20 else 0)
+                        }
+                    }
+                }
+            }.mapNotNull { it.await() }.sortedByDescending { it.second }.map { it.first }
+        }
+    }
+
+    /** ISO time → (ms, dateOnly). */
+    private fun parseIso(s: String): Pair<Long, Boolean>? = try {
+        if (s.length <= 10) {
+            val f = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("America/Los_Angeles") }
+            f.parse(s)!!.time to true
+        } else {
+            val t = s.replace(Regex("\\.\\d+"), "").replace("Z", "+00:00").replace(Regex("([+-]\\d\\d):(\\d\\d)$"), "$1$2")
+            java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US).parse(t)!!.time to false
+        }
+    } catch (e: Exception) { null }
+
     fun query(league: League, g: Game): String {
         val date = java.text.SimpleDateFormat("MMMM d, yyyy", Locale.US).format(java.util.Date(g.start))
         return "${g.away.displayName} vs ${g.home.displayName} highlights $date"
@@ -112,9 +178,9 @@ object HighlightFinder {
             coroutineScope { listOf(async { search(q1) }, async { search(q2) }).map { it.await() } }
         }.flatten().distinctBy { it.id }
 
-        // Played window: from 3 h before start to 10 days after (published-time text is rounded).
-        val earliest = g.start - 3 * 3_600_000L
-        val latest = g.start + 10 * 86_400_000L
+        // Nov 17: posted from the game's start to 36 h after (same game, not the day before/after in a series).
+        val earliest = g.start
+        val latest = g.start + 36 * 3_600_000L
         val monthName = java.text.SimpleDateFormat("MMM", Locale.US).format(java.util.Date(g.start)).lowercase(Locale.US)
         val dayNum = java.text.SimpleDateFormat("d", Locale.US).format(java.util.Date(g.start))
         val numeric = java.text.SimpleDateFormat("M/d", Locale.US).format(java.util.Date(g.start))
@@ -123,6 +189,7 @@ object HighlightFinder {
             if (!teamIn(v.title, v.title, g.away, league) || !teamIn(v.title, v.title, g.home, league)) return@mapNotNull null
             val t = norm(v.title)
             if (BAD.any { t.contains(it) }) return@mapNotNull null
+            if (otherDateIn(v.title, g.start)) return@mapNotNull null
             val age = ageRange(v.published)
             if (age != null) {
                 val putUpLatest = now - age.first
@@ -141,7 +208,8 @@ object HighlightFinder {
             if (secs != null && secs in 120..20 * 60) score += 10
             score -= v.pos
             v to score
-        }.filter { it.second >= 20 }.sortedByDescending { it.second }.map { it.first.id }
+        }.filter { it.second >= 20 }.sortedByDescending { it.second }.take(6)
+            .let { verify(it, g, earliest, latest) }
         val pick = best.firstOrNull() ?: return null
         backups[pick] = best.drop(1).take(4)
         cache[key] = pick

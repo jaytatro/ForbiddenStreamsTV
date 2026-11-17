@@ -134,7 +134,11 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false
-            settings.userAgentString = "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+            // Nov 17 ("highest quality"): desktop browser + a page as wide as the screen's real pixels, so YouTube
+            // serves 1080p (or 4K on a 4K box) instead of the small-screen 480p/720p.
+            settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+            settings.useWideViewPort = true
+            settings.loadWithOverviewMode = true
             webChromeClient = WebChromeClient()
             webViewClient = WebViewClient()
             addJavascriptInterface(object {
@@ -186,8 +190,12 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
         handler.postDelayed({ cover?.visibility = android.view.View.GONE }, 12_000)
         setContentView(root)
         web = w
+        val screenW = maxOf(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels).let {
+            (if (android.os.Build.VERSION.SDK_INT >= 23) windowManager.defaultDisplay.mode.physicalWidth else it).coerceAtLeast(it)
+        }
+        val vq = if (screenW >= 3000) "hd2160" else if (screenW >= 1700) "hd1080" else "hd720"
         val html = """
-            <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+            <!doctype html><html><head><meta name="viewport" content="width=$screenW">
             <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#v{width:100%;height:100%}</style></head>
             <body><div id="v"></div>
             <script src="https://www.youtube.com/iframe_api"></script>
@@ -195,9 +203,9 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
               var p;
               function onYouTubeIframeAPIReady(){
                 p = new YT.Player('v',{width:'100%',height:'100%',videoId:'$id',
-                  playerVars:{autoplay:1,controls:1,rel:0,modestbranding:1,playsinline:1,fs:0,iv_load_policy:3},
+                  playerVars:{vq:'$vq',autoplay:1,controls:1,rel:0,modestbranding:1,playsinline:1,fs:0,iv_load_policy:3},
                   events:{
-                    onReady:function(e){e.target.playVideo();},
+                    onReady:function(e){try{e.target.setPlaybackQuality('$vq');}catch(x){} e.target.playVideo();},
                     onError:function(e){FS.onError(e.data);},
                     onStateChange:function(e){ if(e.data==0) FS.onEnded(); if(e.data==1) FS.onPlaying(); }
                   }});
