@@ -694,6 +694,8 @@ data class PreparedGame(
     val match: GameChannels,
     val networks: List<Pair<String, LiveChannel>>,
     val wrongTeam: Set<String>,
+    /** Nov 18: for an ESPN+ game, the provider's ESPN+ / event channel that has it (both buttons play it). */
+    val espnPlus: LiveChannel? = null,
     val at: Long = System.currentTimeMillis(),
 )
 
@@ -707,6 +709,20 @@ object GameChannelCache {
 
     fun get(league: League, g: Game): PreparedGame? =
         map[league.name + ":" + g.id]?.takeIf { System.currentTimeMillis() - it.at < 2 * 3_600_000L }
+
+    /** An ESPN+ game's channel: an event channel named for the matchup, else an ESPN+ channel whose guide shows it. */
+    private suspend fun findEspnPlus(g: Game, used: Set<String>, epg: suspend (LiveChannel) -> List<com.forbiddenstreams.tv.data.Program>): LiveChannel? {
+        val all = Session.liveAll.orEmpty()
+        GameMatcher.eventChannels(g, all, used).firstOrNull()?.let { return it.second }
+        val plusRx = Regex("espn\\s*(\\+|plus)", RegexOption.IGNORE_CASE)
+        val cands = all.filter { plusRx.containsMatchIn(it.name) && it.id !in used }.take(80)
+        return kotlinx.coroutines.withTimeoutOrNull(8_000) {
+            kotlinx.coroutines.coroutineScope {
+                cands.map { c -> async { c.takeIf { try { GameMatcher.guideShowsGame(c, g, epg) == true } catch (e: Exception) { false } } } }
+                    .awaitAll().firstOrNull { it != null }
+            }
+        }
+    }
 
     fun teamChannels(league: League): List<LiveChannel> {
         val grp = Session.liveCats?.let { GameMatcher.findGroup(it, league) } ?: return emptyList()
@@ -724,7 +740,8 @@ object GameChannelCache {
             val nets = kotlinx.coroutines.withTimeoutOrNull(8_000) {
                 GameMatcher.verifiedNetworkChannels(g, Session.liveAll.orEmpty(), used, epg)
             } ?: GameMatcher.verifiedNetworkChannels(g, Session.liveAll.orEmpty(), used) { c -> Session.cachedEpg(c).orEmpty() }
-            PreparedGame(m, nets, wrong).also { map[league.name + ":" + g.id] = it }
+            val plus = if (g.networks.any { it.replace(" ", "").contains("ESPN+", true) }) findEspnPlus(g, used, epg) else null
+            PreparedGame(m, nets, wrong, plus).also { map[league.name + ":" + g.id] = it }
         }
 }
 
@@ -732,13 +749,13 @@ object GameChannelCache {
 /**
  * Nov 17 ("each game in one row, buttons for away and home, just the stream for what's picked"):
  * - A national game (TNT, ESPN, ABC, NBC, FOX, … — a network channel whose guide shows this game): either
- *   button goes straight to that network channel.
+ *   button goes straight to that network channel. An ESPN+ game: both buttons play its ESPN+ stream (Nov 18).
+ * - No "playing …" pop-ups (Nov 18); only "No stream found" when there's nothing.
  * - Otherwise: the picked team's own feed (or the other team's if that one isn't found, then an event channel).
  * - Finished games: the same channel's replay of the game.
  */
 fun playGameSide(context: android.content.Context, league: League, g: Game, home: Boolean) {
     val cached = GameChannelCache.get(league, g)
-    if (cached == null) toast(context, "Finding the stream…")
     kotlinx.coroutines.MainScope().launch {
         val team = GameChannelCache.teamChannels(league)
         val pg = cached ?: try { GameChannelCache.prepare(league, g, team) } catch (e: Exception) { null }
@@ -749,16 +766,15 @@ fun playGameSide(context: android.content.Context, league: League, g: Game, home
         val national = pg?.networks?.firstOrNull()
         val used = m?.options.orEmpty().map { it.id }.toSet()
         val event = GameMatcher.eventChannels(g, Session.liveAll.orEmpty(), used).firstOrNull()?.second
+        val plus = pg?.espnPlus
         val (ch, list) = when {
             national != null -> national.second to listOf(national.second)
+            plus != null -> plus to listOf(plus)
             mine != null -> mine to team
             other != null -> other to team
             event != null -> event to listOf(event)
             else -> { toast(context, "No stream found for this game"); return@launch }
         }
-        val side = if (home) g.home.displayName else g.away.displayName
-        if (national != null) toast(context, "📡 ${national.first} has this game")
-        else if (mine == null && ch == other) toast(context, "No $side stream — playing the other team's")
         if (g.isFinal) {
             val src = Session.source
             val prog = Session.cachedEpg(ch)?.firstOrNull { g.start >= it.start - 15 * 60_000 && g.start < it.end }
