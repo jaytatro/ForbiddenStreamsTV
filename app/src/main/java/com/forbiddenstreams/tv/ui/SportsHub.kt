@@ -652,7 +652,7 @@ private fun GameLine(
         val led = TextStyle(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black, shadow = Shadow(Led.copy(alpha = 0.6f), Offset.Zero, 10f))
         @Composable fun team(t: com.forbiddenstreams.tv.sports.Team, alignEnd: Boolean) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
-                modifier = Modifier.width(132.dp)) {
+                modifier = Modifier.width(120.dp)) {
                 if (!alignEnd) { Box(Modifier.size(34.dp)) { NetImage(t.logo, Modifier.fillMaxSize()) }; Spacer(Modifier.width(6.dp)) }
                 Text(t.nickname.ifBlank { t.displayName }, color = if (g.isFinal && t.winner) Gold else Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
@@ -660,7 +660,7 @@ private fun GameLine(
             }
         }
         team(g.away, alignEnd = true)
-        Box(Modifier.width(68.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.width(96.dp), contentAlignment = Alignment.Center) {
             if (g.isLive || g.isFinal) Text("${g.away.score ?: 0} - ${g.home.score ?: 0}", color = if (g.isFinal) Color(0xFFCFE8C6) else Led, fontSize = 26.sp, style = led, maxLines = 1)
             else Text("@", color = FS.TextDim, fontSize = 18.sp)
         }
