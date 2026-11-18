@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -168,7 +169,8 @@ fun LoadScreenHost() {
 @Composable
 private fun RetroLoading() {
     val lime = Color(0xFFA8EC4C)
-    val mono = androidx.compose.ui.text.font.FontFamily.Monospace
+    // Nov 17: Share Tech Mono (Google Fonts, OFL) — the closest open font to the photo's terminal lettering.
+    val mono = androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font(R.font.share_tech_mono))
     val glow = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(lime.copy(alpha = 0.8f), blurRadius = 22f))
     var dots by androidx.compose.runtime.remember { mutableStateOf(0) }
     LaunchedEffect(Unit) { while (true) { delay(450); dots = (dots + 1) % 4 } }
@@ -189,7 +191,8 @@ private fun RetroLoading() {
             // LOADING + dots one by one (padded so the word doesn't move).
             Text("LOADING" + ".".repeat(dots) + " ".repeat(3 - dots), color = lime, fontSize = sp(0.062f), fontWeight = FontWeight.Bold,
                 fontFamily = mono, style = glow, maxLines = 1,
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = h * 0.575f))
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = h * 0.575f)
+                    .then(Modifier.graphicsLayer(scaleY = 1.15f)))
             // The bar: x 24.6 %–75.3 %, y 66.6 %–75.9 % of the photo.
             androidx.compose.foundation.Canvas(Modifier.align(Alignment.TopStart)
                 .padding(start = w * 0.246f, top = h * 0.666f).width(w * 0.507f).height(h * 0.093f)) {
@@ -214,7 +217,7 @@ private fun RetroLoading() {
                     drawRect(lime, androidx.compose.ui.geometry.Offset(x, padY), androidx.compose.ui.geometry.Size(segW, size.height - padY * 2))
                 }
             }
-            Text("Plugging In The Revolution", color = lime, fontSize = sp(0.052f), fontWeight = FontWeight.Medium, fontFamily = mono,
+            Text("Plugging In The Revolution", color = lime, fontSize = sp(0.056f), fontWeight = FontWeight.Normal, fontFamily = mono,
                 style = glow, maxLines = 1,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = h * 0.772f))
         }
