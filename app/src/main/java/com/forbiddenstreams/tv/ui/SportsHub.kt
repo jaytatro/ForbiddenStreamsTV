@@ -661,7 +661,7 @@ private fun GameLine(
         }
         team(g.away, alignEnd = true)
         Box(Modifier.width(96.dp), contentAlignment = Alignment.Center) {
-            if (g.isLive || g.isFinal) Text("${g.away.score ?: 0} - ${g.home.score ?: 0}", color = if (g.isFinal) Color(0xFFCFE8C6) else Led, fontSize = 26.sp, style = led, maxLines = 1)
+            if (g.isLive || g.isFinal) Text("${g.away.score ?: 0} - ${g.home.score ?: 0}", color = if (g.isFinal) Color(0xFFCFE8C6) else Led, fontSize = 17.sp, style = led, maxLines = 1, softWrap = false)
             else Text("@", color = FS.TextDim, fontSize = 18.sp)
         }
         team(g.home, alignEnd = false)
