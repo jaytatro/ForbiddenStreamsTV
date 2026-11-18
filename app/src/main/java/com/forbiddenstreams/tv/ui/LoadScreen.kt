@@ -153,26 +153,68 @@ fun LoadScreenHost() {
         LoadScreen.showing = false
     }
     AnimatedVisibility(visible = LoadScreen.showing, exit = fadeOut(tween(400))) {
-        val pulse = rememberInfiniteTransition(label = "load")
-        val bar = pulse.animateFloat(0f, 1f, infiniteRepeatable(tween(1_100), RepeatMode.Restart), label = "bar")
-        val glow = pulse.animateFloat(0.55f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "glow")
-        val shown by androidx.compose.animation.core.animateFloatAsState(LoadScreen.progress, tween(500), label = "p")
-        Box(
-            Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0xFF0B2412), Color.Black), radius = 1400f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            // Nov 16: just the logo (the intro video was taken out again).
-            Image(painterResource(R.drawable.logo), null, Modifier.size(260.dp).alpha(glow.value))
-            // "Plugging in the revolution…" and a thin green bar, at the bottom.
-            Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("PLUGGING IN THE REVOLUTION", color = FS.Green, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp,
-                    style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black, blurRadius = 8f)))
-                Spacer(Modifier.height(10.dp))
-                Box(Modifier.width(320.dp).height(6.dp).background(Color(0x44000000), RoundedCornerShape(3.dp))) {
-                    Box(Modifier.fillMaxWidth(shown.coerceAtLeast(0.03f)).fillMaxHeight().alpha(0.75f + 0.25f * bar.value)
-                        .background(FS.Green, RoundedCornerShape(3.dp)))
+        RetroLoading()
+    }
+}
+
+/**
+ * Nov 17 (user's photo): an old green computer screen — dark glass with scan lines and darker corners,
+ * "LOADING" with its dots coming in one by one, a chunky segmented bar in a glowing outline, and
+ * "Plugging In The Revolution" under it, all in a glowing lime typewriter font. The logo sits above.
+ */
+@Composable
+private fun RetroLoading() {
+    val lime = Color(0xFFB4F04A)
+    val mono = androidx.compose.ui.text.font.FontFamily.Monospace
+    val glowText = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(lime.copy(alpha = 0.75f), blurRadius = 18f))
+    // Dots one by one: "LOADING" → "LOADING." → ".." → "..." → again.
+    var dots by androidx.compose.runtime.remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) { while (true) { delay(450); dots = (dots + 1) % 4 } }
+    val flicker = rememberInfiniteTransition(label = "crt").animateFloat(0.93f, 1f, infiniteRepeatable(tween(140), RepeatMode.Reverse), label = "f")
+    val shown by androidx.compose.animation.core.animateFloatAsState(LoadScreen.progress, tween(500), label = "p")
+
+    Box(Modifier.fillMaxSize().background(Color(0xFF050705)), contentAlignment = Alignment.Center) {
+        // The screen: dark green-grey glass, lighter in the middle, scan lines, dark corners.
+        androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+            drawRect(Brush.radialGradient(listOf(Color(0xFF243028), Color(0xFF151C17), Color(0xFF060806)),
+                center = androidx.compose.ui.geometry.Offset(size.width / 2, size.height * 0.42f), radius = size.maxDimension * 0.62f))
+            // Soft reflection on the glass, top right.
+            drawCircle(Brush.radialGradient(listOf(Color(0x22FFFFFF), Color.Transparent),
+                center = androidx.compose.ui.geometry.Offset(size.width * 0.72f, size.height * 0.2f), radius = size.width * 0.18f),
+                radius = size.width * 0.18f, center = androidx.compose.ui.geometry.Offset(size.width * 0.72f, size.height * 0.2f))
+            val step = 3.dp.toPx()
+            var y = 0f
+            while (y < size.height) { drawRect(Color(0x33000000), androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Size(size.width, step / 2)); y += step }
+        }
+        Column(Modifier.alpha(flicker.value), horizontalAlignment = Alignment.CenterHorizontally) {
+            Image(painterResource(R.drawable.logo), null, Modifier.size(150.dp))
+            Spacer(Modifier.height(26.dp))
+            // Dots padded with spaces so "LOADING" doesn't shift as they come in.
+            Text("LOADING" + ".".repeat(dots) + " ".repeat(3 - dots), color = lime, fontSize = 40.sp, fontWeight = FontWeight.Bold,
+                fontFamily = mono, style = glowText, modifier = Modifier.padding(start = 0.dp))
+            Spacer(Modifier.height(10.dp))
+            androidx.compose.foundation.Canvas(Modifier.width(560.dp).height(62.dp)) {
+                val stroke = 4.dp.toPx()
+                // Glow around the outline, then the outline.
+                for (i in 3 downTo 1) drawRect(lime.copy(alpha = 0.07f), topLeft = androidx.compose.ui.geometry.Offset(-i * 3f, -i * 3f),
+                    size = androidx.compose.ui.geometry.Size(size.width + i * 6f, size.height + i * 6f),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(stroke + i * 4f))
+                drawRect(lime, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
+                // Segments.
+                val pad = stroke + 6.dp.toPx()
+                val n = 34
+                val gap = 4.dp.toPx()
+                val segW = (size.width - pad * 2 - gap * (n - 1)) / n
+                val filled = (shown.coerceIn(0f, 1f) * n).toInt().coerceAtLeast(1)
+                for (i in 0 until filled) {
+                    val x = pad + i * (segW + gap)
+                    drawRect(lime.copy(alpha = 0.25f), androidx.compose.ui.geometry.Offset(x - 2f, pad - 2f),
+                        androidx.compose.ui.geometry.Size(segW + 4f, size.height - pad * 2 + 4f))
+                    drawRect(lime, androidx.compose.ui.geometry.Offset(x, pad), androidx.compose.ui.geometry.Size(segW, size.height - pad * 2))
                 }
             }
+            Spacer(Modifier.height(16.dp))
+            Text("Plugging In The Revolution", color = lime, fontSize = 28.sp, fontWeight = FontWeight.SemiBold, fontFamily = mono, style = glowText)
         }
     }
 }
