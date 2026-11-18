@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -193,28 +194,24 @@ private fun RetroLoading() {
                 fontFamily = mono, style = glow, maxLines = 1,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = h * 0.575f)
                     .then(Modifier.graphicsLayer(scaleY = 1.15f)))
-            // The bar: x 24.6 %–75.3 %, y 66.6 %–75.9 % of the photo.
-            androidx.compose.foundation.Canvas(Modifier.align(Alignment.TopStart)
-                .padding(start = w * 0.246f, top = h * 0.666f).width(w * 0.507f).height(h * 0.093f)) {
-                val stroke = size.height * 0.10f
-                for (i in 4 downTo 1) drawRect(lime.copy(alpha = 0.06f),
-                    topLeft = androidx.compose.ui.geometry.Offset(-i * 4f, -i * 4f),
-                    size = androidx.compose.ui.geometry.Size(size.width + i * 8f, size.height + i * 8f),
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(stroke + i * 6f))
-                drawRect(lime, topLeft = androidx.compose.ui.geometry.Offset(stroke / 2, stroke / 2),
-                    size = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke),
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
-                val padX = size.width * 0.027f
-                val padY = size.height * 0.235f
+            // Nov 17 ("make the loading bar look the same as the picture"): the bar is cut from the photo
+            // itself — its rough glowing outline (crt_bar_frame) and one of its blocks (crt_bar_segment), drawn
+            // where they are in the photo (2576 × 1438 px); 28 blocks fill as the app loads.
+            val frameImg = androidx.compose.ui.graphics.ImageBitmap.imageResource(R.drawable.crt_bar_frame)
+            val segImg = androidx.compose.ui.graphics.ImageBitmap.imageResource(R.drawable.crt_bar_segment)
+            androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                val sx = size.width / 2576f; val sy = size.height / 1438f
+                fun ri(v: Float) = kotlin.math.round(v).toInt()
+                drawImage(frameImg, dstOffset = androidx.compose.ui.unit.IntOffset(ri(600 * sx), ri(932 * sy)),
+                    dstSize = androidx.compose.ui.unit.IntSize(ri(1380 * sx), ri(184 * sy)),
+                    filterQuality = androidx.compose.ui.graphics.FilterQuality.High)
                 val n = 28
-                val pitch = (size.width - padX * 2) / n
-                val segW = pitch * 0.76f
                 val filled = (shown.coerceIn(0f, 1f) * n).toInt().coerceAtLeast(1)
                 for (i in 0 until filled) {
-                    val x = padX + i * pitch
-                    drawRect(lime.copy(alpha = 0.22f), androidx.compose.ui.geometry.Offset(x - 3f, padY - 3f),
-                        androidx.compose.ui.geometry.Size(segW + 6f, size.height - padY * 2 + 6f))
-                    drawRect(lime, androidx.compose.ui.geometry.Offset(x, padY), androidx.compose.ui.geometry.Size(segW, size.height - padY * 2))
+                    val x = 665.5f + i * 44.76f
+                    drawImage(segImg, dstOffset = androidx.compose.ui.unit.IntOffset(ri(x * sx), ri(986 * sy)),
+                        dstSize = androidx.compose.ui.unit.IntSize(ri(45 * sx), ri(81 * sy)),
+                        filterQuality = androidx.compose.ui.graphics.FilterQuality.High)
                 }
             }
             Text("Plugging In The Revolution", color = lime, fontSize = sp(0.056f), fontWeight = FontWeight.Normal, fontFamily = mono,
