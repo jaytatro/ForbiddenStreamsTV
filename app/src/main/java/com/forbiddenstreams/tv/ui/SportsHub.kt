@@ -670,21 +670,21 @@ private fun GameLine(
             if (ev.nativeKeyEvent.action != android.view.KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
             if (onUp != null && ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP) { onUp(); true } else false
         }
-        SideButton("${g.away.abbreviation}", g.away.logo,
+        SideButton("AWAY", g.away.logo, if (g.isFinal) "⟲" else "▶",
             keys.then(if (firstReq != null) Modifier.focusRequester(firstReq) else Modifier).onPreviewKeyEvent { ev ->
                 if (ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN && ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) { onLeft(); true } else false
             }) { onSide(false) }
         Spacer(Modifier.width(8.dp))
-        SideButton("${g.home.abbreviation}", g.home.logo, keys) { onSide(true) }
+        SideButton("HOME", g.home.logo, if (g.isFinal) "⟲" else "▶", keys) { onSide(true) }
         if (g.isFinal) {
             Spacer(Modifier.width(8.dp))
-            SideButton(l.icon, null, keys) { onHighlights() }
+            SideButton(l.icon, null, "", keys) { onHighlights() }
         }
     }
 }
 
 @Composable
-private fun SideButton(text: String, logo: String?, modifier: Modifier, onClick: () -> Unit) {
+private fun SideButton(text: String, logo: String?, symbol: String, modifier: Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(50)
     Surface(
         onClick = onClick, modifier = modifier.height(46.dp),
@@ -698,7 +698,8 @@ private fun SideButton(text: String, logo: String?, modifier: Modifier, onClick:
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
     ) {
         Row(Modifier.fillMaxHeight().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("▶", fontSize = 12.sp); Spacer(Modifier.width(6.dp))
+            // ▶ = watch live / upcoming; ⟲ = playback of a finished game (Nov 17).
+            if (symbol.isNotEmpty()) { Text(symbol, fontSize = if (symbol == "⟲") 17.sp else 12.sp, fontWeight = FontWeight.Black); Spacer(Modifier.width(6.dp)) }
             if (logo != null) { Box(Modifier.size(24.dp)) { NetImage(logo, Modifier.fillMaxSize()) }; Spacer(Modifier.width(8.dp)) }
             Text(text, fontSize = 15.sp, fontWeight = FontWeight.Black, maxLines = 1)
         }
