@@ -296,6 +296,10 @@ fun SettingsScreen(
                 SRow.Value("Alert pop-up time", "${S.favAlertMin} minute${if (S.favAlertMin == 1) "" else "s"} before") {
                     pick("Alert pop-up time", (1..5).map { "$it minute${if (it == 1) "" else "s"} before" }) { S.set("fav_alert_min", it.take(1).toInt()) }
                 },
+                SRow.Value("Alert stays on screen", stayText(S.favAlertStaySec)) {
+                    val opts = listOf(15, 30, 60, 120, 180, 300, 0)
+                    pick("Alert stays on screen", opts.map { stayText(it) }) { c -> S.set("fav_alert_stay", opts.first { stayText(it) == c }) }
+                },
                 SRow.Value("Play game highlights in", S.highlightsIn) {
                     val tt = Highlights.tizenTube(context) != null
                     pick("Play game highlights in", listOf("Forbidden Streams", "TizenTube" + if (tt) "" else " (not installed)", "YouTube app")) {
@@ -764,3 +768,11 @@ private fun clearCache(context: Context) {
 
 /** The version to show, without the build number (Nov 15): "1.0.145" → "1.0". */
 fun appVersion(name: String?): String = (name ?: "1.0").split('.').take(2).joinToString(".")
+
+
+private fun stayText(sec: Int) = when {
+    sec == 0 -> "Until closed"
+    sec < 60 -> "$sec seconds"
+    sec == 60 -> "1 minute"
+    else -> "${sec / 60} minutes"
+}

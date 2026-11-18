@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,8 +39,8 @@ import kotlinx.coroutines.delay
 
 /**
  * 1 minute before a favorite team's game starts: a pop-up at the bottom with the whole game card
- * (both teams, logos, venue, networks, start time). OK = the channels it's on. BACK = dismiss.
- * Goes away by itself after 3 minutes. Each game pops up once.
+ * (Nov 17: slim, full-width, red outline; ▶ Open = the live channels for it, ✕ Close; BACK = close).
+ * Stays for Settings › Sports › Alert stays on screen. Each game pops up once.
  */
 @Composable
 fun BoxScope.FavGameStartAlert(onWatch: (League, String) -> Unit) {
@@ -77,25 +78,60 @@ fun BoxScope.FavGameStartAlert(onWatch: (League, String) -> Unit) {
     LaunchedEffect(a) {
         repeat(8) { delay(120); try { req.requestFocus(); return@LaunchedEffect } catch (e: Exception) { } }
     }
-    LaunchedEffect(a) { delay(180_000); if (alert == a) alert = null }
+    // Settings › Sports › Alert stays on screen (0 = until closed).
+    val stay = com.forbiddenstreams.tv.data.AppSettings.favAlertStaySec
+    LaunchedEffect(a) { if (stay > 0) { delay(stay * 1_000L); if (alert == a) alert = null } }
     BackHandler { alert = null }
+    val red = Color(0xFFFF3B3B)
+    val mins = ((g.start - System.currentTimeMillis() + 30_000) / 60_000).coerceAtLeast(1)
+    // Nov 17: a slim red-outlined bar across the whole bottom; Open / Close on top of it.
     Column(
-        Modifier.align(Alignment.BottomCenter).padding(horizontal = 60.dp, vertical = 30.dp).fillMaxWidth()
-            .background(Color(0xF2040604), RoundedCornerShape(18.dp))
-            .border(2.dp, FS.Green, RoundedCornerShape(18.dp))
-            .padding(horizontal = 18.dp, vertical = 14.dp),
+        Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 14.dp, vertical = 14.dp)
+            .background(Color(0xF2080404), RoundedCornerShape(14.dp))
+            .border(2.dp, red, RoundedCornerShape(14.dp))
+            .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            GText("⭐ ${l.icon} ${l.label} · Game starting in ${((g.start - System.currentTimeMillis() + 30_000) / 60_000).coerceAtLeast(1)} minute${if ((g.start - System.currentTimeMillis() + 30_000) / 60_000 > 1) "s" else ""}", color = FS.Green, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            GText("⭐ ${l.icon} ${l.label} · starts in $mins minute${if (mins > 1) "s" else ""}", color = red, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
-            Text("OK = channels to watch it on · BACK = dismiss", color = FS.TextDim, fontSize = 15.sp)
+            AlertButton("▶  Open", red, Modifier.focusRequester(req)) { alert = null; picked = l to g }
+            Spacer(Modifier.width(10.dp))
+            AlertButton("✕  Close", red) { alert = null }
         }
-        Spacer(Modifier.height(10.dp))
-        Box(Modifier.focusRequester(req)) {
-            GameRow(g, null, groupMissing = false, loadingChannels = false, fav = true) {
-                alert = null
-                picked = l to g
-            }
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            NetImage(g.away.logo, Modifier.size(34.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(g.away.displayName, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text("  @  ", color = FS.TextDim, fontSize = 16.sp)
+            NetImage(g.home.logo, Modifier.size(34.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(g.home.displayName, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Spacer(Modifier.weight(1f))
+            Text(listOfNotNull(Fmt.time(g.start), g.networks.takeIf { it.isNotEmpty() }?.joinToString(", "), g.venue).joinToString("  ·  "),
+                color = FS.TextDim, fontSize = 14.sp, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun AlertButton(text: String, red: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(50)
+    androidx.tv.material3.Surface(
+        onClick = onClick, modifier = modifier.height(34.dp),
+        shape = androidx.tv.material3.ClickableSurfaceDefaults.shape(shape),
+        colors = androidx.tv.material3.ClickableSurfaceDefaults.colors(
+            containerColor = Color(0x22FF3B3B), contentColor = Color.White,
+            focusedContainerColor = red, focusedContentColor = Color.White,
+        ),
+        border = androidx.tv.material3.ClickableSurfaceDefaults.border(
+            border = androidx.tv.material3.Border(androidx.compose.foundation.BorderStroke(1.dp, red.copy(alpha = 0.6f)), shape = shape),
+            focusedBorder = androidx.tv.material3.Border(androidx.compose.foundation.BorderStroke(2.dp, Color.White), shape = shape),
+        ),
+        scale = androidx.tv.material3.ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
+    ) {
+        Box(Modifier.padding(horizontal = 18.dp).height(34.dp), contentAlignment = Alignment.Center) {
+            Text(text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
