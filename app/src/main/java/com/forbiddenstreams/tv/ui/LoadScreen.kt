@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -173,22 +174,33 @@ private fun RetroLoading() {
     val flicker = rememberInfiniteTransition(label = "crt").animateFloat(0.93f, 1f, infiniteRepeatable(tween(140), RepeatMode.Reverse), label = "f")
     val shown by androidx.compose.animation.core.animateFloatAsState(LoadScreen.progress, tween(500), label = "p")
 
-    Box(Modifier.fillMaxSize().background(Color(0xFF050705)), contentAlignment = Alignment.Center) {
-        // The screen: dark green-grey glass, lighter in the middle, scan lines, dark corners.
+    // Nov 17: the old TV itself — a dark plastic frame around a rounded, curved glass screen (no logo).
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF1C1C1A), Color(0xFF0A0A09), Color(0xFF151513))))) {
+      androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 46.dp, vertical = 30.dp)
+          .background(Color(0xFF020302), RoundedCornerShape(64.dp))
+          .padding(6.dp)
+          .clip(RoundedCornerShape(58.dp)), contentAlignment = Alignment.Center) {
+        // The screen: dark green-grey glass, lighter in the middle, scan lines, dark curved edges.
         androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
             drawRect(Brush.radialGradient(listOf(Color(0xFF243028), Color(0xFF151C17), Color(0xFF060806)),
                 center = androidx.compose.ui.geometry.Offset(size.width / 2, size.height * 0.42f), radius = size.maxDimension * 0.62f))
-            // Soft reflection on the glass, top right.
-            drawCircle(Brush.radialGradient(listOf(Color(0x22FFFFFF), Color.Transparent),
+            // Soft reflection on the glass, top right, and a faint band across the top.
+            drawCircle(Brush.radialGradient(listOf(Color(0x26FFFFFF), Color.Transparent),
                 center = androidx.compose.ui.geometry.Offset(size.width * 0.72f, size.height * 0.2f), radius = size.width * 0.18f),
                 radius = size.width * 0.18f, center = androidx.compose.ui.geometry.Offset(size.width * 0.72f, size.height * 0.2f))
+            drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x14FFFFFF), Color.Transparent),
+                startY = size.height * 0.06f, endY = size.height * 0.22f))
             val step = 3.dp.toPx()
             var y = 0f
             while (y < size.height) { drawRect(Color(0x33000000), androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Size(size.width, step / 2)); y += step }
+            // Curved-glass edges: darker toward the frame on every side.
+            val e = size.minDimension * 0.10f
+            drawRect(Brush.horizontalGradient(listOf(Color(0xCC000000), Color.Transparent), endX = e))
+            drawRect(Brush.horizontalGradient(listOf(Color.Transparent, Color(0xCC000000)), startX = size.width - e))
+            drawRect(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent), endY = e))
+            drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000)), startY = size.height - e))
         }
-        Column(Modifier.alpha(flicker.value), horizontalAlignment = Alignment.CenterHorizontally) {
-            Image(painterResource(R.drawable.logo), null, Modifier.size(150.dp))
-            Spacer(Modifier.height(26.dp))
+        Column(Modifier.align(Alignment.TopCenter).padding(top = maxHeight * 0.52f).alpha(flicker.value), horizontalAlignment = Alignment.CenterHorizontally) {
             // Dots padded with spaces so "LOADING" doesn't shift as they come in.
             Text("LOADING" + ".".repeat(dots) + " ".repeat(3 - dots), color = lime, fontSize = 40.sp, fontWeight = FontWeight.Bold,
                 fontFamily = mono, style = glowText, modifier = Modifier.padding(start = 0.dp))
@@ -216,6 +228,7 @@ private fun RetroLoading() {
             Spacer(Modifier.height(16.dp))
             Text("Plugging In The Revolution", color = lime, fontSize = 28.sp, fontWeight = FontWeight.SemiBold, fontFamily = mono, style = glowText)
         }
+      }
     }
 }
 
