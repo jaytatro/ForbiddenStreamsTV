@@ -727,3 +727,47 @@ object GameChannelCache {
             PreparedGame(m, nets, wrong).also { map[league.name + ":" + g.id] = it }
         }
 }
+
+
+/**
+ * Nov 17 ("each game in one row, buttons for away and home, just the stream for what's picked"):
+ * - A national game (TNT, ESPN, ABC, NBC, FOX, … — a network channel whose guide shows this game): either
+ *   button goes straight to that network channel.
+ * - Otherwise: the picked team's own feed (or the other team's if that one isn't found, then an event channel).
+ * - Finished games: the same channel's replay of the game.
+ */
+fun playGameSide(context: android.content.Context, league: League, g: Game, home: Boolean) {
+    val cached = GameChannelCache.get(league, g)
+    if (cached == null) toast(context, "Finding the stream…")
+    kotlinx.coroutines.MainScope().launch {
+        val team = GameChannelCache.teamChannels(league)
+        val pg = cached ?: try { GameChannelCache.prepare(league, g, team) } catch (e: Exception) { null }
+        val m = pg?.match
+        val wrong = pg?.wrongTeam.orEmpty()
+        val mine = (if (home) m?.home else m?.away)?.takeIf { it.id !in wrong }
+        val other = (if (home) m?.away else m?.home)?.takeIf { it.id !in wrong }
+        val national = pg?.networks?.firstOrNull()
+        val used = m?.options.orEmpty().map { it.id }.toSet()
+        val event = GameMatcher.eventChannels(g, Session.liveAll.orEmpty(), used).firstOrNull()?.second
+        val (ch, list) = when {
+            national != null -> national.second to listOf(national.second)
+            mine != null -> mine to team
+            other != null -> other to team
+            event != null -> event to listOf(event)
+            else -> { toast(context, "No stream found for this game"); return@launch }
+        }
+        val side = if (home) g.home.displayName else g.away.displayName
+        if (national != null) toast(context, "📡 ${national.first} has this game")
+        else if (mine == null && ch == other) toast(context, "No $side stream — playing the other team's")
+        if (g.isFinal) {
+            val src = Session.source
+            val prog = Session.cachedEpg(ch)?.firstOrNull { g.start >= it.start - 15 * 60_000 && g.start < it.end }
+                ?.takeIf { p -> listOf(g.away.nickname, g.home.nickname).any { it.isNotBlank() && p.title.contains(it, true) } || p.end - p.start >= 90 * 60_000 }
+                ?.let { p -> if (p.end < g.start + 90 * 60_000) p.copy(end = g.start + gameLengthMs(g)) else p }
+                ?: Program("${g.away.displayName} vs. ${g.home.displayName}", "", g.start - 10 * 60_000, g.start + gameLengthMs(g), true)
+            val url = src?.catchupUrl(ch, prog)
+            if (url == null) { toast(context, "No replay for this game on ${ch.name}"); return@launch }
+            Playback.one(context, PlayItem("${g.away.displayName} vs. ${g.home.displayName}", url, live = false, subtitle = "Replay from ${ch.name}"))
+        } else openChannel(context, list, ch)
+    }
+}
