@@ -159,76 +159,70 @@ fun LoadScreenHost() {
 }
 
 /**
- * Nov 17 (user's photo): an old green computer screen — dark glass with scan lines and darker corners,
- * "LOADING" with its dots coming in one by one, a chunky segmented bar in a glowing outline, and
- * "Plugging In The Revolution" under it, all in a glowing lime typewriter font. The logo sits above.
+ * Nov 17 (user's photo, "exactly like this"): the user's own old-TV picture is the background
+ * (`drawable-nodpi/crt_screen.jpg` — his photo with the text and bar painted out), and on it, placed where
+ * they are in the photo: "Forbidden Streams TV", "LOADING" with its dots coming in one by one, the chunky
+ * segmented bar in a glowing outline that fills as the app loads, and "Plugging In The Revolution".
+ * Positions/sizes are fractions of the screen measured from the photo (2576 × 1438).
  */
 @Composable
 private fun RetroLoading() {
-    val lime = Color(0xFFB4F04A)
+    val lime = Color(0xFFA8EC4C)
     val mono = androidx.compose.ui.text.font.FontFamily.Monospace
-    val glowText = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(lime.copy(alpha = 0.75f), blurRadius = 18f))
-    // Dots one by one: "LOADING" → "LOADING." → ".." → "..." → again.
+    val glow = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(lime.copy(alpha = 0.8f), blurRadius = 22f))
     var dots by androidx.compose.runtime.remember { mutableStateOf(0) }
     LaunchedEffect(Unit) { while (true) { delay(450); dots = (dots + 1) % 4 } }
-    val flicker = rememberInfiniteTransition(label = "crt").animateFloat(0.93f, 1f, infiniteRepeatable(tween(140), RepeatMode.Reverse), label = "f")
+    val flicker = rememberInfiniteTransition(label = "crt").animateFloat(0.92f, 1f, infiniteRepeatable(tween(120), RepeatMode.Reverse), label = "f")
     val shown by androidx.compose.animation.core.animateFloatAsState(LoadScreen.progress, tween(500), label = "p")
+    val density = androidx.compose.ui.platform.LocalDensity.current
 
-    // Nov 17: the old TV itself — a dark plastic frame around a rounded, curved glass screen (no logo).
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF1C1C1A), Color(0xFF0A0A09), Color(0xFF151513))))) {
-      androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 46.dp, vertical = 30.dp)
-          .background(Color(0xFF020302), RoundedCornerShape(64.dp))
-          .padding(6.dp)
-          .clip(RoundedCornerShape(58.dp)), contentAlignment = Alignment.Center) {
-        // The screen: dark green-grey glass, lighter in the middle, scan lines, dark curved edges.
-        androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
-            drawRect(Brush.radialGradient(listOf(Color(0xFF243028), Color(0xFF151C17), Color(0xFF060806)),
-                center = androidx.compose.ui.geometry.Offset(size.width / 2, size.height * 0.42f), radius = size.maxDimension * 0.62f))
-            // Soft reflection on the glass, top right, and a faint band across the top.
-            drawCircle(Brush.radialGradient(listOf(Color(0x26FFFFFF), Color.Transparent),
-                center = androidx.compose.ui.geometry.Offset(size.width * 0.72f, size.height * 0.2f), radius = size.width * 0.18f),
-                radius = size.width * 0.18f, center = androidx.compose.ui.geometry.Offset(size.width * 0.72f, size.height * 0.2f))
-            drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x14FFFFFF), Color.Transparent),
-                startY = size.height * 0.06f, endY = size.height * 0.22f))
-            val step = 3.dp.toPx()
-            var y = 0f
-            while (y < size.height) { drawRect(Color(0x33000000), androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Size(size.width, step / 2)); y += step }
-            // Curved-glass edges: darker toward the frame on every side.
-            val e = size.minDimension * 0.10f
-            drawRect(Brush.horizontalGradient(listOf(Color(0xCC000000), Color.Transparent), endX = e))
-            drawRect(Brush.horizontalGradient(listOf(Color.Transparent, Color(0xCC000000)), startX = size.width - e))
-            drawRect(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent), endY = e))
-            drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000)), startY = size.height - e))
-        }
-        Column(Modifier.align(Alignment.TopCenter).padding(top = maxHeight * 0.52f).alpha(flicker.value), horizontalAlignment = Alignment.CenterHorizontally) {
-            // Dots padded with spaces so "LOADING" doesn't shift as they come in.
-            Text("LOADING" + ".".repeat(dots) + " ".repeat(3 - dots), color = lime, fontSize = 40.sp, fontWeight = FontWeight.Bold,
-                fontFamily = mono, style = glowText, modifier = Modifier.padding(start = 0.dp))
-            Spacer(Modifier.height(10.dp))
-            androidx.compose.foundation.Canvas(Modifier.width(560.dp).height(62.dp)) {
-                val stroke = 4.dp.toPx()
-                // Glow around the outline, then the outline.
-                for (i in 3 downTo 1) drawRect(lime.copy(alpha = 0.07f), topLeft = androidx.compose.ui.geometry.Offset(-i * 3f, -i * 3f),
-                    size = androidx.compose.ui.geometry.Size(size.width + i * 6f, size.height + i * 6f),
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(stroke + i * 4f))
-                drawRect(lime, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
-                // Segments.
-                val pad = stroke + 6.dp.toPx()
-                val n = 34
-                val gap = 4.dp.toPx()
-                val segW = (size.width - pad * 2 - gap * (n - 1)) / n
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
+        val w = maxWidth; val h = maxHeight
+        fun sp(fracOfH: Float) = with(density) { (h * fracOfH).toSp() }
+        Image(painterResource(R.drawable.crt_screen), null, Modifier.fillMaxSize(),
+            contentScale = androidx.compose.ui.layout.ContentScale.FillBounds)
+        Box(Modifier.fillMaxSize().alpha(flicker.value)) {
+            // Forbidden Streams TV — above LOADING, same green.
+            Text("FORBIDDEN STREAMS TV", color = lime, fontSize = sp(0.064f), fontWeight = FontWeight.Bold, fontFamily = mono,
+                letterSpacing = sp(0.004f), style = glow, maxLines = 1,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = h * 0.455f))
+            // LOADING + dots one by one (padded so the word doesn't move).
+            Text("LOADING" + ".".repeat(dots) + " ".repeat(3 - dots), color = lime, fontSize = sp(0.062f), fontWeight = FontWeight.Bold,
+                fontFamily = mono, style = glow, maxLines = 1,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = h * 0.575f))
+            // The bar: x 24.6 %–75.3 %, y 66.6 %–75.9 % of the photo.
+            androidx.compose.foundation.Canvas(Modifier.align(Alignment.TopStart)
+                .padding(start = w * 0.246f, top = h * 0.666f).width(w * 0.507f).height(h * 0.093f)) {
+                val stroke = size.height * 0.10f
+                for (i in 4 downTo 1) drawRect(lime.copy(alpha = 0.06f),
+                    topLeft = androidx.compose.ui.geometry.Offset(-i * 4f, -i * 4f),
+                    size = androidx.compose.ui.geometry.Size(size.width + i * 8f, size.height + i * 8f),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(stroke + i * 6f))
+                drawRect(lime, topLeft = androidx.compose.ui.geometry.Offset(stroke / 2, stroke / 2),
+                    size = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
+                val padX = size.width * 0.027f
+                val padY = size.height * 0.235f
+                val n = 28
+                val pitch = (size.width - padX * 2) / n
+                val segW = pitch * 0.76f
                 val filled = (shown.coerceIn(0f, 1f) * n).toInt().coerceAtLeast(1)
                 for (i in 0 until filled) {
-                    val x = pad + i * (segW + gap)
-                    drawRect(lime.copy(alpha = 0.25f), androidx.compose.ui.geometry.Offset(x - 2f, pad - 2f),
-                        androidx.compose.ui.geometry.Size(segW + 4f, size.height - pad * 2 + 4f))
-                    drawRect(lime, androidx.compose.ui.geometry.Offset(x, pad), androidx.compose.ui.geometry.Size(segW, size.height - pad * 2))
+                    val x = padX + i * pitch
+                    drawRect(lime.copy(alpha = 0.22f), androidx.compose.ui.geometry.Offset(x - 3f, padY - 3f),
+                        androidx.compose.ui.geometry.Size(segW + 6f, size.height - padY * 2 + 6f))
+                    drawRect(lime, androidx.compose.ui.geometry.Offset(x, padY), androidx.compose.ui.geometry.Size(segW, size.height - padY * 2))
                 }
             }
-            Spacer(Modifier.height(16.dp))
-            Text("Plugging In The Revolution", color = lime, fontSize = 28.sp, fontWeight = FontWeight.SemiBold, fontFamily = mono, style = glowText)
+            Text("Plugging In The Revolution", color = lime, fontSize = sp(0.052f), fontWeight = FontWeight.Medium, fontFamily = mono,
+                style = glow, maxLines = 1,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = h * 0.772f))
         }
-      }
+        // Fine scan lines over everything, like the photo.
+        androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+            val step = 3.dp.toPx(); var y = 0f
+            while (y < size.height) { drawRect(Color(0x22000000), androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Size(size.width, step / 2)); y += step }
+        }
     }
 }
 
