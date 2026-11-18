@@ -8,7 +8,7 @@
 
     <!-- Nov 16: shown by Android the moment the app is opened (black with the logo), until the app is ready. -->
     <style name="Theme.ForbiddenStreams.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@android:color/black</item>
+        <item name="windowSplashScreenBackground">#FF0A0A09</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
         <item name="postSplashScreenTheme">@style/Theme.ForbiddenStreams</item>
     </style>
