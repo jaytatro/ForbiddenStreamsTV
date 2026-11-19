@@ -135,6 +135,7 @@ fun LoadScreenHost() {
                             try {
                                 try { GameChannelCache.prepare(l, g) } catch (e: Exception) { }
                                 try { com.forbiddenstreams.tv.sports.HighlightFinder.find(l, g) } catch (e: Exception) { }
+                                try { com.forbiddenstreams.tv.sports.ReplayFinder.find(l, g) } catch (e: Exception) { }
                             } finally { gate.release() }
                         }
                     }.awaitAll()

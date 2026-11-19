@@ -625,7 +625,17 @@ fun GameChannelsDialog(league: League, g: Game, onClose: () -> Unit) {
         androidx.activity.compose.BackHandler { onClose() }
         return
     }
-    val options = remember(g.id, match, team, Session.liveAll, networks, wrongTeam) { gameOptions(context, g, match, team, networks, wrongTeam) }
+    val playlistReplay by androidx.compose.runtime.produceState<com.forbiddenstreams.tv.data.VodItem?>(null, g.id) {
+        if (g.isFinal) value = try { com.forbiddenstreams.tv.sports.ReplayFinder.find(league, g) } catch (e: Exception) { null }
+    }
+    val options = remember(g.id, match, team, Session.liveAll, networks, wrongTeam, playlistReplay) {
+        gameOptions(context, g, match, team, networks, wrongTeam) + listOfNotNull(playlistReplay?.let { v ->
+            "⏮ Replay · Playlist · ${v.name}" to {
+                Session.source?.let { src -> Playback.inApp(context, PlayItem("${g.away.displayName} vs. ${g.home.displayName}", src.vodUrl(v), live = false, subtitle = "Replay · ${v.name}")) }
+                Unit
+            }
+        })
+    }
     val tv = g.networks.takeIf { it.isNotEmpty() }?.let { " · TV: ${it.joinToString(", ")}" } ?: ""
     val sub = when {
         options.isNotEmpty() && g.isFinal -> "Final ${g.away.score ?: ""}–${g.home.score ?: ""}. Pick a channel to replay the game$tv"
@@ -791,7 +801,13 @@ fun playGameSide(context: android.content.Context, league: League, g: Game, home
                     ?: Program("${g.away.displayName} vs. ${g.home.displayName}", "", g.start - 10 * 60_000, g.start + gameLengthMs(g), true)
                 src.catchupUrl(c, prog)?.let { c to it }
             }
-            if (play == null) { toast(context, "No replay for this game"); return@launch }
+            if (play == null) {
+                // No catch-up: the playlist's own replay of this game, if it has one.
+                val v = try { com.forbiddenstreams.tv.sports.ReplayFinder.find(league, g) } catch (e: Exception) { null }
+                if (v == null) { toast(context, "No replay for this game"); return@launch }
+                Playback.inApp(context, PlayItem("${g.away.displayName} vs. ${g.home.displayName}", src.vodUrl(v), live = false, subtitle = "Replay · ${v.name}"))
+                return@launch
+            }
             Playback.inApp(context, PlayItem("${g.away.displayName} vs. ${g.home.displayName}", play.second, live = false, subtitle = "Replay from ${play.first.name}"))
         } else openChannel(context, list, ch)
     }
