@@ -435,9 +435,9 @@ object PlayerHolder {
         if (fullScreen) openFullScreen(context)
     }
 
-    fun openFullScreen(context: Context) {
+    fun openFullScreen(context: Context, inApp: Boolean = false) {
         if (current == null) return
-        if (com.forbiddenstreams.tv.data.AppSettings.externalPlayer && openExternal(context)) return
+        if (!inApp && com.forbiddenstreams.tv.data.AppSettings.externalPlayer && openExternal(context)) return
         previewHidden = false
         fullScreen = true
         context.startActivity(Intent(context, PlayerActivity::class.java))
@@ -628,6 +628,11 @@ object PlayerHolder {
 object Playback {
     fun start(context: Context, items: List<PlayItem>, index: Int = 0) = PlayerHolder.start(context, items, index)
     fun one(context: Context, item: PlayItem) = start(context, listOf(item), 0)
+    /** Nov 19: plays in the app's own player even when Settings › Playback › Use external player is on (sports replays). */
+    fun inApp(context: Context, item: PlayItem) {
+        PlayerHolder.start(context, listOf(item), 0, fullScreen = false)
+        PlayerHolder.openFullScreen(context, inApp = true)
+    }
 }
 
 

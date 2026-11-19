@@ -281,7 +281,7 @@ internal fun gameOptions(
             val url = src.catchupUrl(c, prog) ?: continue
             val q = com.forbiddenstreams.tv.player.StreamQuality.label(context, c.id, c.name)
             out += "⏮ Replay · $label · ${c.name}" + (q?.let { "   [$it]" } ?: "") to {
-                Playback.one(context, PlayItem("${g.away.displayName} vs. ${g.home.displayName}", url, live = false, subtitle = "Replay from ${c.name}"))
+                Playback.inApp(context, PlayItem("${g.away.displayName} vs. ${g.home.displayName}", url, live = false, subtitle = "Replay from ${c.name}"))
             }
         }
     } else {
@@ -292,7 +292,7 @@ internal fun gameOptions(
                 val prog = Program("${g.away.displayName} vs. ${g.home.displayName}", "", g.start - 5 * 60_000, g.start + gameLengthMs(g), true)
                 val url = src.catchupUrl(c, prog) ?: continue
                 out += "⟲ From kickoff · $label" to {
-                    Playback.one(context, PlayItem("${g.away.displayName} vs. ${g.home.displayName}", url, live = false, subtitle = "From kickoff · ${c.name}"))
+                    Playback.inApp(context, PlayItem("${g.away.displayName} vs. ${g.home.displayName}", url, live = false, subtitle = "From kickoff · ${c.name}"))
                 }
                 break
             }
@@ -776,14 +776,23 @@ fun playGameSide(context: android.content.Context, league: League, g: Game, home
             else -> { toast(context, "No stream found for this game"); return@launch }
         }
         if (g.isFinal) {
-            val src = Session.source
-            val prog = Session.cachedEpg(ch)?.firstOrNull { g.start >= it.start - 15 * 60_000 && g.start < it.end }
-                ?.takeIf { p -> listOf(g.away.nickname, g.home.nickname).any { it.isNotBlank() && p.title.contains(it, true) } || p.end - p.start >= 90 * 60_000 }
-                ?.let { p -> if (p.end < g.start + 90 * 60_000) p.copy(end = g.start + gameLengthMs(g)) else p }
-                ?: Program("${g.away.displayName} vs. ${g.home.displayName}", "", g.start - 10 * 60_000, g.start + gameLengthMs(g), true)
-            val url = src?.catchupUrl(ch, prog)
-            if (url == null) { toast(context, "No replay for this game on ${ch.name}"); return@launch }
-            Playback.one(context, PlayItem("${g.away.displayName} vs. ${g.home.displayName}", url, live = false, subtitle = "Replay from ${ch.name}"))
+            // Nov 19 ("make sure sports replays play"): the first channel that actually has this game's replay —
+            // in button order (network / ESPN+ / this team / other team / event / other networks), catch-up on,
+            // and the game still inside its catch-up days. Always the app's own player.
+            val src = Session.source ?: run { toast(context, "No replay for this game"); return@launch }
+            val now = System.currentTimeMillis()
+            val order = listOfNotNull(ch, national?.second, plus, mine, other, event) + pg?.networks.orEmpty().map { it.second }
+            val play = order.distinctBy { it.id }.firstNotNullOfOrNull { c ->
+                if (!c.hasArchive) return@firstNotNullOfOrNull null
+                if (c.archiveDays > 0 && now - g.start > c.archiveDays * 86_400_000L) return@firstNotNullOfOrNull null
+                val prog = Session.cachedEpg(c)?.firstOrNull { g.start >= it.start - 15 * 60_000 && g.start < it.end }
+                    ?.takeIf { p -> listOf(g.away.nickname, g.home.nickname).any { it.isNotBlank() && p.title.contains(it, true) } || p.end - p.start >= 90 * 60_000 }
+                    ?.let { p -> if (p.end < g.start + 90 * 60_000) p.copy(end = g.start + gameLengthMs(g)) else p }
+                    ?: Program("${g.away.displayName} vs. ${g.home.displayName}", "", g.start - 10 * 60_000, g.start + gameLengthMs(g), true)
+                src.catchupUrl(c, prog)?.let { c to it }
+            }
+            if (play == null) { toast(context, "No replay for this game"); return@launch }
+            Playback.inApp(context, PlayItem("${g.away.displayName} vs. ${g.home.displayName}", play.second, live = false, subtitle = "Replay from ${play.first.name}"))
         } else openChannel(context, list, ch)
     }
 }
