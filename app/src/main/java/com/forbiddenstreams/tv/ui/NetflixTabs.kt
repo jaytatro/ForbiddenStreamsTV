@@ -97,6 +97,10 @@ private class Shelf(val title: String, tiles: List<Tile>) { val tiles = tiles.di
  * category when it comes on screen. The big full list (for "Recently added") loads afterwards
  * in the background. Heavy sorting and name cleaning run off the screen thread.
  */
+/** EN · ENG · ENGLISH · US · USA as its own word/tag in a category name ("EN | Action", "|US| Netflix", "4K-EN"). */
+private val englishRx = Regex("(?i)(^|[^a-z])(en|eng|english|us|usa)([^a-z]|$)")
+internal fun isEnglish(name: String) = englishRx.containsMatchIn(name)
+
 private object VodLib {
     val cats = HashMap<Boolean, List<com.forbiddenstreams.tv.data.Category>>()
     val rows = HashMap<String, List<Tile>>()
@@ -110,9 +114,10 @@ private object VodLib {
     suspend fun searchList(movies: Boolean): List<Pair<String, Any>> {
         names[movies]?.let { return it }
         val src = Session.source ?: return emptyList()
+        val ok = try { cats(movies).map { it.id }.toSet() } catch (e: Exception) { emptySet() }
         val out: List<Pair<String, Any>> = try {
-            if (movies) { val a = src.allVod(); kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { a.distinctBy { it.id }.map { it.name.lowercase() to it } } }
-            else { val a = src.allSeries(); kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { a.distinctBy { it.id }.map { it.name.lowercase() to it } } }
+            if (movies) { val a = src.allVod().filter { ok.isEmpty() || it.categoryId in ok }; kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { a.distinctBy { it.id }.map { it.name.lowercase() to it } } }
+            else { val a = src.allSeries().filter { ok.isEmpty() || it.categoryId in ok }; kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { a.distinctBy { it.id }.map { it.name.lowercase() to it } } }
         } catch (e: Throwable) { emptyList() }
         if (out.isNotEmpty()) names[movies] = out
         return out
@@ -124,7 +129,10 @@ private object VodLib {
     suspend fun cats(movies: Boolean): List<com.forbiddenstreams.tv.data.Category> {
         cats[movies]?.let { return it }
         val src = Session.source ?: return emptyList()
-        val c = (if (movies) src.vodCategories() else src.seriesCategories()).distinctBy { it.id }
+        val all = (if (movies) src.vodCategories() else src.seriesCategories()).distinctBy { it.id }
+        // Nov 19: only English categories (EN / ENG / English / US / USA in the name). If the provider
+        // doesn't label languages at all, everything is kept so the tab isn't empty.
+        val c = all.filter { isEnglish(it.name) }.ifEmpty { all }
         cats[movies] = c
         return c
     }
@@ -160,16 +168,17 @@ private object VodLib {
     suspend fun recent(movies: Boolean): List<Tile> {
         recent[movies]?.let { return it }
         val src = Session.source ?: return emptyList()
+        val ok = try { cats(movies).map { it.id }.toSet() } catch (e: Exception) { emptySet() }
         val out = try {
             if (movies) {
                 val all = src.allVod()
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                    all.filter { it.added > 0 }.sortedByDescending { it.added }.take(40).map { tileOf(it) }.distinctBy { it.key }
+                    all.filter { it.added > 0 && (ok.isEmpty() || it.categoryId in ok) }.sortedByDescending { it.added }.take(40).map { tileOf(it) }.distinctBy { it.key }
                 }
             } else {
                 val all = src.allSeries()
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                    all.filter { it.lastModified > 0 }.sortedByDescending { it.lastModified }.take(40).map { tileOf(it) }.distinctBy { it.key }
+                    all.filter { it.lastModified > 0 && (ok.isEmpty() || it.categoryId in ok) }.sortedByDescending { it.lastModified }.take(40).map { tileOf(it) }.distinctBy { it.key }
                 }
             }
         } catch (e: Throwable) { emptyList() } // includes running out of memory on huge lists
