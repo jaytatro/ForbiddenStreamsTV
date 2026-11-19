@@ -85,6 +85,11 @@ fun LoadScreenHost() {
                     recent.map { c -> async { try { Session.epg(c) } catch (e: Exception) { } } }.awaitAll()
                 }
             }
+            LoadScreen.progress = 0.66f
+            // 2b. Nov 19: Movies and TV Series — categories, Recently added / updated, the first rows and their
+            // posters. Waits up to 20 s here; the rest keeps loading in the background.
+            val libJob = SportsPreload.scope.launch { try { preloadLibrary(context) } catch (e: Exception) { } }
+            kotlinx.coroutines.withTimeoutOrNull(20_000) { libJob.join() }
             LoadScreen.progress = 0.75f
             // 3. Today's games (Home's live games, Sports)
             LoadScreen.step = "Getting today's games…"

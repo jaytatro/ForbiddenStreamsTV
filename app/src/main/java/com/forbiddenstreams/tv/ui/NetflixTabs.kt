@@ -64,6 +64,8 @@ import com.forbiddenstreams.tv.player.Playback
 import com.forbiddenstreams.tv.player.PlayerHolder
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.withPermit
 
 /** One poster in a row: a movie, a show, or something you're part-way through. */
@@ -179,6 +181,28 @@ private object VodLib {
 /** Starts loading the movie and show categories in the background (called once the app is up). */
 suspend fun prefetchLibrary() {
     try { VodLib.cats(true); VodLib.cats(false) } catch (e: Exception) { }
+}
+
+/**
+ * Nov 19 (loading screen): Movies and TV Series ready before the app opens — both category lists,
+ * Recently added / updated, the first [rows] category rows of each, and their poster pictures.
+ */
+suspend fun preloadLibrary(context: android.content.Context, rows: Int = 8) = kotlinx.coroutines.coroutineScope {
+    val loader = coil.Coil.imageLoader(context)
+    val posters = java.util.Collections.synchronizedList(ArrayList<String>())
+    listOf(true, false).map { movies ->
+        async {
+            val cats = try { VodLib.cats(movies) } catch (e: Exception) { emptyList() }
+            val adult = com.forbiddenstreams.tv.data.CategoryPrefs.adultBlocked(context)
+            val first = cats.filter { !adult || !com.forbiddenstreams.tv.data.CategoryPrefs.isAdult(it.name) }.take(rows)
+            val jobs = first.map { c -> async { try { VodLib.row(movies, c.id) } catch (e: Exception) { emptyList() } } } +
+                async { try { VodLib.recent(movies) } catch (e: Exception) { emptyList() } }
+            jobs.awaitAll().forEach { list -> list.take(10).mapNotNullTo(posters) { it.poster } }
+        }
+    }.awaitAll()
+    posters.distinct().take(120).chunked(8).forEach { batch ->
+        batch.map { u -> async { try { loader.execute(coil.request.ImageRequest.Builder(context).data(u).build()) } catch (e: Exception) { } } }.awaitAll()
+    }
 }
 
 fun resetLibrary() = VodLib.reset()

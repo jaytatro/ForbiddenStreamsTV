@@ -53,6 +53,8 @@ private data class RailEntry(val name: String, val icon: RailIcon)
 private val RAIL = listOf(
     RailEntry("Home", RailIcon.HOME),
     RailEntry("Live TV", RailIcon.CHANNELS),
+    RailEntry("Movies", RailIcon.MOVIES),
+    RailEntry("TV Series", RailIcon.SHOWS),
     RailEntry("Sports", RailIcon.SPORTS),
     RailEntry("DVR", RailIcon.DVR),
 )

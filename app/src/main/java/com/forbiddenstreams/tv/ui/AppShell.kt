@@ -77,7 +77,9 @@ object TabDown { var handler: (() -> Boolean)? = null }
 
 /** Tabs across the top, left to right, centered. */
 // Nov 16: the old Live TV tab was removed and TV Guide renamed "Live TV".
-private val TABS = listOf("Home", "Live TV", "Sports", "DVR")
+private val TABS = listOf("Home", "Live TV", "Movies", "TV Series", "Sports", "DVR")
+private const val TAB_SPORTS = 4
+private const val TAB_DVR = 5
 
 /**
  * The new app (started from scratch, Nov 1 2026): tabs centered across the top, always opens on Home.
@@ -165,9 +167,12 @@ fun AppShell(onLogout: () -> Unit) {
       Box(Modifier.fillMaxSize().padding(start = railW).focusRequester(contentReq)
           .onFocusChanged { contentFocused = it.hasFocus }.focusGroup()) {
         when (tab) {
-            0 -> HomeTab(onOpenGame = { l, id -> sportsOpen = l to id; tab = 2 })
+            0 -> HomeTab(onOpenGame = { l, id -> sportsOpen = l to id; tab = TAB_SPORTS })
             1 -> LiveTvTab()
-            2 -> SportsTab(open = sportsOpen, onOpened = { sportsOpen = null }, enter = sportsEnter)
+            // Nov 19: Movies and TV Series back in the side menu (loaded on the loading screen).
+            2 -> MoviesTab()
+            3 -> ShowsTab()
+            TAB_SPORTS -> SportsTab(open = sportsOpen, onOpened = { sportsOpen = null }, enter = sportsEnter)
             else -> if (!dvrUnlocked && pinNeeded(context, com.forbiddenstreams.tv.data.AppSettings.pinDvr)) {
                 // DVR locked with the parental code: ▼ / OK asks for it.
                 val ask: () -> Boolean = { dvrPin = true; true }
@@ -182,12 +187,12 @@ fun AppShell(onLogout: () -> Unit) {
         SideRail(
             tab = tab, reqs = tabReq,
             onTab = { tab = it },
-            onEnter = { if (it == 2) sportsEnter++; if (it == 3 && !dvrUnlocked && pinNeeded(context, com.forbiddenstreams.tv.data.AppSettings.pinDvr)) dvrPin = true },
+            onEnter = { if (it == TAB_SPORTS) sportsEnter++; if (it == TAB_DVR && !dvrUnlocked && pinNeeded(context, com.forbiddenstreams.tv.data.AppSettings.pinDvr)) dvrPin = true },
             onFocusChange = { tabsFocused = it },
             onSettings = { if (pinNeeded(context, com.forbiddenstreams.tv.data.AppSettings.pinSettings)) settingsPin = true else settings = true },
         )
         // 1 minute before a favorite team's game: pop-up with the game; OK = its channels.
-        if (com.forbiddenstreams.tv.data.AppSettings.favGameAlerts) FavGameStartAlert(onWatch = { l, id -> sportsOpen = l to id; tab = 2 })
+        if (com.forbiddenstreams.tv.data.AppSettings.favGameAlerts) FavGameStartAlert(onWatch = { l, id -> sportsOpen = l to id; tab = TAB_SPORTS })
         // Reminders that are due: "Starting now" pop-up (Settings › Other › Reminders).
         ReminderPopup()
         // Game highlights playing inside the app (Nov 15).
