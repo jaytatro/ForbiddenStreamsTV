@@ -728,7 +728,8 @@ object GameChannelCache {
         val cands = all.filter { plusRx.containsMatchIn(it.name) && it.id !in used }.take(80)
         return kotlinx.coroutines.withTimeoutOrNull(8_000) {
             kotlinx.coroutines.coroutineScope {
-                cands.map { c -> async { c.takeIf { try { GameMatcher.guideShowsGame(c, g, epg) == true } catch (e: Exception) { false } } } }
+                val gate = kotlinx.coroutines.sync.Semaphore(6)
+                cands.map { c -> async { gate.acquire(); try { c.takeIf { try { GameMatcher.guideShowsGame(c, g, epg) == true } catch (e: Exception) { false } } } finally { gate.release() } } }
                     .awaitAll().firstOrNull { it != null }
             }
         }

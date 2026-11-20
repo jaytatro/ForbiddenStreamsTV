@@ -27,6 +27,23 @@ object Http {
         }
         .build()
 
+    /**
+     * Nov 19 ("the sports section isn't loading"): the scoreboard gets its own lane so it never waits behind
+     * background work (guides, highlight searches, replay searches), and background work gets a small lane
+     * so it can't take every network thread.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val fastLane = Dispatchers.IO.limitedParallelism(12)
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val backgroundLane = Dispatchers.IO.limitedParallelism(6)
+
+    suspend fun getFast(url: String): String = withContext(fastLane) {
+        client.newCall(Request.Builder().url(url).build()).execute().use { r ->
+            if (!r.isSuccessful) throw IOException("Server answered HTTP ${r.code}")
+            r.body?.string() ?: ""
+        }
+    }
+
     suspend fun get(url: String): String = withContext(Dispatchers.IO) {
         client.newCall(Request.Builder().url(url).build()).execute().use { r ->
             if (!r.isSuccessful) throw IOException("Server answered HTTP ${r.code}")

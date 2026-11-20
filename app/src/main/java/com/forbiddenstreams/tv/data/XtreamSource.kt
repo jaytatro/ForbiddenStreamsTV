@@ -202,11 +202,18 @@ class XtreamSource(
 
     // The full movie / show lists can be huge (tens of MB): read them piece by piece instead of
     // loading the whole text into memory, which crashed the app when searching (out of memory).
-    override suspend fun allVod(): List<VodItem> =
-        allVodCache ?: streamVod(api("get_vod_streams"), "").also { allVodCache = it }
+    // Nov 19: one download at a time — several screens/preloads asking at once used to each download
+    // the whole (huge) list together, filling memory and the network.
+    private val vodLock = kotlinx.coroutines.sync.Mutex()
+    private val seriesLock = kotlinx.coroutines.sync.Mutex()
 
-    override suspend fun allSeries(): List<SeriesItem> =
+    override suspend fun allVod(): List<VodItem> = allVodCache ?: vodLock.withLock {
+        allVodCache ?: streamVod(api("get_vod_streams"), "").also { allVodCache = it }
+    }
+
+    override suspend fun allSeries(): List<SeriesItem> = allSeriesCache ?: seriesLock.withLock {
         allSeriesCache ?: streamSeries(api("get_series"), "").also { allSeriesCache = it }
+    }
 
     private suspend fun streamVod(url: String, categoryId: String): List<VodItem> =
         streamObjects(url, setOf("stream_id", "name", "stream_icon", "rating", "category_id", "container_extension", "added", "year", "releaseDate", "release_date")) { o ->

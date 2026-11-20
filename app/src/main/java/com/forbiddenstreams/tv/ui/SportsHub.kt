@@ -123,11 +123,18 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
     }
     // The picked league's week (3 days back, today, 3 ahead), refreshed every 30 s.
     var day by remember(league) { mutableStateOf(dayKeyOffset(0)) }
-    val week by produceState<Map<String, List<Game>>?>(null, league) {
-        value = null
+    // Nov 19: today first (fast), then the whole week; 15 s limit per try; a failed try retries after 5 s and
+    // says so on screen instead of spinning forever.
+    var loadFailed by remember(league) { mutableStateOf(false) }
+    val week by produceState<Map<String, List<Game>>?>(Espn.cachedWeek(league), league) {
+        if (value == null) {
+            val today = kotlinx.coroutines.withTimeoutOrNull(10_000) { try { Espn.week(league, 0, 0) } catch (e: Exception) { null } }
+            if (today != null) value = today
+        }
         while (true) {
-            value = try { Espn.week(league) } catch (e: Exception) { value ?: emptyMap() }
-            delay(30_000)
+            val w = kotlinx.coroutines.withTimeoutOrNull(15_000) { try { Espn.week(league) } catch (e: Exception) { null } }
+            if (w != null) { value = w; loadFailed = false; delay(30_000) }
+            else { loadFailed = value == null; delay(5_000) }
         }
     }
     LaunchedEffect(open) { open?.let { leagueName = it.first.name } }
@@ -309,6 +316,7 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                 }
                 if (league == League.NFL && (week == null || sorted.isEmpty())) redZoneBox()
                 when {
+                    week == null && loadFailed -> MessageBox("Can't reach the scoreboard right now", "Trying again every few seconds. Check the box's internet if this stays.")
                     week == null -> LoadingBox("Loading ${league.label}")
                     sorted.isEmpty() -> MessageBox(if (day == dayKeyOffset(0)) "No games today" else "No games this day",
                         "Pick another day above, or another league on the left.")

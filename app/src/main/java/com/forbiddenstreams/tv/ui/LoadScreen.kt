@@ -127,7 +127,7 @@ fun LoadScreenHost() {
                 }.distinctBy { it.first.name + it.second.id }
                     .sortedWith(compareBy({ if (com.forbiddenstreams.tv.sports.FavTeams.inGame(context, it.first, it.second)) 0 else 1 }, { -it.second.start }))
                     .take(60)
-                val gate = kotlinx.coroutines.sync.Semaphore(4)
+                val gate = kotlinx.coroutines.sync.Semaphore(2)
                 kotlinx.coroutines.coroutineScope {
                     finished.map { (l, g) ->
                         async {
@@ -235,5 +235,5 @@ private fun RetroLoading() {
 
 /** Sports work that may outlive the loading screen (finishes in the background). */
 object SportsPreload {
-    val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+    val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + com.forbiddenstreams.tv.data.Http.backgroundLane)
 }

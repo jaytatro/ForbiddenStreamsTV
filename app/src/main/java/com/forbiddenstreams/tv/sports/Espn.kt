@@ -88,7 +88,11 @@ object Espn {
      * on its own, all at the same time.
      */
     suspend fun week(league: League, fromDays: Int = -3, toDays: Int = 3): Map<String, List<Game>> =
-        days(league, (fromDays..toDays).toList()).groupBy { dayKey(it.start) }
+        days(league, (fromDays..toDays).toList()).groupBy { dayKey(it.start) }.also { if (fromDays == -3 && toDays == 3) weeks[league] = it }
+
+    /** The last full week fetched for a league (shown straight away when the Sports tab opens again). */
+    private val weeks = java.util.concurrent.ConcurrentHashMap<League, Map<String, List<Game>>>()
+    fun cachedWeek(league: League): Map<String, List<Game>>? = weeks[league]
 
     private suspend fun days(league: League, offsets: List<Int>): List<Game> = coroutineScope {
         val results = offsets.map { d ->
@@ -105,7 +109,7 @@ object Espn {
             days(league, ((afterDays + 1)..(afterDays + 14)).toList()).firstOrNull { it.start > now }?.let { return it.start }
         } catch (e: Exception) { /* fall through to the calendar */ }
         // Off-season: look through the league calendar for the next game day.
-        val j = jsonObject(Http.get(url(league, ""))) ?: return null
+        val j = jsonObject(Http.getFast(url(league, ""))) ?: return null
         var best: Long? = null
         fun scan(any: Any?) {
             when (any) {
@@ -139,7 +143,7 @@ object Espn {
         val out = ArrayList<Game>()
         var ok = false
         for (path in listOf(league.espnPath) + league.extraPaths) {
-            val j = try { jsonObject(Http.get(url(league, query, path))) } catch (e: Exception) { if (path == league.espnPath) throw e else null } ?: continue
+            val j = try { jsonObject(Http.getFast(url(league, query, path))) } catch (e: Exception) { if (path == league.espnPath) throw e else null } ?: continue
             ok = true
             val events = j.optJSONArray("events") ?: continue
             for (i in 0 until events.length()) {
