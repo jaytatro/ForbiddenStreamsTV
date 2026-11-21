@@ -115,6 +115,22 @@ fun LoadScreenHost() {
                     }.awaitAll()
                 }
             }
+            LoadScreen.progress = 0.82f
+            // 3b2. Nov 21: highlights first — the right video for every finished game of the last 2 days
+            // (favorite teams first), 4 at a time; waits up to 20 s, the rest keeps going in the background.
+            val hlJob = SportsPreload.scope.launch {
+                val fin = com.forbiddenstreams.tv.sports.SPORTS_ORDER.flatMap { l ->
+                    (try { com.forbiddenstreams.tv.sports.Espn.week(l, -2, 0) } catch (e: Exception) { emptyMap() }).values.flatten()
+                        .filter { highlightsOffered(it) }.map { l to it }
+                }.distinctBy { it.first.name + it.second.id }
+                    .sortedWith(compareBy({ if (com.forbiddenstreams.tv.sports.FavTeams.inGame(context, it.first, it.second)) 0 else 1 }, { -it.second.start }))
+                    .take(80)
+                val gate = kotlinx.coroutines.sync.Semaphore(4)
+                kotlinx.coroutines.coroutineScope {
+                    fin.map { (l, g) -> async { gate.acquire(); try { com.forbiddenstreams.tv.sports.HighlightFinder.find(l, g) } catch (e: Exception) { } finally { gate.release() } } }.awaitAll()
+                }
+            }
+            kotlinx.coroutines.withTimeoutOrNull(20_000) { hlJob.join() }
             LoadScreen.progress = 0.84f
             // 3c. Nov 17: replays and highlights for finished games (today and yesterday, favorite teams first) —
             // the replay channels and the right highlight video are found now. Waits up to 20 s here; whatever

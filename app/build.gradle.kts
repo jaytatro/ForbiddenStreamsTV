@@ -71,6 +71,7 @@ dependencies {
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("androidx.webkit:webkit:1.8.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
     // Installs the speed profiles that Compose / Media3 ship with, so screens and scrolling are fast from the first run.
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")

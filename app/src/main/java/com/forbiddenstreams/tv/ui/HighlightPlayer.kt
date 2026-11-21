@@ -128,30 +128,27 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
     private fun load(id: String) {
         currentId = id
         playing = false
-        val url = "https://www.youtube.com/embed/$id?autoplay=1&controls=1&rel=0&playsinline=1&fs=0&iv_load_policy=3&modestbranding=1" +
-            "&enablejsapi=1&vq=$vq&origin=https%3A%2F%2Fwww.youtube.com"
-        web?.loadUrl(url, mapOf("Referer" to "https://www.youtube.com/"))
+        web?.loadUrl("https://www.youtube.com/tv#/watch?v=$id", mapOf("Referer" to "https://www.youtube.com/tv"))
     }
 
+    /** Hooks the page's video: OK / ◀ ▶ work on it, "playing" takes the teams screen away, the end closes. */
     private fun hook() = js("""
         (function(){
+          if(!window.__fsAds){ window.__fsAds=1; try{ $AD_STRIP_INLINE }catch(e){} }
           var tries=0;
           function go(){
-            var mp=document.getElementById('movie_player');
-            if(!mp||!mp.getPlayerState){ if(++tries<60) setTimeout(go,500); return; }
-            window.p=mp;
-            try{ if(mp.setPlaybackQualityRange) mp.setPlaybackQualityRange('$vq','$vq'); if(mp.setPlaybackQuality) mp.setPlaybackQuality('$vq'); }catch(e){}
-            try{ if(mp.unMute) mp.unMute(); if(mp.setVolume) mp.setVolume(100); }catch(e){}
-            window.fsState=function(s){ if(s==0) FS.onEnded(); if(s==1) FS.onPlaying(); };
-            window.fsErr=function(e){ FS.onError((e&&e.data!==undefined)?e.data:(e||0)); };
-            try{ mp.addEventListener('onStateChange','fsState'); mp.addEventListener('onError','fsErr'); }catch(e){}
-            if(mp.getPlayerState()!=1) mp.playVideo();
-            if(mp.getPlayerState()==1) FS.onPlaying();
-            // YouTube's own error screen (embedding turned off, video unavailable…)
-            var iv=setInterval(function(){
-              var er=document.querySelector('.ytp-error'); if(er && er.offsetParent!==null){ clearInterval(iv); FS.onError(150); }
-              if(mp.getPlayerState && mp.getPlayerState()==1) FS.onPlaying();
-            },1000);
+            var v=document.querySelector('video');
+            if(!v){ if(++tries<80) setTimeout(go,500); return; }
+            window.v=v;
+            if(!v.__fs){
+              v.__fs=1;
+              v.addEventListener('playing',function(){ FS.onPlaying(); });
+              v.addEventListener('ended',function(){ FS.onEnded(); });
+              v.addEventListener('error',function(){ FS.onError(5); });
+            }
+            v.muted=false; v.volume=1;
+            if(v.paused){ var pr=v.play(); if(pr&&pr.catch) pr.catch(function(){}); }
+            if(!v.paused && v.readyState>2) FS.onPlaying();
           }
           go();
         })();
@@ -179,7 +176,9 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
             settings.mediaPlaybackRequiresUserGesture = false
             // Nov 17 ("highest quality"): desktop browser + a page as wide as the screen's real pixels, so YouTube
             // serves 1080p (or 4K on a 4K box) instead of the small-screen 480p/720p.
-            settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+            // Nov 21 ("take it from TizenTube"): the same YouTube TV player TizenTube runs (youtube.com/tv), as a Samsung
+            // Tizen TV — it plays on TVs without the embed restrictions, at TV quality, with TizenTube's ad removal.
+            settings.userAgentString = TV_UA
             // Nov 21: the page is laid out at the screen's real pixels (1 page pixel = 1 screen pixel), so YouTube
             // picks 1080p / 4K for the full-screen player.
             settings.useWideViewPort = false
@@ -205,6 +204,9 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
                 // The video is playing: take the teams screen away.
                 @JavascriptInterface fun onPlaying() { post { playing = true; cover?.visibility = android.view.View.GONE } }
             }, "FS")
+        }
+        if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            try { androidx.webkit.WebViewCompat.addDocumentStartJavaScript(w, AD_STRIP, setOf("https://www.youtube.com")) } catch (e: Exception) { }
         }
         root.addView(w, android.widget.FrameLayout.LayoutParams(-1, -1))
         val d = resources.displayMetrics.density
@@ -236,7 +238,7 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
         cover = c
         hint?.bringToFront()
         // Still not playing after 12 s (autoplay blocked on some boxes): show the video so OK can start it.
-        handler.postDelayed({ if (cover?.visibility == android.view.View.VISIBLE) { js("if(window.p){p.playVideo();}") } }, 6_000)
+        handler.postDelayed({ if (cover?.visibility == android.view.View.VISIBLE) hook() }, 6_000)
         handler.postDelayed({ cover?.visibility = android.view.View.GONE }, 12_000)
         setContentView(root)
         web = w
@@ -245,15 +247,15 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
         }
         vq = if (screenW >= 3000) "hd2160" else if (screenW >= 1700) "hd1080" else "hd720"
         load(id)
-        // Watchdog: not playing after 20 s → the next match for this game, then the YouTube app.
+        // Watchdog: not playing after 25 s → the next match for this game, then the YouTube app.
         handler.postDelayed(object : Runnable {
             override fun run() {
                 if (playing || failed || isFinishing) return
                 val next = tries.removeFirstOrNull()
-                if (next != null) { load(next); handler.postDelayed(this, 20_000) }
+                if (next != null) { load(next); handler.postDelayed(this, 25_000) }
                 else { failed = true; toast(this@HighlightActivity, "This video can't play here — opening YouTube"); openInYouTube(currentId); finish() }
             }
-        }, 20_000)
+        }, 25_000)
         showHint()
     }
 
@@ -263,14 +265,14 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
             when (event.keyCode) {
                 android.view.KeyEvent.KEYCODE_DPAD_CENTER, android.view.KeyEvent.KEYCODE_ENTER, android.view.KeyEvent.KEYCODE_NUMPAD_ENTER,
                 android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                    if (event.repeatCount == 0) js("if(window.p){p.getPlayerState()==1?p.pauseVideo():p.playVideo();}")
+                    if (event.repeatCount == 0) js("(function(){var v=window.v||document.querySelector('video');if(v){v.paused?v.play():v.pause();}})()")
                     showHint(); return true
                 }
                 android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_MEDIA_REWIND -> {
-                    js("if(window.p){p.seekTo(Math.max(0,p.getCurrentTime()-$skip),true);}"); showHint(); return true
+                    js("(function(){var v=window.v||document.querySelector('video');if(v){v.currentTime=Math.max(0,v.currentTime-$skip);}})()"); showHint(); return true
                 }
                 android.view.KeyEvent.KEYCODE_DPAD_RIGHT, android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
-                    js("if(window.p){p.seekTo(p.getCurrentTime()+$skip,true);}"); showHint(); return true
+                    js("(function(){var v=window.v||document.querySelector('video');if(v){v.currentTime=v.currentTime+$skip;}})()"); showHint(); return true
                 }
                 android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN -> { showHint(); return true }
             }
@@ -332,3 +334,11 @@ private fun CoverTeam(name: String, logo: String?) {
             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
     }
 }
+
+
+/** A Samsung Tizen TV browser — what TizenTube presents to YouTube for its TV player. */
+private const val TV_UA = "Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.0) AppleWebKit/537.36 (KHTML, like Gecko) 76.0.3809.146/6.0 TV Safari/537.36"
+
+/** TizenTube-style ad removal: strip the ad parts out of YouTube's player data as the page reads it. */
+private const val AD_STRIP_INLINE = "var __p=JSON.parse;JSON.parse=function(){var r=__p.apply(this,arguments);try{if(r&&typeof r==='object'){if(r.adPlacements)r.adPlacements=[];if(r.playerAds)r.playerAds=[];if(r.adSlots)r.adSlots=[];if(r.adBreakHeartbeatParams)delete r.adBreakHeartbeatParams;}}catch(e){}return r;};"
+private const val AD_STRIP = "(function(){if(window.__fsAds)return;window.__fsAds=1;" + AD_STRIP_INLINE + "})();"

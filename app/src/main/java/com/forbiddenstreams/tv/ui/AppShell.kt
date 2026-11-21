@@ -77,8 +77,8 @@ object TabDown { var handler: (() -> Boolean)? = null }
 
 /** Tabs across the top, left to right, centered. */
 // Nov 16: the old Live TV tab was removed and TV Guide renamed "Live TV".
-private val TABS = listOf("Home", "Live TV", "Movies", "TV Series", "Sports", "DVR")
-private const val TAB_SPORTS = 4
+private val TABS = listOf("Home", "Live TV", "Sports", "Movies", "TV Series", "DVR")
+private const val TAB_SPORTS = 2
 private const val TAB_DVR = 5
 
 /**
@@ -170,8 +170,8 @@ fun AppShell(onLogout: () -> Unit) {
             0 -> HomeTab(onOpenGame = { l, id -> sportsOpen = l to id; tab = TAB_SPORTS })
             1 -> LiveTvTab()
             // Nov 19: Movies and TV Series back in the side menu (loaded on the loading screen).
-            2 -> MoviesTab()
-            3 -> ShowsTab()
+            3 -> MoviesTab()
+            4 -> ShowsTab()
             TAB_SPORTS -> SportsTab(open = sportsOpen, onOpened = { sportsOpen = null }, enter = sportsEnter)
             else -> if (!dvrUnlocked && pinNeeded(context, com.forbiddenstreams.tv.data.AppSettings.pinDvr)) {
                 // DVR locked with the parental code: ▼ / OK asks for it.
