@@ -94,6 +94,7 @@ fun HighlightPlayerHost() {
             .putExtra("away", h.away).putExtra("home", h.home).putExtra("awayLogo", h.awayLogo).putExtra("homeLogo", h.homeLogo)
             .putExtra("awayScore", h.awayScore).putExtra("homeScore", h.homeScore)
             .putExtra("league", h.league).putExtra("icon", h.icon).putExtra("date", h.date)
+            .putExtra("backups", com.forbiddenstreams.tv.sports.HighlightFinder.backupsFor(h.videoId).toTypedArray())
             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 }
@@ -165,7 +166,7 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val id = intent.getStringExtra("id") ?: run { finish(); return }
         val title = intent.getStringExtra("title") ?: ""
-        tries.clear(); tries.addAll(com.forbiddenstreams.tv.sports.HighlightFinder.backupsFor(id))
+        tries.clear(); tries.addAll(intent.getStringArrayExtra("backups").orEmpty())
         val root = android.widget.FrameLayout(this).apply { setBackgroundColor(android.graphics.Color.BLACK) }
         val w = WebView(this).apply {
             isFocusable = false

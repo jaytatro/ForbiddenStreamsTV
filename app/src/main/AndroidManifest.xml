@@ -73,6 +73,7 @@
         <!-- Game highlights (YouTube) playing inside the app, Nov 15. -->
         <activity
             android:name=".ui.HighlightActivity"
+            android:process=":highlights"
             android:exported="false"
             android:hardwareAccelerated="true"
             android:screenOrientation="landscape"

@@ -87,7 +87,8 @@ private const val TAB_DVR = 5
 @Composable
 fun AppShell(onLogout: () -> Unit) {
     val context = LocalContext.current
-    var tab by remember { mutableIntStateOf(0) } // always opens on Home
+    // Opens on Home; kept if Android re-creates the screen (e.g. after highlights), so BACK lands where you were.
+    var tab by androidx.compose.runtime.saveable.rememberSaveable { mutableIntStateOf(0) }
     var settings by remember { mutableStateOf(false) }
     var favTeams by remember { mutableStateOf(false) }
     var parental by remember { mutableStateOf(false) }

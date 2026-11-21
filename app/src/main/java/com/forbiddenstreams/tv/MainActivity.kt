@@ -37,6 +37,11 @@ class App : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         com.forbiddenstreams.tv.data.AppSettings.init(this)
+        // Nov 21: the highlights player runs in its own process (its web player's memory can't push the
+        // app out, so BACK returns to the app as it was). That process needs nothing else.
+        val proc = if (Build.VERSION.SDK_INT >= 28) Application.getProcessName() else
+            try { java.io.File("/proc/self/cmdline").readText().trim('\u0000', ' ') } catch (e: Exception) { "" }
+        if (proc.endsWith(":highlights")) return
         Alarms.createChannels(this)
         // Settings › General › Auto start on wake up (works while the app is still in memory).
         try {
@@ -96,6 +101,9 @@ class MainActivity : ComponentActivity() {
         val t0 = android.os.SystemClock.uptimeMillis()
         splash.setKeepOnScreenCondition { Session.source != null && Session.liveAll == null && android.os.SystemClock.uptimeMillis() - t0 < 1_500 }
         super.onCreate(savedInstanceState)
+        // Nov 21: coming back after Android closed the app in the background (e.g. while highlights played):
+        // straight back to where you were — no loading screen; everything refreshes behind it.
+        if (savedInstanceState != null) com.forbiddenstreams.tv.ui.LoadScreen.showing = false
         volumeControlStream = android.media.AudioManager.STREAM_MUSIC // remote volume keys = media volume
         if (Build.VERSION.SDK_INT >= 33) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
