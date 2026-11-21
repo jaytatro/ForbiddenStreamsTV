@@ -145,6 +145,7 @@ object GameMatcher {
     ): List<Pair<String, LiveChannel>> {
         val out = ArrayList<Pair<String, LiveChannel>>()
         val seen = HashSet<String>(exclude)
+        val netCats = SportsCategories.networkChannelIds()
         for (net in game.networks) {
             val keys = networkNames(net)
             if (keys.isEmpty()) continue
@@ -153,7 +154,11 @@ object GameMatcher {
                 c.id !in seen && keys.any { k -> n.contains(" $k ") } && excluded.none { n.contains(" $it ") }
             }.sortedWith(compareBy(
                 { if (inMarket(it, game)) 0 else 1 },
+                // Nov 21: the playlist's network categories (US| SPORTS NETWORKS, US| ABC / CBS / FOX / NBC / CW…) first,
+                // then the better picture.
+                { if (it.id in netCats) 0 else 1 },
                 { if (norm(it.name).let { n -> n.startsWith(" us ") || n.startsWith(" usa ") }) 0 else 1 },
+                { -SportsCategories.quality(it.name) },
                 { it.name.length },
             )).take(14)
             val confirmed = ArrayList<LiveChannel>()
@@ -166,7 +171,7 @@ object GameMatcher {
                 }
             }
             val pick = when {
-                confirmed.isNotEmpty() -> confirmed.take(3)
+                confirmed.isNotEmpty() -> confirmed.sortedByDescending { SportsCategories.quality(it.name) }.take(3)
                 isLocalNetwork(net) -> cands.filter { it.id !in contradicted && inMarket(it, game) }.take(2)
                 else -> cands.filter { it.id !in contradicted }.take(2)
             }

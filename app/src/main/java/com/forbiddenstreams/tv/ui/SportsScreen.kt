@@ -706,6 +706,9 @@ data class PreparedGame(
     val wrongTeam: Set<String>,
     /** Nov 18: for an ESPN+ game, the provider's ESPN+ / event channel that has it (both buttons play it). */
     val espnPlus: LiveChannel? = null,
+    /** Nov 21: best streams per side (team group + league package categories), best quality first. */
+    val awayFeeds: List<LiveChannel> = emptyList(),
+    val homeFeeds: List<LiveChannel> = emptyList(),
     val at: Long = System.currentTimeMillis(),
 )
 
@@ -725,12 +728,14 @@ object GameChannelCache {
         val all = Session.liveAll.orEmpty()
         GameMatcher.eventChannels(g, all, used).firstOrNull()?.let { return it.second }
         val plusRx = Regex("espn\\s*(\\+|plus)", RegexOption.IGNORE_CASE)
-        val cands = all.filter { plusRx.containsMatchIn(it.name) && it.id !in used }.take(80)
+        // Nov 21: the ESPN+ categories ("ESPN+ PPV VIP", "ESPN PLUS") first, then any channel named ESPN+.
+        val cands = (com.forbiddenstreams.tv.sports.SportsCategories.espnPlusChannels() + all.filter { plusRx.containsMatchIn(it.name) })
+            .distinctBy { it.id }.filter { it.id !in used }.take(120)
         return kotlinx.coroutines.withTimeoutOrNull(8_000) {
             kotlinx.coroutines.coroutineScope {
                 val gate = kotlinx.coroutines.sync.Semaphore(6)
                 cands.map { c -> async { gate.acquire(); try { c.takeIf { try { GameMatcher.guideShowsGame(c, g, epg) == true } catch (e: Exception) { false } } } finally { gate.release() } } }
-                    .awaitAll().firstOrNull { it != null }
+                    .awaitAll().filterNotNull().maxByOrNull { com.forbiddenstreams.tv.sports.SportsCategories.quality(it.name) }
             }
         }
     }
@@ -752,7 +757,14 @@ object GameChannelCache {
                 GameMatcher.verifiedNetworkChannels(g, Session.liveAll.orEmpty(), used, epg)
             } ?: GameMatcher.verifiedNetworkChannels(g, Session.liveAll.orEmpty(), used) { c -> Session.cachedEpg(c).orEmpty() }
             val plus = if (g.networks.any { it.replace(" ", "").contains("ESPN+", true) }) findEspnPlus(g, used, epg) else null
-            PreparedGame(m, nets, wrong, plus).also { map[league.name + ":" + g.id] = it }
+            val feeds = kotlinx.coroutines.withTimeoutOrNull(12_000) {
+                kotlinx.coroutines.coroutineScope {
+                    val a = async { com.forbiddenstreams.tv.sports.SportsCategories.sideFeeds(league, g, false, team, epg) }
+                    val h = async { com.forbiddenstreams.tv.sports.SportsCategories.sideFeeds(league, g, true, team, epg) }
+                    a.await() to h.await()
+                }
+            }
+            PreparedGame(m, nets, wrong, plus, feeds?.first.orEmpty(), feeds?.second.orEmpty()).also { map[league.name + ":" + g.id] = it }
         }
 }
 
@@ -772,8 +784,10 @@ fun playGameSide(context: android.content.Context, league: League, g: Game, home
         val pg = cached ?: try { GameChannelCache.prepare(league, g, team) } catch (e: Exception) { null }
         val m = pg?.match
         val wrong = pg?.wrongTeam.orEmpty()
-        val mine = (if (home) m?.home else m?.away)?.takeIf { it.id !in wrong }
-        val other = (if (home) m?.away else m?.home)?.takeIf { it.id !in wrong }
+        // Nov 21: the side's best stream from the team group + package categories (best quality first),
+        // falling back to the plain team-group match.
+        val mine = ((if (home) pg?.homeFeeds else pg?.awayFeeds)?.firstOrNull() ?: (if (home) m?.home else m?.away))?.takeIf { it.id !in wrong }
+        val other = ((if (home) pg?.awayFeeds else pg?.homeFeeds)?.firstOrNull() ?: (if (home) m?.away else m?.home))?.takeIf { it.id !in wrong }
         val national = pg?.networks?.firstOrNull()
         val used = m?.options.orEmpty().map { it.id }.toSet()
         val event = GameMatcher.eventChannels(g, Session.liveAll.orEmpty(), used).firstOrNull()?.second
