@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.ForbiddenVid" parent="android:Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:colorAccent">#7CFF3A</item>
+        <item name="android:colorControlHighlight">#997CFF3A</item>
+    </style>
+</resources>

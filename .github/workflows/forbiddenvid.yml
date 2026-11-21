@@ -1,0 +1,53 @@
+name: Build Forbidden Vid
+on:
+  push:
+    branches: [main]
+    paths: ['forbiddenvid/**', '.github/workflows/forbiddenvid.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: forbiddenvid
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build APK
+        run: |
+          chmod +x gradlew
+          set -o pipefail
+          ./gradlew assembleRelease --stacktrace 2>&1 | tee build.log
+          cp app/build/outputs/apk/release/app-release.apk ForbiddenVid.apk
+      - name: Report compile errors
+        if: failure()
+        run: |
+          grep -E "^e: |error:|What went wrong" -A2 build.log | head -40 | while IFS= read -r l; do echo "::error::$l"; done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ForbiddenVid
+          path: forbiddenvid/ForbiddenVid.apk
+      # One fixed release ("forbiddenvid") whose APK is replaced each build, so the download link never changes.
+      # It is never marked "latest", so Forbidden Streams TV's own update check is not affected.
+      - name: Publish to the "forbiddenvid" release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          N="${{ github.run_number }}"
+          TITLE="Forbidden Vid (build $N)"
+          NOTES="Install on your Android TV box with the Downloader app: https://github.com/${{ github.repository }}/releases/download/forbiddenvid/ForbiddenVid.apk"
+          if gh release view forbiddenvid >/dev/null 2>&1; then
+            gh release upload forbiddenvid ForbiddenVid.apk --clobber
+            gh release edit forbiddenvid --title "$TITLE" --notes "$NOTES" --latest=false
+          else
+            gh release create forbiddenvid ForbiddenVid.apk --title "$TITLE" --notes "$NOTES" --latest=false
+          fi
+          echo "::notice::Published $TITLE"
