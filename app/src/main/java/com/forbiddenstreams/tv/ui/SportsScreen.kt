@@ -258,13 +258,22 @@ internal fun gameOptions(
     networks: List<Pair<String, LiveChannel>>? = null,
     /** Team channels whose guide shows a different game at that time (left out). */
     wrongTeam: Set<String> = emptySet(),
+    /** Nov 21: every team stream found for each side (team group + league package categories), best quality first. */
+    awayFeeds: List<LiveChannel> = emptyList(),
+    homeFeeds: List<LiveChannel> = emptyList(),
+    espnPlus: LiveChannel? = null,
 ): List<Pair<String, () -> Unit>> {
     val out = ArrayList<Pair<String, () -> Unit>>()
     val feeds = ArrayList<Triple<String, LiveChannel, List<LiveChannel>>>()
-    m?.away?.takeIf { it.id !in wrongTeam }?.let { feeds += Triple("📺 ${g.away.displayName} feed", it, team) }
-    m?.home?.takeIf { it.id !in wrongTeam }?.let { feeds += Triple("📺 ${g.home.displayName} feed", it, team) }
-    val used = m?.options.orEmpty().map { it.id }.toSet()
-    (networks ?: GameMatcher.networkChannels(g, Session.liveAll.orEmpty(), used)).forEach { (net, c) -> feeds += Triple("📡 $net", c, listOf(c)) }
+    // Team streams first (Nov 21: "focus on the categories that have the team streams") — all of them.
+    val awayAll = (awayFeeds + listOfNotNull(m?.away)).distinctBy { it.id }.filter { it.id !in wrongTeam }
+    val homeAll = (homeFeeds + listOfNotNull(m?.home)).distinctBy { it.id }.filter { it.id !in wrongTeam }
+    val taken0 = HashSet<String>()
+    for (c in awayAll.take(6)) if (taken0.add(c.id)) feeds += Triple("📺 ${g.away.displayName}", c, team.ifEmpty { awayAll })
+    for (c in homeAll.take(6)) if (taken0.add(c.id)) feeds += Triple("📺 ${g.home.displayName}", c, team.ifEmpty { homeAll })
+    espnPlus?.takeIf { taken0.add(it.id) }?.let { feeds += Triple("⭐ ESPN+", it, listOf(it)) }
+    val used = m?.options.orEmpty().map { it.id }.toSet() + taken0
+    (networks ?: GameMatcher.networkChannels(g, Session.liveAll.orEmpty(), used)).filter { it.second.id !in used }.forEach { (net, c) -> feeds += Triple("📡 $net", c, listOf(c)) }
     // Streaming-only games (Prime Video, Netflix, …): the provider's event channels for this matchup.
     val taken = used + feeds.map { it.second.id }
     GameMatcher.eventChannels(g, Session.liveAll.orEmpty(), taken).forEach { (_, c) -> feeds += Triple("🎟 Event", c, listOf(c)) }
@@ -629,7 +638,7 @@ fun GameChannelsDialog(league: League, g: Game, onClose: () -> Unit) {
         if (g.isFinal) value = try { com.forbiddenstreams.tv.sports.ReplayFinder.find(league, g) } catch (e: Exception) { null }
     }
     val options = remember(g.id, match, team, Session.liveAll, networks, wrongTeam, playlistReplay) {
-        gameOptions(context, g, match, team, networks, wrongTeam) + listOfNotNull(playlistReplay?.let { v ->
+        gameOptions(context, g, match, team, networks, wrongTeam, prepared?.awayFeeds.orEmpty(), prepared?.homeFeeds.orEmpty(), prepared?.espnPlus) + listOfNotNull(playlistReplay?.let { v ->
             "⏮ Replay · Playlist · ${v.name}" to {
                 Session.source?.let { src -> Playback.inApp(context, PlayItem("${g.away.displayName} vs. ${g.home.displayName}", src.vodUrl(v), live = false, subtitle = "Replay · ${v.name}")) }
                 Unit

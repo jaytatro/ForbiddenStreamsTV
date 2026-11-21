@@ -321,31 +321,35 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                     sorted.isEmpty() -> MessageBox(if (day == dayKeyOffset(0)) "No games today" else "No games this day",
                         "Pick another day above, or another league on the left.")
                     else -> LazyVerticalGrid(
-                        columns = GridCells.Fixed(1),
+                        columns = GridCells.Fixed(2),
                         state = gridState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(start = 8.dp, end = 4.dp, top = 10.dp, bottom = 24.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        if (league == League.NFL) item(key = "redzone") { redZoneBox() }
+                        if (league == League.NFL) item(key = "redzone", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) { redZoneBox() }
                         items(sorted.size, key = { sorted[it].id }) { i ->
                             val g = sorted[i]
-                            // Nov 17: one game per row; Away / Home buttons play just that stream.
-                            GameLine(
+                            // Nov 21: back to game cards (bigger); OK lists every stream for the game.
+                            ScoreCard(
                                 league, g, fav = FavTeams.inGame(context, league, g),
-                                firstReq = if (i == 0) firstGameReq else null,
-                                onUp = if (i == 0) ({
-                                    if (league == League.NFL) scope.launch {
-                                        try { gridState.animateScrollToItem(0) } catch (e: Exception) { }
-                                        repeat(5) { delay(40); try { redZoneReq.requestFocus(); return@launch } catch (e: Exception) { } }
-                                        try { todayReq.requestFocus() } catch (e: Exception) { }
-                                    } else try { todayReq.requestFocus() } catch (e: Exception) { }
-                                    Unit
-                                }) else null,
-                                onLeft = { focusRail() },
-                                onSide = { home -> playGameSide(context, league, g, home) },
-                                onHighlights = { openHighlights(context, league, g) },
+                                modifier = Modifier
+                                    .then(if (i == 0) Modifier.focusRequester(firstGameReq) else Modifier)
+                                    .onPreviewKeyEvent { ev ->
+                                        if (i < 2 && ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                            ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP) {
+                                            if (league == League.NFL) scope.launch {
+                                                try { gridState.animateScrollToItem(0) } catch (e: Exception) { }
+                                                repeat(5) { delay(40); try { redZoneReq.requestFocus(); return@launch } catch (e: Exception) { } }
+                                                try { todayReq.requestFocus() } catch (e: Exception) { }
+                                            } else try { todayReq.requestFocus() } catch (e: Exception) { }
+                                            return@onPreviewKeyEvent true
+                                        }
+                                        if (i % 2 == 0 && ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                            ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) { focusRail(); true } else false
+                                    },
+                                onClick = { pick = league to g },
                             )
                         }
                     }
@@ -567,7 +571,7 @@ private fun ScoreCard(l: League, g: Game, fav: Boolean, modifier: Modifier, onCl
     var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth().height(150.dp).onFocusChanged { focused = it.isFocused },
+        modifier = modifier.fillMaxWidth().height(196.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(shape = shape),
         colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = PanelHi),
         border = ClickableSurfaceDefaults.border(
@@ -591,21 +595,21 @@ private fun ScoreCard(l: League, g: Game, fav: Boolean, modifier: Modifier, onCl
                     if (fav) Text("★", color = Gold, fontSize = 16.sp)
                 }
                 Row(Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    TeamSide(g.away.logo, g.away.abbreviation, winner = g.isFinal && g.away.winner)
+                    TeamSide(g.away.logo, g.away.abbreviation, winner = g.isFinal && g.away.winner, name = g.away.nickname)
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         val led = TextStyle(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black,
                             shadow = Shadow(Led.copy(alpha = 0.7f), Offset.Zero, 14f))
                         if (g.isLive || g.isFinal) {
                             Text("${g.away.score ?: 0}  ${g.home.score ?: 0}", color = if (g.isFinal) Color(0xFFCFE8C6) else Led,
-                                fontSize = 34.sp, style = led, textAlign = TextAlign.Center, maxLines = 1)
+                                fontSize = 44.sp, style = led, textAlign = TextAlign.Center, maxLines = 1)
                             Text(if (g.isLive) g.detail else "Final", color = if (g.isLive) LiveRed else FS.TextDim, fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         } else {
-                            Text(Fmt.time(g.start), color = Led, fontSize = 20.sp, style = led, maxLines = 1)
+                            Text(Fmt.time(g.start), color = Led, fontSize = 32.sp, style = led, maxLines = 1)
                             Text("@", color = FS.TextDim, fontSize = 13.sp)
                         }
                     }
-                    TeamSide(g.home.logo, g.home.abbreviation, winner = g.isFinal && g.home.winner)
+                    TeamSide(g.home.logo, g.home.abbreviation, winner = g.isFinal && g.home.winner, name = g.home.nickname)
                 }
                 // Venue normally; the TV networks while highlighted.
                 Text(
@@ -620,11 +624,12 @@ private fun ScoreCard(l: League, g: Game, fav: Boolean, modifier: Modifier, onCl
 }
 
 @Composable
-private fun TeamSide(logo: String?, abbr: String, winner: Boolean) {
-    Column(Modifier.width(78.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(54.dp), contentAlignment = Alignment.Center) { NetImage(logo, Modifier.fillMaxSize()) }
+private fun TeamSide(logo: String?, abbr: String, winner: Boolean, name: String = "") {
+    Column(Modifier.width(104.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.size(74.dp), contentAlignment = Alignment.Center) { NetImage(logo, Modifier.fillMaxSize()) }
         Spacer(Modifier.height(4.dp))
-        Text(abbr, color = if (winner) Gold else Color.White, fontSize = 15.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp, maxLines = 1)
+        Text(name.ifBlank { abbr }, color = if (winner) Gold else Color.White, fontSize = 16.sp, fontWeight = FontWeight.Black, maxLines = 1,
+            overflow = TextOverflow.Ellipsis)
     }
 }
 
