@@ -114,6 +114,49 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
 
     private fun js(code: String) { try { web?.evaluateJavascript(code, null) } catch (e: Exception) { } }
 
+    private var vq = "hd1080"
+    private var currentId = ""
+    @Volatile private var playing = false
+    @Volatile private var failed = false
+
+    /**
+     * Nov 21 ("make sure the Forbidden player works"): YouTube refuses embeds that come from a page with no
+     * web address (error 152/153), which is what the old in-memory page was on some boxes. Now the YouTube
+     * player page itself is opened (with a referrer), and the app hooks into its player for OK / ◀ ▶,
+     * quality, "playing" and errors.
+     */
+    private fun load(id: String) {
+        currentId = id
+        playing = false
+        val url = "https://www.youtube.com/embed/$id?autoplay=1&controls=1&rel=0&playsinline=1&fs=0&iv_load_policy=3&modestbranding=1" +
+            "&enablejsapi=1&vq=$vq&origin=https%3A%2F%2Fwww.youtube.com"
+        web?.loadUrl(url, mapOf("Referer" to "https://www.youtube.com/"))
+    }
+
+    private fun hook() = js("""
+        (function(){
+          var tries=0;
+          function go(){
+            var mp=document.getElementById('movie_player');
+            if(!mp||!mp.getPlayerState){ if(++tries<60) setTimeout(go,500); return; }
+            window.p=mp;
+            try{ if(mp.setPlaybackQualityRange) mp.setPlaybackQualityRange('$vq','$vq'); if(mp.setPlaybackQuality) mp.setPlaybackQuality('$vq'); }catch(e){}
+            try{ if(mp.unMute) mp.unMute(); if(mp.setVolume) mp.setVolume(100); }catch(e){}
+            window.fsState=function(s){ if(s==0) FS.onEnded(); if(s==1) FS.onPlaying(); };
+            window.fsErr=function(e){ FS.onError((e&&e.data!==undefined)?e.data:(e||0)); };
+            try{ mp.addEventListener('onStateChange','fsState'); mp.addEventListener('onError','fsErr'); }catch(e){}
+            if(mp.getPlayerState()!=1) mp.playVideo();
+            if(mp.getPlayerState()==1) FS.onPlaying();
+            // YouTube's own error screen (embedding turned off, video unavailable…)
+            var iv=setInterval(function(){
+              var er=document.querySelector('.ytp-error'); if(er && er.offsetParent!==null){ clearInterval(iv); FS.onError(150); }
+              if(mp.getPlayerState && mp.getPlayerState()==1) FS.onPlaying();
+            },1000);
+          }
+          go();
+        })();
+    """.trimIndent())
+
     private fun openInYouTube(id: String) {
         tryStart(this, android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("vnd.youtube:$id"))) ||
             tryStart(this, android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=$id")))
@@ -137,23 +180,30 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
             // Nov 17 ("highest quality"): desktop browser + a page as wide as the screen's real pixels, so YouTube
             // serves 1080p (or 4K on a 4K box) instead of the small-screen 480p/720p.
             settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
-            settings.useWideViewPort = true
-            settings.loadWithOverviewMode = true
+            // Nov 21: the page is laid out at the screen's real pixels (1 page pixel = 1 screen pixel), so YouTube
+            // picks 1080p / 4K for the full-screen player.
+            settings.useWideViewPort = false
+            settings.loadWithOverviewMode = false
+            setInitialScale(100)
             webChromeClient = WebChromeClient()
-            webViewClient = WebViewClient()
+            webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) { hook() }
+            }
             addJavascriptInterface(object {
                 @JavascriptInterface fun onError(code: Int) {
                     post {
                         // Nov 16: some channels turn off playing in other apps — try the next match for this game first.
+                        if (failed) return@post
                         val next = tries.removeFirstOrNull()
-                        if (next != null) { js("if(window.p){p.loadVideoById('$next');}"); return@post }
+                        if (next != null) { load(next); return@post }
+                        failed = true
                         toast(this@HighlightActivity, "This video can't play here — opening YouTube")
-                        openInYouTube(id); finish()
+                        openInYouTube(currentId); finish()
                     }
                 }
                 @JavascriptInterface fun onEnded() { post { finish() } }
                 // The video is playing: take the teams screen away.
-                @JavascriptInterface fun onPlaying() { post { cover?.visibility = android.view.View.GONE } }
+                @JavascriptInterface fun onPlaying() { post { playing = true; cover?.visibility = android.view.View.GONE } }
             }, "FS")
         }
         root.addView(w, android.widget.FrameLayout.LayoutParams(-1, -1))
@@ -193,26 +243,17 @@ class HighlightActivity : androidx.activity.ComponentActivity() {
         val screenW = maxOf(resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels).let {
             (if (android.os.Build.VERSION.SDK_INT >= 23) windowManager.defaultDisplay.mode.physicalWidth else it).coerceAtLeast(it)
         }
-        val vq = if (screenW >= 3000) "hd2160" else if (screenW >= 1700) "hd1080" else "hd720"
-        val html = """
-            <!doctype html><html><head><meta name="viewport" content="width=$screenW">
-            <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#v{width:100%;height:100%}</style></head>
-            <body><div id="v"></div>
-            <script src="https://www.youtube.com/iframe_api"></script>
-            <script>
-              var p;
-              function onYouTubeIframeAPIReady(){
-                p = new YT.Player('v',{width:'100%',height:'100%',videoId:'$id',
-                  playerVars:{vq:'$vq',autoplay:1,controls:1,rel:0,modestbranding:1,playsinline:1,fs:0,iv_load_policy:3},
-                  events:{
-                    onReady:function(e){try{e.target.setPlaybackQuality('$vq');}catch(x){} e.target.playVideo();},
-                    onError:function(e){FS.onError(e.data);},
-                    onStateChange:function(e){ if(e.data==0) FS.onEnded(); if(e.data==1) FS.onPlaying(); }
-                  }});
-              }
-            </script></body></html>
-        """.trimIndent()
-        w.loadDataWithBaseURL("https://forbiddenstreams.tv/", html, "text/html", "utf-8", null)
+        vq = if (screenW >= 3000) "hd2160" else if (screenW >= 1700) "hd1080" else "hd720"
+        load(id)
+        // Watchdog: not playing after 20 s → the next match for this game, then the YouTube app.
+        handler.postDelayed(object : Runnable {
+            override fun run() {
+                if (playing || failed || isFinishing) return
+                val next = tries.removeFirstOrNull()
+                if (next != null) { load(next); handler.postDelayed(this, 20_000) }
+                else { failed = true; toast(this@HighlightActivity, "This video can't play here — opening YouTube"); openInYouTube(currentId); finish() }
+            }
+        }, 20_000)
         showHint()
     }
 

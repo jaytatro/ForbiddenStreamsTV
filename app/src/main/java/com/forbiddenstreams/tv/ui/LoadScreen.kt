@@ -122,8 +122,8 @@ fun LoadScreenHost() {
             val finishedJob = SportsPreload.scope.launch {
                 val sports = com.forbiddenstreams.tv.sports.SPORTS_ORDER
                 val finished = sports.flatMap { l ->
-                    (try { com.forbiddenstreams.tv.sports.Espn.week(l, -1, 0) } catch (e: Exception) { emptyMap() }).values.flatten()
-                        .filter { it.isFinal }.map { l to it }
+                    (try { com.forbiddenstreams.tv.sports.Espn.week(l, -2, 0) } catch (e: Exception) { emptyMap() }).values.flatten()
+                        .filter { highlightsOffered(it) }.map { l to it }
                 }.distinctBy { it.first.name + it.second.id }
                     .sortedWith(compareBy({ if (com.forbiddenstreams.tv.sports.FavTeams.inGame(context, it.first, it.second)) 0 else 1 }, { -it.second.start }))
                     .take(60)

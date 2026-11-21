@@ -153,13 +153,19 @@ fun ReorderCategories(onClose: () -> Unit) {
     }
     val cats = Session.liveCats.orEmpty().distinctBy { it.id }
     // Moves happen in this list right away (smooth, animated); the order is saved when OK puts it down.
-    val list = remember(cats) { androidx.compose.runtime.mutableStateListOf(*CategoryPrefs.ordered(context, cats).toTypedArray()) }
+    // Nov 21: hidden categories sit at the bottom (easier to re-order the ones you use).
+    val list = remember(cats) {
+        val h0 = CategoryPrefs.hidden(context)
+        val o = CategoryPrefs.ordered(context, cats)
+        androidx.compose.runtime.mutableStateListOf(*(o.filter { it.id !in h0 } + o.filter { it.id in h0 }).toTypedArray())
+    }
     val hidden = remember(CategoryPrefs.version) { CategoryPrefs.hidden(context) }
     var moving by remember { mutableStateOf<String?>(null) }
     val firstReq = remember { androidx.compose.ui.focus.FocusRequester() }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val state = androidx.compose.foundation.lazy.rememberLazyListState()
     fun save() = CategoryPrefs.setOrder(context, list.map { it.id })
+    val switchReqs = remember { HashMap<String, androidx.compose.ui.focus.FocusRequester>() }
     fun stop() { if (moving != null) { moving = null; save() } }
     androidx.compose.ui.window.Dialog(onDismissRequest = { if (moving != null) stop() else onClose() },
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
@@ -253,10 +259,29 @@ fun ReorderCategories(onClose: () -> Unit) {
                         }
                         Spacer(Modifier.width(12.dp))
                         FocusCard(
-                            onClick = { if (moving == null) CategoryPrefs.toggleHidden(context, c.id) },
+                            onClick = {
+                                if (moving == null) {
+                                    val hiding = c.id !in hidden
+                                    CategoryPrefs.toggleHidden(context, c.id)
+                                    val h = CategoryPrefs.hidden(context)
+                                    val from = list.indexOfFirst { it.id == c.id }
+                                    if (from >= 0) {
+                                        val item = list.removeAt(from)
+                                        // Hidden → the very bottom; shown again → just above the hidden ones.
+                                        val to = if (hiding) list.size else list.indexOfFirst { it.id in h }.let { if (it < 0) list.size else it }
+                                        list.add(to, item)
+                                        save()
+                                        // The cursor stays where it was (on the next category's switch), not with the moved one.
+                                        list.getOrNull(from.coerceAtMost(list.size - 1))?.let { next ->
+                                            scope.launch { repeat(6) { kotlinx.coroutines.delay(60); try { switchReqs[next.id]?.requestFocus(); return@launch } catch (e: Exception) { } } }
+                                        }
+                                    }
+                                }
+                            },
                             focusedScale = 1.05f,
                             container = androidx.compose.ui.graphics.Color.Transparent,
-                            modifier = Modifier.width(84.dp).height(54.dp),
+                            modifier = Modifier.width(84.dp).height(54.dp)
+                                .focusRequester(switchReqs.getOrPut(c.id) { androidx.compose.ui.focus.FocusRequester() }),
                         ) {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { OnOffSwitch(shown) }
                         }

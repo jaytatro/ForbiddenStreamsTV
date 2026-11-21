@@ -654,7 +654,7 @@ fun GameChannelsDialog(league: League, g: Game, onClose: () -> Unit) {
     }
     // Nov 15: a finished game gets "Game highlights" at the top (YouTube).
     val highlights: List<Pair<String, () -> Unit>> =
-        if (g.isFinal) listOf("${league.icon}  Game highlights" to { onClose(); openHighlights(context, league, g) }) else emptyList()
+        if (highlightsOffered(g)) listOf("${league.icon}  Game highlights" to { onClose(); openHighlights(context, league, g) }) else emptyList()
     val picks = options.map { (label, action) -> label to { onClose(); action() } }
     ChoiceDialog(
         "${g.away.displayName} vs. ${g.home.displayName}", sub,
@@ -835,4 +835,15 @@ fun playGameSide(context: android.content.Context, league: League, g: Game, home
             Playback.inApp(context, PlayItem("${g.away.displayName} vs. ${g.home.displayName}", play.second, live = false, subtitle = "Replay from ${play.first.name}"))
         } else openChannel(context, list, ch)
     }
+}
+
+
+/** Nov 21: highlights only for games from the last 2 days (today, yesterday, the day before). */
+fun highlightsOffered(g: Game): Boolean {
+    if (!g.isFinal) return false
+    val cal = java.util.Calendar.getInstance().apply {
+        set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+        add(java.util.Calendar.DAY_OF_YEAR, -2)
+    }
+    return g.start >= cal.timeInMillis
 }

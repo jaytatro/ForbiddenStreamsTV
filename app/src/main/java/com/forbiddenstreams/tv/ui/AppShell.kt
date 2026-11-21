@@ -525,17 +525,44 @@ private fun CardRow(title: String, sub: String?, icon: RailIcon, cards: List<Car
 private fun WideCard(c: Card, onFocus: () -> Unit, onClick: () -> Unit, onLongClick: () -> Unit) {
     val art = cardArt(c)
     val shape = RoundedCornerShape(6.dp)
+    val context = LocalContext.current
+    var hasFocus by remember { mutableStateOf(false) }
+    // Nov 21: a live channel card starts that channel inside the card while it's highlighted (after a short
+    // pause so scrolling past doesn't start every channel); moving off stops it. OK = full screen.
+    val ch = c.channel
+    if (ch != null) LaunchedEffect(hasFocus) {
+        if (hasFocus) {
+            kotlinx.coroutines.delay(700)
+            if (PlayerHolder.current?.channelId != ch.id) playChannels(context, listOf(ch), 0, fullScreen = false)
+            PlayerHolder.previewHidden = false
+        } else {
+            kotlinx.coroutines.delay(250)
+            if (!PlayerHolder.fullScreen && PlayerHolder.current?.channelId == ch.id) PlayerHolder.stop()
+        }
+    }
     Column(Modifier.width(300.dp)) {
         Surface(
             onClick = onClick,
             onLongClick = onLongClick,
-            modifier = Modifier.fillMaxWidth().height(169.dp).onFocusChanged { if (it.isFocused) onFocus() },
+            modifier = Modifier.fillMaxWidth().height(169.dp).onFocusChanged { hasFocus = it.isFocused; if (it.isFocused) onFocus() },
             shape = ClickableSurfaceDefaults.shape(shape = shape),
             colors = ClickableSurfaceDefaults.colors(containerColor = FS.Panel2, focusedContainerColor = FS.Panel2),
             border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, FS.Green), shape = shape)),
             scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
         ) {
-            if (c.channel != null) { ChannelCardBody(c.channel); return@Surface }
+            if (c.channel != null) {
+                ChannelCardBody(c.channel)
+                if (hasFocus && !PlayerHolder.fullScreen && PlayerHolder.current?.channelId == c.channel.id) {
+                    androidx.compose.runtime.key(PlayerHolder.playerVersion) {
+                        androidx.compose.ui.viewinterop.AndroidView(
+                            factory = { ctx -> android.view.TextureView(ctx).also { PlayerHolder.player(ctx).setVideoTextureView(it) } },
+                            onRelease = { PlayerHolder.existingPlayer()?.clearVideoTextureView(it) },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+                return@Surface
+            }
             Box(Modifier.fillMaxSize()) {
                 val pic = c.backdrop ?: art?.backdrop ?: c.image
                 if (pic != null) NetImage(pic, Modifier.fillMaxSize(), crop = true)
