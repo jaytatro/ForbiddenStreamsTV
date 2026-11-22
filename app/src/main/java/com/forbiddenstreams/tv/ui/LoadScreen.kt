@@ -281,14 +281,24 @@ private object Newsie {
     val bodyLines = listOf(
         "M64 80 Q62 130 100 134 Q138 130 136 80",                                                // head
         "M64 96 Q52 98 56 110 Q60 116 66 112", "M136 96 Q148 98 144 110 Q140 116 134 112",       // ears
-        "M76 96 Q84 92 92 95", "M108 95 Q116 92 124 96",                                         // brows
-        "M100 106 Q104 112 98 114", "M88 121 Q102 126 113 119 Q116 117 117 114",                  // nose, smirk
+        "M76 96 Q84 92 92 95",                                                                   // left brow (right one animates)
+        "M100 106 Q104 112 98 114",                                                              // nose
         "M92 134 V142 M108 134 V142", "M80 144 L92 142 L100 152 L108 142 L120 144",               // neck, collar
         "M100 152 L88 146 L88 158 Z M100 152 L112 146 L112 158 Z",                                // bow tie
         "M80 144 Q58 150 54 198", "M80 152 L78 198 M120 152 L122 198",                           // shoulder, suspenders
         circ(78f, 186f, 2.5f), circ(122f, 186f, 2.5f),
         "M146 178 Q166 140 152 96", "M126 156 Q140 128 134 96", "M131 100 Q143 104 155 98",       // raised arm + cuff
     )
+    // Nov 21 (v2): a folded newspaper held at his side, hair peeking out under the cap.
+    const val PAPER = "M40 150 L70 140 L82 180 L52 190 Z"
+    val paperLines = listOf("M40 150 L70 140 L82 180 L52 190 Z", "M80 146 Q62 150 62 160")
+    val paperThin = listOf("M46 156 L66 149 M48 162 L60 158 M50 168 L58 165", "M64 82 Q59 90 65 93 M136 82 Q141 90 135 93")
+    val paperBold = listOf("M47 151 L69 143")
+    const val LEFT_HAND = "M60 168 Q58 160 66 158 Q74 158 74 166 Q74 174 66 175 Q60 175 60 168 Z"
+    const val BROW_R = "M108 95 Q116 92 124 96"
+    const val SMIRK = "M88 121 Q102 126 113 119 Q116 117 117 114"
+    const val SMIRK_BIG = "M86 120 Q102 129 116 118 Q119 116 120 112"
+    const val BLINK_L = "M78 105 Q84 101 90 105"
     val dots = listOf(circ(76f, 114f, 1.4f), circ(81f, 117f, 1.4f), circ(119f, 117f, 1.4f), circ(124f, 114f, 1.4f))
     const val BODY = "M80 144 Q58 150 54 198 L146 198 L146 178 Q142 150 120 144 L108 142 L100 152 L92 142 Z"
     const val SLEEVE = "M146 178 Q166 140 152 96 L134 96 Q140 128 126 156 Z"
@@ -319,6 +329,10 @@ private fun TvGuy(color: Color, modifier: Modifier) {
             val face = parse(Newsie.FACE); val ears = parse(Newsie.EARS); val capShadow = parse(Newsie.CAP_SHADOW)
             val faceShade = parse(Newsie.FACE_SHADE); val tie = parse(Newsie.TIE)
             val eyeL = parse(Newsie.eyeL); val eyeR = parse(Newsie.eyeR); val wink = parse(Newsie.WINK)
+            val paper = parse(Newsie.PAPER); val paperLines = Newsie.paperLines.map { parse(it) }
+            val paperThin = Newsie.paperThin.map { parse(it) }; val paperBold = Newsie.paperBold.map { parse(it) }
+            val leftHand = parse(Newsie.LEFT_HAND); val browR = parse(Newsie.BROW_R)
+            val smirk = parse(Newsie.SMIRK); val smirkBig = parse(Newsie.SMIRK_BIG); val blinkL = parse(Newsie.BLINK_L)
         }
     }
     // The tip: 0 → 1 → 0 over ~0.6 s; the wink rides on the top of it.
@@ -331,12 +345,18 @@ private fun TvGuy(color: Color, modifier: Modifier) {
             tip.animateTo(0f, tween(320))
         }
     }
+    // He pops up into view when the loading screen opens, and now and then blinks.
+    val enter = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) { enter.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 160f)) }
+    var blink by androidx.compose.runtime.remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { while (true) { delay(1_300); blink = true; delay(140); blink = false; delay(2_900) } }
     val bob = rememberInfiniteTransition(label = "bob").animateFloat(0f, 1f, infiniteRepeatable(tween(1_400), RepeatMode.Reverse), label = "b")
-    androidx.compose.foundation.Canvas(modifier) {
+    androidx.compose.foundation.Canvas(modifier.alpha(enter.value.coerceIn(0f, 1f))) {
         val k = size.minDimension / 200f
         val t = tip.value
         val winking = t > 0.6f
-        translate(top = (bob.value - 0.5f) * 3f * k) {
+        val closedBoth = blink && t < 0.1f
+        translate(top = (bob.value - 0.5f) * 3f * k + (1f - enter.value) * 60f * k) {
             scale(k, pivot = androidx.compose.ui.geometry.Offset.Zero) {
                 fun stroke(w: Float) = androidx.compose.ui.graphics.drawscope.Stroke(w, cap = androidx.compose.ui.graphics.StrokeCap.Round,
                     join = androidx.compose.ui.graphics.StrokeJoin.Round)
@@ -356,10 +376,23 @@ private fun TvGuy(color: Color, modifier: Modifier) {
                 drawPath(P.tie, Color(0x73A8EC4C))
                 for (cx in listOf(76f, 124f)) drawCircle(rg(cx, 116f, 9f, 0f to Color(0x59C8FF7A), 1f to Color(0x00C8FF7A)), 9f, androidx.compose.ui.geometry.Offset(cx, 116f))
                 drawPath(P.sleeve, cloth)
-                glow(P.bodyLines + listOf(if (winking) P.wink else P.eyeR))
-                drawPath(P.eyeL, color); P.dots.forEach { drawPath(it, color) }
-                drawCircle(Color(0xFF06110A), 1.5f, androidx.compose.ui.geometry.Offset(85.5f, 102.5f))
-                if (!winking) { drawPath(P.eyeR, color); drawCircle(Color(0xFF06110A), 1.5f, androidx.compose.ui.geometry.Offset(117.5f, 102.5f)) }
+                val rClosed = winking || closedBoth
+                glow(P.bodyLines + listOfNotNull(if (rClosed) P.wink else P.eyeR, if (closedBoth) P.blinkL else null,
+                    if (t > 0.3f) P.smirkBig else P.smirk))
+                // Right eyebrow goes up with the wink.
+                translate(top = -3.5f * t) { glow(listOf(P.browR)) }
+                if (!closedBoth) {
+                    drawPath(P.eyeL, color)
+                    drawCircle(Color(0xFF06110A), 1.5f, androidx.compose.ui.geometry.Offset(85.5f, 102.5f))
+                }
+                P.dots.forEach { drawPath(it, color) }
+                if (!rClosed) { drawPath(P.eyeR, color); drawCircle(Color(0xFF06110A), 1.5f, androidx.compose.ui.geometry.Offset(117.5f, 102.5f)) }
+                // The newspaper and the hand holding it.
+                drawPath(P.paper, Color(0x38E9FFD0))
+                glow(P.paperLines, P.paperThin)
+                for ((w, a) in listOf(9f to 0.12f, 3.6f to 1f)) P.paperBold.forEach { drawPath(it, color.copy(alpha = a), style = stroke(w)) }
+                drawPath(P.leftHand, skin)
+                glow(listOf(P.leftHand))
                 // Cap + hand tip together: lift and tilt back around the brim's right end.
                 translate(top = -5f * t) {
                     rotate(-9f * t, pivot = androidx.compose.ui.geometry.Offset(132f, 82f)) {
