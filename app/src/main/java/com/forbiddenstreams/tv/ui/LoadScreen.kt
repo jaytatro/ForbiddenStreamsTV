@@ -206,7 +206,7 @@ private fun RetroLoading() {
         Image(painterResource(R.drawable.crt_screen), null, Modifier.fillMaxSize(),
             contentScale = androidx.compose.ui.layout.ContentScale.FillBounds)
         Box(Modifier.fillMaxSize().alpha(flicker.value)) {
-            // Nov 21: our own mascot — Cosmo, a 1950s space-cadet kid, waving and winking while it loads.
+            // Nov 21: our own mascot — Spike, a kid who blinks while it loads.
             TvGuy(lime, Modifier.align(Alignment.TopCenter).padding(top = h * 0.075f).size(h * 0.36f))
             // Forbidden Streams TV — above LOADING, same green.
             Text("FORBIDDEN STREAMS TV", color = lime, fontSize = sp(0.064f), fontWeight = FontWeight.Bold, fontFamily = mono,
@@ -262,60 +262,61 @@ private fun rrect(x: Float, y: Float, w: Float, h: Float, r: Float) =
         "H${x + r} Q$x ${y + h} $x ${y + h - r} V${y + r} Q$x $y ${x + r} $y Z"
 
 /**
- * Nov 21: our own mascot — "Cosmo", a 1950s space-cadet kid (our own design): bubble helmet with an antenna,
- * fringe haircut, ringed-planet badge on his suit, waving glove. Shaded to look rounded; 200 × 200 box.
+ * Nov 21: our own mascot — "Spike", a kid with spiky hair and a striped tee (our own design), shaded so he
+ * looks rounded, who blinks. 200 × 200 box, lit from the top-left.
  */
-private object Cosmo {
-    val lines = listOf(
-        circ(100f, 78f, 52f), "M64 130 A36 8 0 1 0 136 130 A36 8 0 1 0 64 130",                // helmet, collar ring
-        "M128 34 L138 16", circ(140f, 12f, 4f),                                                  // antenna
-        "M68 84 Q68 116 100 118 Q132 116 132 84 Q132 52 100 52 Q68 52 68 84 Z",                  // head
-        "M68 80 Q78 68 90 72 Q100 64 110 72 Q122 68 132 80",                                     // fringe
-        "M66 84 Q60 86 62 94 Q64 98 68 96 M134 84 Q140 86 138 94 Q136 98 132 96",                // ears
-        "M81 79 Q88 75 95 78", "M99 92 Q102 96 98 98", "M88 103 Q100 113 112 103",               // brow, nose, smile
-        "M66 136 Q58 150 56 198 M134 136 Q140 150 144 172",                                      // suit
-        circ(100f, 166f, 7f),                                                                     // badge planet
+private object Spike {
+    val head = listOf(
+        "M64 88 Q64 128 100 130 Q136 128 136 88",                                                       // face
+        "M62 86 Q58 56 80 44 L84 34 L92 41 Q100 36 106 38 L112 28 L118 40 Q128 42 132 46 L142 42 L138 56 Q142 70 138 86", // hair top
+        "M62 86 Q68 70 78 72 Q82 62 92 68 Q100 58 108 68 Q118 62 122 72 Q132 70 138 86",                 // fringe
+        "M64 92 Q54 92 56 104 Q58 112 66 110 M136 92 Q146 92 144 104 Q142 112 134 110",                 // ears
+        "M77 85 Q85 80 93 84", "M107 84 Q115 80 123 85",                                                // brows
+        "M100 98 Q104 104 98 106", "M86 113 Q100 124 114 113",                                          // nose, smile
     )
-    const val RING = "M86 170 Q100 164 114 162"
-    val arm = listOf("M142 162 Q164 150 166 124", "M158 124 Q156 108 166 106 Q176 106 176 118 Q176 128 166 130 Q160 130 158 124 Z")
-    val armThin = listOf("M136 152 Q154 144 156 124", "M157 126 L175 122")
-    const val BROW_R = "M105 78 Q112 75 119 79"
-    const val WINK = "M106 87 Q112 82 118 87"
-    const val SUIT = "M66 134 Q58 150 56 198 L144 198 L144 172 Q140 150 134 134 Q100 146 66 134 Z"
-    const val SLEEVE = "M142 162 Q164 150 166 124 L156 124 Q154 144 136 152 Z"
-    const val FACE = "M68 84 Q68 116 100 118 Q132 116 132 84 Q132 52 100 52 Q68 52 68 84 Z"
-    const val HAIR = "M68 80 Q68 52 100 52 Q132 52 132 80 Q122 68 110 72 Q100 64 90 72 Q78 68 68 80 Z"
-    const val GLOVE = "M158 124 Q156 108 166 106 Q176 106 176 118 Q176 128 166 130 Q160 130 158 124 Z"
-    const val GLARE = "M66 58 Q76 36 100 30"
-    val eyeL = circ(88f, 86f, 4.5f); val eyeR = circ(112f, 86f, 4.5f)
+    val body = listOf(
+        "M90 128 V144 M110 128 V144",                                                                   // neck
+        "M66 150 Q56 160 54 198 M134 150 Q144 160 146 198", "M66 150 Q100 140 134 150", "M84 146 Q100 158 116 146", // shirt
+    )
+    val stripes = listOf("M58 172 Q100 164 142 172 M56 188 Q100 180 144 188")
+    const val SHIRT = "M66 150 Q56 160 54 198 L146 198 Q144 160 134 150 Q100 140 66 150 Z"
+    const val NECK = "M90 126 L90 146 Q100 152 110 146 L110 126 Z"
+    const val FACE = "M64 88 Q64 128 100 130 Q136 128 136 88 Q136 50 100 50 Q64 50 64 88 Z"
+    const val EARS = "M64 92 Q54 92 56 104 Q58 112 66 110 Z M136 92 Q146 92 144 104 Q142 112 134 110 Z"
+    const val HAIR = "M62 86 Q58 56 80 44 L84 34 L92 41 Q100 36 106 38 L112 28 L118 40 Q128 42 132 46 L142 42 L138 56 Q142 70 138 86 Q132 70 122 72 Q118 62 108 68 Q100 58 92 68 Q82 62 78 72 Q68 70 62 86 Z"
+    const val SHADE = "M122 128 Q134 116 136 96 Q140 124 106 130 Z"
+    const val CLOSED = "M79 96 Q85 100 91 96 M109 96 Q115 100 121 96"
+    val eyes = listOf(circ(85f, 95f, 5f), circ(115f, 95f, 5f))
 }
 
-/** Cosmo, glowing: pops in, bobs, waves, winks (eyebrow up) every ~2.4 s; antenna light blinks; helmet glints. */
+/** Spike, glowing: pops in, bobs, tilts his head a little and blinks (sometimes twice). */
 @Composable
 private fun TvGuy(color: Color, modifier: Modifier) {
     fun parse(d: String) = androidx.compose.ui.graphics.vector.PathParser().parsePathString(d).toPath()
     val P = androidx.compose.runtime.remember {
         object {
-            val lines = Cosmo.lines.map { parse(it) }; val ring = parse(Cosmo.RING)
-            val arm = Cosmo.arm.map { parse(it) }; val armThin = Cosmo.armThin.map { parse(it) }
-            val browR = parse(Cosmo.BROW_R); val wink = parse(Cosmo.WINK)
-            val suit = parse(Cosmo.SUIT); val sleeve = parse(Cosmo.SLEEVE); val face = parse(Cosmo.FACE)
-            val hair = parse(Cosmo.HAIR); val glove = parse(Cosmo.GLOVE); val glare = parse(Cosmo.GLARE)
-            val eyeL = parse(Cosmo.eyeL); val eyeR = parse(Cosmo.eyeR)
+            val head = Spike.head.map { parse(it) }; val body = Spike.body.map { parse(it) }; val stripes = Spike.stripes.map { parse(it) }
+            val shirt = parse(Spike.SHIRT); val neck = parse(Spike.NECK); val face = parse(Spike.FACE); val ears = parse(Spike.EARS)
+            val hair = parse(Spike.HAIR); val shade = parse(Spike.SHADE); val closed = parse(Spike.CLOSED)
+            val eyes = Spike.eyes.map { parse(it) }
         }
     }
     val enter = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
     LaunchedEffect(Unit) { enter.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 160f)) }
-    val winkA = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
-    LaunchedEffect(Unit) { while (true) { delay(2_400); winkA.animateTo(1f, tween(160)); delay(320); winkA.animateTo(0f, tween(220)) } }
-    val inf = rememberInfiniteTransition(label = "cosmo")
+    var blinking by androidx.compose.runtime.remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        var n = 0
+        while (true) {
+            delay(2_600)
+            blinking = true; delay(150); blinking = false
+            if (++n % 3 == 0) { delay(170); blinking = true; delay(140); blinking = false } // a double blink now and then
+        }
+    }
+    val inf = rememberInfiniteTransition(label = "spike")
     val bob = inf.animateFloat(0f, 1f, infiniteRepeatable(tween(1_400), RepeatMode.Reverse), label = "b")
-    val wave = inf.animateFloat(-1f, 1f, infiniteRepeatable(tween(560), RepeatMode.Reverse), label = "w")
-    val blink = inf.animateFloat(0.3f, 1f, infiniteRepeatable(tween(650), RepeatMode.Reverse), label = "l")
-    val glint = inf.animateFloat(0.25f, 0.7f, infiniteRepeatable(tween(1_800), RepeatMode.Reverse), label = "g")
+    val tilt = inf.animateFloat(-1f, 1f, infiniteRepeatable(tween(2_600), RepeatMode.Reverse), label = "t")
     androidx.compose.foundation.Canvas(modifier.alpha(enter.value.coerceIn(0f, 1f))) {
         val k = size.minDimension / 200f
-        val t = winkA.value
         translate(top = (bob.value - 0.5f) * 3f * k + (1f - enter.value) * 60f * k) {
             scale(k, pivot = androidx.compose.ui.geometry.Offset.Zero) {
                 fun stroke(w: Float) = androidx.compose.ui.graphics.drawscope.Stroke(w, cap = androidx.compose.ui.graphics.StrokeCap.Round,
@@ -325,29 +326,24 @@ private fun TvGuy(color: Color, modifier: Modifier) {
                 }
                 fun rg(cx: Float, cy: Float, r: Float, vararg stops: Pair<Float, Color>) =
                     androidx.compose.ui.graphics.Brush.radialGradient(*stops, center = androidx.compose.ui.geometry.Offset(cx, cy), radius = r)
-                val skin = rg(90f, 74f, 50f, 0f to Color(0xCCC8FF7A), 0.6f to Color(0x806FBF2E), 1f to Color(0xE6173A0C))
-                val suit = rg(80f, 140f, 90f, 0f to Color(0xA68FD640), 1f to Color(0xE60C1E07))
-                // Fills: suit, face, hair, cheeks, helmet glass.
-                drawPath(P.suit, suit)
-                drawPath(P.face, skin)
-                drawPath(P.hair, rg(92f, 56f, 50f, 0f to Color(0xD97FC23A), 1f to Color(0xF20C1E07)))
-                for (cx in listOf(80f, 120f)) drawCircle(rg(cx, 98f, 8f, 0f to Color(0x66C8FF7A), 1f to Color(0x00C8FF7A)), 8f, androidx.compose.ui.geometry.Offset(cx, 98f))
-                drawCircle(rg(82f, 62f, 60f, 0f to Color(0x29E9FFD0), 0.8f to Color(0x0FA8EC4C), 1f to Color(0x40A8EC4C)), 52f, androidx.compose.ui.geometry.Offset(100f, 78f))
-                // Lines.
-                glow(P.lines); glow(listOf(P.ring), 2.2f)
-                translate(top = -3f * t) { glow(listOf(P.browR)) }
-                if (t > 0.5f) glow(listOf(P.wink), 3f)
-                drawPath(P.eyeL, color); drawCircle(Color(0xFF06110A), 1.5f, androidx.compose.ui.geometry.Offset(89.5f, 84.5f))
-                if (t <= 0.5f) { drawPath(P.eyeR, color); drawCircle(Color(0xFF06110A), 1.5f, androidx.compose.ui.geometry.Offset(113.5f, 84.5f)) }
-                // Waving arm (from the shoulder).
-                rotate(wave.value * 10f, pivot = androidx.compose.ui.geometry.Offset(140f, 160f)) {
-                    drawPath(P.sleeve, suit); drawPath(P.glove, skin)
-                    glow(P.arm); glow(P.armThin, 2.2f)
+                val skin = rg(88f, 80f, 56f, 0f to Color(0xCCC8FF7A), 0.6f to Color(0x806FBF2E), 1f to Color(0xE6173A0C))
+                // Body.
+                drawPath(P.shirt, rg(80f, 150f, 90f, 0f to Color(0xA68FD640), 1f to Color(0xE60C1E07)))
+                drawPath(P.neck, skin)
+                glow(P.body); glow(P.stripes, 2.2f)
+                // Head, with a slight tilt.
+                rotate(tilt.value * 2.5f, pivot = androidx.compose.ui.geometry.Offset(100f, 138f)) {
+                    drawPath(P.face, skin); drawPath(P.ears, skin)
+                    drawPath(P.hair, rg(92f, 48f, 60f, 0f to Color(0xE67FC23A), 1f to Color(0xF20C1E07)))
+                    for (cx in listOf(80f, 120f)) drawCircle(rg(cx, 108f, 9f, 0f to Color(0x73C8FF7A), 1f to Color(0x00C8FF7A)), 9f, androidx.compose.ui.geometry.Offset(cx, 108f))
+                    drawPath(P.shade, Color(0x7306110A))
+                    glow(P.head)
+                    if (blinking) glow(listOf(P.closed), 2.8f)
+                    else {
+                        P.eyes.forEach { drawPath(it, color) }
+                        for (cx in listOf(86.6f, 116.6f)) drawCircle(Color(0xFF06110A), 1.7f, androidx.compose.ui.geometry.Offset(cx, 93.4f))
+                    }
                 }
-                // Antenna light + helmet glint.
-                drawCircle(rg(140f, 12f, 10f, 0f to Color(0xFFF0FFD6).copy(alpha = blink.value), 1f to Color(0x00A8EC4C)), 10f, androidx.compose.ui.geometry.Offset(140f, 12f))
-                drawPath(P.glare, Color(0xFFF0FFD6).copy(alpha = glint.value), style = stroke(5f))
-                drawCircle(Color(0xFFF0FFD6).copy(alpha = glint.value * 0.8f), 3f, androidx.compose.ui.geometry.Offset(132f, 44f))
             }
         }
     }
