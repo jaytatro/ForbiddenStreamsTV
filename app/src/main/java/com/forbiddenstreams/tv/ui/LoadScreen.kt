@@ -31,6 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -203,6 +205,8 @@ private fun RetroLoading() {
         Image(painterResource(R.drawable.crt_screen), null, Modifier.fillMaxSize(),
             contentScale = androidx.compose.ui.layout.ContentScale.FillBounds)
         Box(Modifier.fillMaxSize().alpha(flicker.value)) {
+            // Nov 21: our own mascot — a little glowing TV giving a thumbs-up and winking while it loads.
+            TvGuy(lime, Modifier.align(Alignment.TopCenter).padding(top = h * 0.075f).size(h * 0.36f))
             // Forbidden Streams TV — above LOADING, same green.
             Text("FORBIDDEN STREAMS TV", color = lime, fontSize = sp(0.064f), fontWeight = FontWeight.Bold, fontFamily = mono,
                 letterSpacing = sp(0.004f), style = glow, maxLines = 1,
@@ -248,4 +252,58 @@ private fun RetroLoading() {
 /** Sports work that may outlive the loading screen (finishes in the background). */
 object SportsPreload {
     val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + com.forbiddenstreams.tv.data.Http.backgroundLane)
+}
+
+
+private fun circ(cx: Float, cy: Float, r: Float) = "M${cx - r} $cy a$r $r 0 1 0 ${2 * r} 0 a$r $r 0 1 0 ${-2 * r} 0"
+private fun rrect(x: Float, y: Float, w: Float, h: Float, r: Float) =
+    "M${x + r} $y H${x + w - r} Q${x + w} $y ${x + w} ${y + r} V${y + h - r} Q${x + w} ${y + h} ${x + w - r} ${y + h} " +
+        "H${x + r} Q$x ${y + h} $x ${y + h - r} V${y + r} Q$x $y ${x + r} $y Z"
+
+/** The TV guy's lines, in a 200 × 200 box (our own design, Nov 21). */
+private val TV_GUY_LINES = listOf(
+    "M90 44 L70 14", circ(68f, 11f, 4f), "M110 44 L134 16", circ(136f, 13f, 4f),            // antennas
+    rrect(38f, 44f, 124f, 96f, 18f), rrect(50f, 55f, 80f, 74f, 14f),                       // body, screen
+    circ(146f, 70f, 6f), "M146 66 L146 70", circ(146f, 92f, 6f), "M143 92 L149 92",          // knobs
+    "M139 110 H153 M139 117 H153 M139 124 H153",                                              // speaker
+    "M66 74 Q73 69 80 73", "M100 73 Q107 69 114 74",                                          // eyebrows
+    "M68 101 Q90 122 112 101",                                                                // smile
+    "M72 140 L68 162 L58 164", "M128 140 L132 162 L142 164",                                  // legs
+    "M38 104 Q24 104 22 92", rrect(12f, 76f, 22f, 18f, 7f), "M18 77 L17 64 Q17 58 22 59 Q26 60 25 66 L24 76", // thumbs-up arm
+    "M162 100 Q182 108 172 124 Q168 130 162 126",                                             // hand on hip
+)
+private val TV_GUY_THIN = listOf("M14 83 H30 M14 88 H30")
+private val TV_GUY_EYE_L = circ(73f, 84f, 4.5f)
+private val TV_GUY_EYE_R = circ(107f, 84f, 4.5f)
+private val TV_GUY_WINK = "M101 85 Q107 79 113 85"
+
+/** The glowing TV guy: winks every couple of seconds and bobs gently. */
+@Composable
+private fun TvGuy(color: Color, modifier: Modifier) {
+    fun parse(d: String) = androidx.compose.ui.graphics.vector.PathParser().parsePathString(d).toPath()
+    val lines = androidx.compose.runtime.remember { TV_GUY_LINES.map { parse(it) } }
+    val thin = androidx.compose.runtime.remember { TV_GUY_THIN.map { parse(it) } }
+    val eyeL = androidx.compose.runtime.remember { parse(TV_GUY_EYE_L) }
+    val eyeR = androidx.compose.runtime.remember { parse(TV_GUY_EYE_R) }
+    val wink = androidx.compose.runtime.remember { parse(TV_GUY_WINK) }
+    var winking by androidx.compose.runtime.remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { while (true) { delay(2_200); winking = true; delay(320); winking = false } }
+    val bob = rememberInfiniteTransition(label = "bob").animateFloat(0f, 1f, infiniteRepeatable(tween(1_400), RepeatMode.Reverse), label = "b")
+    androidx.compose.foundation.Canvas(modifier) {
+        val k = size.minDimension / 200f
+        translate(top = (bob.value - 0.5f) * 3f * k) {
+            scale(k, pivot = androidx.compose.ui.geometry.Offset.Zero) {
+                fun stroke(w: Float) = androidx.compose.ui.graphics.drawscope.Stroke(w, cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                    join = androidx.compose.ui.graphics.StrokeJoin.Round)
+                val all = lines + listOf(if (winking) wink else eyeR)
+                // Glow, then the line itself.
+                for ((w, a) in listOf(11f to 0.10f, 7f to 0.22f, 3.4f to 1f)) {
+                    all.forEach { drawPath(it, color.copy(alpha = a), style = stroke(w)) }
+                    thin.forEach { drawPath(it, color.copy(alpha = a), style = stroke(w * 0.6f)) }
+                }
+                drawPath(eyeL, color)
+                if (!winking) drawPath(eyeR, color)
+            }
+        }
+    }
 }
