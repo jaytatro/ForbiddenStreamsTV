@@ -1,5 +1,6 @@
 package com.forbiddenstreams.tv.ui
 
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -318,5 +319,32 @@ fun GText(
                     modifier = if (k == runs.size - 1) Modifier.weight(1f, fill = false) else Modifier)
             }
         }
+    }
+}
+
+/**
+ * Nov 21: the app background (Home, Live TV, Sports, DVR) — dark green glow fading to black, with a fine diagonal carbon texture.
+ * Drawn once per size (cached), so it costs nothing while scrolling.
+ */
+fun Modifier.forbiddenBackdrop(): Modifier = this.drawWithCache {
+    val base = androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF0D2412), Color(0xFF07140A), Color.Black),
+        start = androidx.compose.ui.geometry.Offset.Zero, end = androidx.compose.ui.geometry.Offset(size.width, size.height))
+    val glow = androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color(0x332E7D1A), Color.Transparent),
+        center = androidx.compose.ui.geometry.Offset(size.width * 0.15f, size.height * 0.05f), radius = size.maxDimension * 0.6f)
+    val step = 7.dp.toPx()
+    val lines = androidx.compose.ui.graphics.Path().apply {
+        var x = -size.height
+        while (x < size.width) { moveTo(x, size.height); lineTo(x + size.height, 0f); x += step }
+    }
+    val dots = androidx.compose.ui.graphics.Path().apply {
+        var y = 0f
+        while (y < size.height) { var x = 0f; while (x < size.width) { addRect(androidx.compose.ui.geometry.Rect(x, y, x + 1.5f, y + 1.5f)); x += step * 2 }; y += step * 2 }
+    }
+    onDrawBehind {
+        drawRect(base)
+        drawRect(glow)
+        drawPath(lines, Color(0x0D7CFF3A), style = androidx.compose.ui.graphics.drawscope.Stroke(1f))
+        drawPath(dots, Color(0x147CFF3A))
+        drawRect(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color(0x99000000)), startY = size.height * 0.55f))
     }
 }

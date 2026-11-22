@@ -29,6 +29,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.forbiddenstreams.tv.reminders.Alarms
 import com.forbiddenstreams.tv.ui.FS
+import com.forbiddenstreams.tv.ui.forbiddenBackdrop
 import com.forbiddenstreams.tv.ui.ForbiddenTheme
 import com.forbiddenstreams.tv.ui.AppShell
 import com.forbiddenstreams.tv.ui.LoginScreen
@@ -114,7 +115,7 @@ class MainActivity : ComponentActivity() {
                 var loggedIn by remember { mutableStateOf(Session.source != null || Session.restore(context)) }
                 // Show the saved channel list instantly and update the playlist in the background.
                 androidx.compose.runtime.LaunchedEffect(loggedIn) { if (loggedIn) Session.onAppOpened(context) }
-                Box(Modifier.fillMaxSize().background(FS.background)) {
+                Box(Modifier.fillMaxSize().then(Modifier.background(androidx.compose.ui.graphics.Color.Black)).forbiddenBackdrop()) {
                     if (!loggedIn) {
                         LoginScreen(onLoggedIn = { loggedIn = true })
                     } else {

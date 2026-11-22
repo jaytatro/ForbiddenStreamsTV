@@ -173,7 +173,7 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
     }
 
     // Nov 21: no score ticker; a green-to-black textured background.
-    Column(Modifier.fillMaxSize().sportsBackdrop().padding(top = 12.dp)) {
+    Column(Modifier.fillMaxSize().forbiddenBackdrop().padding(top = 12.dp)) {
         Row(Modifier.fillMaxSize().padding(top = 8.dp)) {
             // ---- League rail ----
             LazyColumn(
@@ -720,29 +720,3 @@ private fun SideButton(text: String, logo: String?, symbol: String, modifier: Mo
 }
 
 
-/**
- * Nov 21: Sports background — dark green glow fading to black, with a fine diagonal carbon texture.
- * Drawn once per size (cached), so it costs nothing while scrolling.
- */
-private fun Modifier.sportsBackdrop(): Modifier = this.drawWithCache {
-    val base = Brush.linearGradient(listOf(Color(0xFF0D2412), Color(0xFF07140A), Color.Black),
-        start = Offset.Zero, end = Offset(size.width, size.height))
-    val glow = Brush.radialGradient(listOf(Color(0x332E7D1A), Color.Transparent),
-        center = Offset(size.width * 0.15f, size.height * 0.05f), radius = size.maxDimension * 0.6f)
-    val step = 7.dp.toPx()
-    val lines = androidx.compose.ui.graphics.Path().apply {
-        var x = -size.height
-        while (x < size.width) { moveTo(x, size.height); lineTo(x + size.height, 0f); x += step }
-    }
-    val dots = androidx.compose.ui.graphics.Path().apply {
-        var y = 0f
-        while (y < size.height) { var x = 0f; while (x < size.width) { addRect(androidx.compose.ui.geometry.Rect(x, y, x + 1.5f, y + 1.5f)); x += step * 2 }; y += step * 2 }
-    }
-    onDrawBehind {
-        drawRect(base)
-        drawRect(glow)
-        drawPath(lines, Color(0x0D7CFF3A), style = androidx.compose.ui.graphics.drawscope.Stroke(1f))
-        drawPath(dots, Color(0x147CFF3A))
-        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x99000000)), startY = size.height * 0.55f))
-    }
-}

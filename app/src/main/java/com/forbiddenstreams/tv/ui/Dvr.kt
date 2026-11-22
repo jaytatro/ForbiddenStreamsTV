@@ -128,7 +128,7 @@ fun DvrTab() {
         onDispose { if (TabDown.handler === goIn) TabDown.handler = null }
     }
 
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF07120A), Color.Black)))) {
+    Box(Modifier.fillMaxSize().forbiddenBackdrop()) {
         Column(Modifier.fillMaxSize().padding(top = 24.dp, start = 28.dp, end = 36.dp)) {
             // Header: DVR · counts · storage
             Row(verticalAlignment = Alignment.Bottom) {
