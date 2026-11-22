@@ -46,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -84,8 +85,8 @@ import java.util.Calendar
 import java.util.Locale
 
 private val Led = Color(0xFF9CFF5A)
-private val Panel = Color(0xFF0B120C)
-private val PanelHi = Color(0xFF13201A)
+private val Panel = Color(0xD90B120C)
+private val PanelHi = Color(0xF213201A)
 private val LiveRed = Color(0xFFFF3B3B)
 private val Gold = Color(0xFFFFC83D)
 
@@ -171,8 +172,8 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
         onDispose { if (TabDown.handler === goIn) TabDown.handler = null }
     }
 
-    Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF050A06), Color.Black))).padding(top = 12.dp)) {
-        Ticker(today, order)
+    // Nov 21: no score ticker; a green-to-black textured background.
+    Column(Modifier.fillMaxSize().sportsBackdrop().padding(top = 12.dp)) {
         Row(Modifier.fillMaxSize().padding(top = 8.dp)) {
             // ---- League rail ----
             LazyColumn(
@@ -321,14 +322,14 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                     sorted.isEmpty() -> MessageBox(if (day == dayKeyOffset(0)) "No games today" else "No games this day",
                         "Pick another day above, or another league on the left.")
                     else -> LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
+                        columns = GridCells.Fixed(1),
                         state = gridState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(start = 8.dp, end = 4.dp, top = 10.dp, bottom = 24.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        if (league == League.NFL) item(key = "redzone", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(2) }) { redZoneBox() }
+                        if (league == League.NFL) item(key = "redzone") { redZoneBox() }
                         items(sorted.size, key = { sorted[it].id }) { i ->
                             val g = sorted[i]
                             // Nov 21: back to game cards (bigger); OK lists every stream for the game.
@@ -337,7 +338,7 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                                 modifier = Modifier
                                     .then(if (i == 0) Modifier.focusRequester(firstGameReq) else Modifier)
                                     .onPreviewKeyEvent { ev ->
-                                        if (i < 2 && ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                        if (i < 1 && ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
                                             ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP) {
                                             if (league == League.NFL) scope.launch {
                                                 try { gridState.animateScrollToItem(0) } catch (e: Exception) { }
@@ -346,7 +347,7 @@ fun SportsTab(open: Pair<League, String>? = null, onOpened: () -> Unit = {}, ent
                                             } else try { todayReq.requestFocus() } catch (e: Exception) { }
                                             return@onPreviewKeyEvent true
                                         }
-                                        if (i % 2 == 0 && ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
+                                        if (ev.nativeKeyEvent.action == android.view.KeyEvent.ACTION_DOWN &&
                                             ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) { focusRail(); true } else false
                                     },
                                 onClick = { pick = league to g },
@@ -567,18 +568,17 @@ private fun DateBar(day: String, week: Map<String, List<Game>>?, todayReq: Focus
 @Composable
 private fun ScoreCard(l: League, g: Game, fav: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(16.dp)
-    val glow = rememberInfiniteTransition(label = "glow").animateFloat(0.4f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "g")
     var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth().height(196.dp).onFocusChanged { focused = it.isFocused },
+        modifier = modifier.fillMaxWidth().height(150.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(shape = shape),
         colors = ClickableSurfaceDefaults.colors(containerColor = Panel, focusedContainerColor = PanelHi),
         border = ClickableSurfaceDefaults.border(
-            border = Border(BorderStroke(if (g.isLive) 2.dp else 1.dp, if (g.isLive) LiveRed.copy(alpha = glow.value) else Color(0xFF1C2E20)), shape = shape),
+            border = Border(BorderStroke(if (g.isLive) 2.dp else 1.dp, if (g.isLive) LiveRed else Color(0xFF1C2E20)), shape = shape),
             focusedBorder = Border(BorderStroke(3.dp, FS.Green), shape = shape),
         ),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.015f),
     ) {
         Box(Modifier.fillMaxSize()) {
             // Faint stadium-light sweep behind the score.
@@ -716,5 +716,33 @@ private fun SideButton(text: String, logo: String?, symbol: String, modifier: Mo
             if (logo != null) { Box(Modifier.size(24.dp)) { NetImage(logo, Modifier.fillMaxSize()) }; Spacer(Modifier.width(8.dp)) }
             Text(text, fontSize = 15.sp, fontWeight = FontWeight.Black, maxLines = 1)
         }
+    }
+}
+
+
+/**
+ * Nov 21: Sports background — dark green glow fading to black, with a fine diagonal carbon texture.
+ * Drawn once per size (cached), so it costs nothing while scrolling.
+ */
+private fun Modifier.sportsBackdrop(): Modifier = this.drawWithCache {
+    val base = Brush.linearGradient(listOf(Color(0xFF0D2412), Color(0xFF07140A), Color.Black),
+        start = Offset.Zero, end = Offset(size.width, size.height))
+    val glow = Brush.radialGradient(listOf(Color(0x332E7D1A), Color.Transparent),
+        center = Offset(size.width * 0.15f, size.height * 0.05f), radius = size.maxDimension * 0.6f)
+    val step = 7.dp.toPx()
+    val lines = androidx.compose.ui.graphics.Path().apply {
+        var x = -size.height
+        while (x < size.width) { moveTo(x, size.height); lineTo(x + size.height, 0f); x += step }
+    }
+    val dots = androidx.compose.ui.graphics.Path().apply {
+        var y = 0f
+        while (y < size.height) { var x = 0f; while (x < size.width) { addRect(androidx.compose.ui.geometry.Rect(x, y, x + 1.5f, y + 1.5f)); x += step * 2 }; y += step * 2 }
+    }
+    onDrawBehind {
+        drawRect(base)
+        drawRect(glow)
+        drawPath(lines, Color(0x0D7CFF3A), style = androidx.compose.ui.graphics.drawscope.Stroke(1f))
+        drawPath(dots, Color(0x147CFF3A))
+        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color(0x99000000)), startY = size.height * 0.55f))
     }
 }
