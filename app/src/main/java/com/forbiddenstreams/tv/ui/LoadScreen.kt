@@ -344,8 +344,10 @@ private fun TvGuy(color: Color, modifier: Modifier) {
                 drawPath(eyeL, color)
                 dots.forEach { drawPath(it, color) }
                 drawCircle(Color(0xFF06110A), 1.5f, androidx.compose.ui.geometry.Offset(85.5f, 102.5f))
-                if (!winking) drawCircle(Color(0xFF06110A), 1.5f, androidx.compose.ui.geometry.Offset(117.5f, 102.5f))
-                if (!winking) drawPath(eyeR, color)
+                if (!winking) {
+                    drawPath(eyeR, color)
+                    drawCircle(Color(0xFF06110A), 1.5f, androidx.compose.ui.geometry.Offset(117.5f, 102.5f))
+                }
             }
         }
     }
