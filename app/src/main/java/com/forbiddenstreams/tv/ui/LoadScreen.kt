@@ -33,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -278,6 +279,17 @@ private val TV_GUY_LINES = listOf(
 )
 private val TV_GUY_THIN = listOf("M176 108 Q182 112 184 120 M186 102 Q194 110 194 122")          // wave lines
 private val TV_GUY_DOTS = listOf(circ(76f, 114f, 1.4f), circ(81f, 117f, 1.4f), circ(119f, 117f, 1.4f), circ(124f, 114f, 1.4f))
+/** Nov 21 ("more 3D"): filled, shaded shapes under the lines — lit from the top-left. */
+private const val GUY_BODY = "M80 144 Q58 150 54 198 L146 198 L146 174 Q142 150 120 144 L108 142 L100 152 L92 142 Z"
+private const val GUY_NECK = "M92 132 L92 144 L100 152 L108 144 L108 132 Z"
+private const val GUY_FACE = "M64 80 Q62 130 100 134 Q138 130 136 80 Q100 72 64 80 Z"
+private const val GUY_EARS = "M64 96 Q52 98 56 110 Q60 116 66 112 Z M136 96 Q148 98 144 110 Q140 116 134 112 Z"
+private const val GUY_CAP_SHADOW = "M66 84 Q100 96 134 83 Q132 92 100 98 Q70 94 66 84 Z"
+private const val GUY_FACE_SHADE = "M120 134 Q134 120 136 96 Q140 128 104 136 Z"
+private const val GUY_CAP = "M58 82 Q50 52 78 42 Q100 34 124 42 Q150 52 142 80 Q100 72 58 82 Z"
+private const val GUY_BRIM = "M70 80 Q100 92 130 79 Q118 90 100 92 Q80 92 70 80 Z"
+private const val GUY_TIE = "M100 152 L88 146 L88 158 Z M100 152 L112 146 L112 158 Z"
+private const val GUY_HAND = "M158 140 Q156 122 162 118 Q166 116 167 124 L168 118 Q170 112 174 116 L174 122 Q178 118 180 124 Q180 140 170 146 Q162 148 158 140 Z"
 private val TV_GUY_EYE_L = circ(84f, 104f, 4.5f)
 private val TV_GUY_EYE_R = circ(116f, 104f, 4.5f)
 private val TV_GUY_WINK = "M110 105 Q116 99 122 105"
@@ -292,6 +304,10 @@ private fun TvGuy(color: Color, modifier: Modifier) {
     val eyeR = androidx.compose.runtime.remember { parse(TV_GUY_EYE_R) }
     val wink = androidx.compose.runtime.remember { parse(TV_GUY_WINK) }
     val dots = androidx.compose.runtime.remember { TV_GUY_DOTS.map { parse(it) } }
+    val fills = androidx.compose.runtime.remember {
+        mapOf("body" to GUY_BODY, "neck" to GUY_NECK, "face" to GUY_FACE, "ears" to GUY_EARS, "capShadow" to GUY_CAP_SHADOW,
+            "faceShade" to GUY_FACE_SHADE, "cap" to GUY_CAP, "brim" to GUY_BRIM, "tie" to GUY_TIE, "hand" to GUY_HAND).mapValues { parse(it.value) }
+    }
     var winking by androidx.compose.runtime.remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { while (true) { delay(2_200); winking = true; delay(320); winking = false } }
     val bob = rememberInfiniteTransition(label = "bob").animateFloat(0f, 1f, infiniteRepeatable(tween(1_400), RepeatMode.Reverse), label = "b")
@@ -301,14 +317,34 @@ private fun TvGuy(color: Color, modifier: Modifier) {
             scale(k, pivot = androidx.compose.ui.geometry.Offset.Zero) {
                 fun stroke(w: Float) = androidx.compose.ui.graphics.drawscope.Stroke(w, cap = androidx.compose.ui.graphics.StrokeCap.Round,
                     join = androidx.compose.ui.graphics.StrokeJoin.Round)
+                // Shaded fills first (the 3D look), then the glowing lines on top.
+                fun rg(cx: Float, cy: Float, r: Float, vararg stops: Pair<Float, Color>) =
+                    androidx.compose.ui.graphics.Brush.radialGradient(*stops, center = androidx.compose.ui.geometry.Offset(cx, cy), radius = r)
+                val skin = rg(92f, 91f, 62f, 0f to Color(0xBFC8FF7A), 0.55f to Color(0x736FBF2E), 1f to Color(0xD9173A0C))
+                drawPath(fills.getValue("body"), rg(86f, 153f, 85f, 0f to Color(0x998FD640), 1f to Color(0xD90C1E07)))
+                drawPath(fills.getValue("neck"), skin)
+                drawPath(fills.getValue("face"), skin)
+                drawPath(fills.getValue("ears"), skin)
+                drawPath(fills.getValue("capShadow"), Color(0x9906110A))
+                drawPath(fills.getValue("faceShade"), Color(0x8006110A))
+                drawPath(fills.getValue("cap"), rg(85f, 46f, 70f, 0f to Color(0xCCA8EC4C), 0.65f to Color(0x993D7A1C), 1f to Color(0xE60C1E07)))
+                drawPath(fills.getValue("brim"), rg(90f, 82f, 40f, 0f to Color(0xCCA8EC4C), 1f to Color(0xE60C1E07)))
+                rotate(-18f, pivot = androidx.compose.ui.geometry.Offset(84f, 52f)) {
+                    drawOval(Color(0x73F0FFD6), topLeft = androidx.compose.ui.geometry.Offset(70f, 46f), size = androidx.compose.ui.geometry.Size(28f, 12f))
+                }
+                for (cx in listOf(76f, 124f)) drawCircle(rg(cx, 116f, 9f, 0f to Color(0x59C8FF7A), 1f to Color(0x00C8FF7A)), 9f, androidx.compose.ui.geometry.Offset(cx, 116f))
+                drawPath(fills.getValue("tie"), Color(0x73A8EC4C))
+                drawPath(fills.getValue("hand"), rg(166f, 124f, 26f, 0f to Color(0xBFC8FF7A), 1f to Color(0xD9173A0C)))
                 val all = lines + listOf(if (winking) wink else eyeR)
                 // Glow, then the line itself.
-                for ((w, a) in listOf(11f to 0.10f, 7f to 0.22f, 3.4f to 1f)) {
+                for ((w, a) in listOf(11f to 0.10f, 7f to 0.22f, 3f to 1f)) {
                     all.forEach { drawPath(it, color.copy(alpha = a), style = stroke(w)) }
                     thin.forEach { drawPath(it, color.copy(alpha = a), style = stroke(w * 0.6f)) }
                 }
                 drawPath(eyeL, color)
                 dots.forEach { drawPath(it, color) }
+                drawCircle(Color(0xFF06110A), 1.5f, androidx.compose.ui.geometry.Offset(85.5f, 102.5f))
+                if (!winking) drawCircle(Color(0xFF06110A), 1.5f, androidx.compose.ui.geometry.Offset(117.5f, 102.5f))
                 if (!winking) drawPath(eyeR, color)
             }
         }
