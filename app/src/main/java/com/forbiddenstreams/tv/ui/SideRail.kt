@@ -54,8 +54,6 @@ private val RAIL = listOf(
     RailEntry("Home", RailIcon.HOME),
     RailEntry("Live TV", RailIcon.CHANNELS),
     RailEntry("Sports", RailIcon.SPORTS),
-    RailEntry("Movies", RailIcon.MOVIES),
-    RailEntry("TV Series", RailIcon.SHOWS),
     RailEntry("DVR", RailIcon.DVR),
 )
 

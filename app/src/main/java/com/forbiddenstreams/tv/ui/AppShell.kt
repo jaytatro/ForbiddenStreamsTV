@@ -77,9 +77,9 @@ object TabDown { var handler: (() -> Boolean)? = null }
 
 /** Tabs across the top, left to right, centered. */
 // Nov 16: the old Live TV tab was removed and TV Guide renamed "Live TV".
-private val TABS = listOf("Home", "Live TV", "Sports", "Movies", "TV Series", "DVR")
+private val TABS = listOf("Home", "Live TV", "Sports", "DVR")
 private const val TAB_SPORTS = 2
-private const val TAB_DVR = 5
+private const val TAB_DVR = 3
 
 /**
  * The new app (started from scratch, Nov 1 2026): tabs centered across the top, always opens on Home.
@@ -171,8 +171,6 @@ fun AppShell(onLogout: () -> Unit) {
             0 -> HomeTab(onOpenGame = { l, id -> sportsOpen = l to id; tab = TAB_SPORTS })
             1 -> LiveTvTab()
             // Nov 19: Movies and TV Series back in the side menu (loaded on the loading screen).
-            3 -> MoviesTab()
-            4 -> ShowsTab()
             TAB_SPORTS -> SportsTab(open = sportsOpen, onOpened = { sportsOpen = null }, enter = sportsEnter)
             else -> if (!dvrUnlocked && pinNeeded(context, com.forbiddenstreams.tv.data.AppSettings.pinDvr)) {
                 // DVR locked with the parental code: ▼ / OK asks for it.
@@ -371,7 +369,7 @@ private fun HomeTab(onOpenGame: (com.forbiddenstreams.tv.sports.League, String) 
     var menu by remember { mutableStateOf<Card?>(null) }
     var showPick by remember { mutableStateOf<SeriesItem?>(null) }
     // The provider's show list (for "Seasons & episodes" and episode details).
-    LaunchedEffect(Unit) { MovieMatcher.loadSeries() }
+    // Nov 21: Movies / TV Series removed — nothing from them is downloaded (live TV and sports only).
 
     val recents = remember(PlayerHolder.fullScreen, menu) { Recents.all(context) }
     val shows = remember(recents) {
@@ -402,7 +400,7 @@ private fun HomeTab(onOpenGame: (com.forbiddenstreams.tv.sports.League, String) 
     LaunchedEffect(shows, movies, channels) {
         if (focused == null) {
             val newest = Recents.all(context).firstOrNull { it.kind == "movie" || it.kind == "episode" }?.key
-            focused = (shows + movies).firstOrNull { it.key == newest } ?: shows.firstOrNull() ?: movies.firstOrNull() ?: channels.firstOrNull()
+            focused = channels.firstOrNull()
         }
     }
 
@@ -414,7 +412,7 @@ private fun HomeTab(onOpenGame: (com.forbiddenstreams.tv.sports.League, String) 
         ) {
             // Keep watching (movies and shows you stopped part-way) at the top (Nov 8).
             val S = com.forbiddenstreams.tv.data.AppSettings
-            if (shows.isNotEmpty() || movies.isNotEmpty()) item {
+            if (false && (shows.isNotEmpty() || movies.isNotEmpty())) item {
                 KeepWatchingRow(
                     refresh = recents,
                     onFocusKey = { k -> focused = (shows + movies).firstOrNull { it.key == k } ?: focused },

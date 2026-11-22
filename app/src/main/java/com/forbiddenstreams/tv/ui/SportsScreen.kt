@@ -634,8 +634,13 @@ fun GameChannelsDialog(league: League, g: Game, onClose: () -> Unit) {
         androidx.activity.compose.BackHandler { onClose() }
         return
     }
-    val playlistReplay by androidx.compose.runtime.produceState<com.forbiddenstreams.tv.data.VodItem?>(null, g.id) {
-        if (g.isFinal) value = try { com.forbiddenstreams.tv.sports.ReplayFinder.find(league, g) } catch (e: Exception) { null }
+    // Nov 21: the playlist's video list is only searched when no channel has a catch-up replay of the game.
+    val hasCatchup = remember(g.id, match, networks) {
+        g.isFinal && gameOptions(context, g, match, team, networks, wrongTeam, prepared?.awayFeeds.orEmpty(), prepared?.homeFeeds.orEmpty(), prepared?.espnPlus)
+            .any { it.first.startsWith("⏮") }
+    }
+    val playlistReplay by androidx.compose.runtime.produceState<com.forbiddenstreams.tv.data.VodItem?>(null, g.id, hasCatchup) {
+        if (g.isFinal && !hasCatchup) value = try { com.forbiddenstreams.tv.sports.ReplayFinder.find(league, g) } catch (e: Exception) { null }
     }
     val options = remember(g.id, match, team, Session.liveAll, networks, wrongTeam, playlistReplay) {
         gameOptions(context, g, match, team, networks, wrongTeam, prepared?.awayFeeds.orEmpty(), prepared?.homeFeeds.orEmpty(), prepared?.espnPlus) + listOfNotNull(playlistReplay?.let { v ->
