@@ -261,92 +261,118 @@ private fun rrect(x: Float, y: Float, w: Float, h: Float, r: Float) =
     "M${x + r} $y H${x + w - r} Q${x + w} $y ${x + w} ${y + r} V${y + h - r} Q${x + w} ${y + h} ${x + w - r} ${y + h} " +
         "H${x + r} Q$x ${y + h} $x ${y + h - r} V${y + r} Q$x $y ${x + r} $y Z"
 
-/** Nov 21 ("old school"): our own mascot — a 1930s-style newsboy: flat cap, bow tie, suspenders, waving (200 × 200 box). */
-private val TV_GUY_LINES = listOf(
-    "M64 80 Q62 130 100 134 Q138 130 136 80",                                                 // head
-    "M58 82 Q50 52 78 42 Q100 34 124 42 Q150 52 142 80", "M58 82 Q100 72 142 80",               // cap crown
-    "M70 80 Q100 92 130 79 Q118 90 100 92 Q80 92 70 80", "M82 44 Q92 60 100 76 M118 44 Q110 60 100 76", // brim, panels
-    circ(100f, 38f, 3f),
-    "M64 96 Q52 98 56 110 Q60 116 66 112", "M136 96 Q148 98 144 110 Q140 116 134 112",           // ears
-    "M76 96 Q84 92 92 95", "M108 95 Q116 92 124 96",                                             // brows
-    "M100 106 Q104 112 98 114", "M88 121 Q102 126 113 119 Q116 117 117 114",                      // nose, smirk
-    "M92 134 V142 M108 134 V142", "M80 144 L92 142 L100 152 L108 142 L120 144",                   // neck, collar
-    "M100 152 L88 146 L88 158 Z M100 152 L112 146 L112 158 Z",                                    // bow tie
-    "M80 144 Q58 150 54 198 M120 144 Q142 150 146 174", "M80 152 L78 198 M120 152 L122 198",      // shoulders, suspenders
-    circ(78f, 186f, 2.5f), circ(122f, 186f, 2.5f),
-    "M146 174 Q164 166 166 140",                                                                  // arm
-    "M158 140 Q156 122 162 118 Q166 116 167 124 L168 118 Q170 112 174 116 L174 122 Q178 118 180 124 Q180 140 170 146 Q162 148 158 140", // hand
-)
-private val TV_GUY_THIN = listOf("M176 108 Q182 112 184 120 M186 102 Q194 110 194 122")          // wave lines
-private val TV_GUY_DOTS = listOf(circ(76f, 114f, 1.4f), circ(81f, 117f, 1.4f), circ(119f, 117f, 1.4f), circ(124f, 114f, 1.4f))
-/** Nov 21 ("more 3D"): filled, shaded shapes under the lines — lit from the top-left. */
-private const val GUY_BODY = "M80 144 Q58 150 54 198 L146 198 L146 174 Q142 150 120 144 L108 142 L100 152 L92 142 Z"
-private const val GUY_NECK = "M92 132 L92 144 L100 152 L108 144 L108 132 Z"
-private const val GUY_FACE = "M64 80 Q62 130 100 134 Q138 130 136 80 Q100 72 64 80 Z"
-private const val GUY_EARS = "M64 96 Q52 98 56 110 Q60 116 66 112 Z M136 96 Q148 98 144 110 Q140 116 134 112 Z"
-private const val GUY_CAP_SHADOW = "M66 84 Q100 96 134 83 Q132 92 100 98 Q70 94 66 84 Z"
-private const val GUY_FACE_SHADE = "M120 134 Q134 120 136 96 Q140 128 104 136 Z"
-private const val GUY_CAP = "M58 82 Q50 52 78 42 Q100 34 124 42 Q150 52 142 80 Q100 72 58 82 Z"
-private const val GUY_BRIM = "M70 80 Q100 92 130 79 Q118 90 100 92 Q80 92 70 80 Z"
-private const val GUY_TIE = "M100 152 L88 146 L88 158 Z M100 152 L112 146 L112 158 Z"
-private const val GUY_HAND = "M158 140 Q156 122 162 118 Q166 116 167 124 L168 118 Q170 112 174 116 L174 122 Q178 118 180 124 Q180 140 170 146 Q162 148 158 140 Z"
-private val TV_GUY_EYE_L = circ(84f, 104f, 4.5f)
-private val TV_GUY_EYE_R = circ(116f, 104f, 4.5f)
-private val TV_GUY_WINK = "M110 105 Q116 99 122 105"
+/**
+ * Nov 21: our own mascot — "Newsie", a 1930s-style newsboy (flat cap, bow tie, suspenders), shaded so he
+ * looks rounded. His signature move: he tips his cap and winks. All in a 200 × 200 box, lit from the top-left.
+ */
+private object Newsie {
+    // Cap (tips with the hand)
+    val capLines = listOf(
+        "M58 82 Q50 52 78 42 Q100 34 124 42 Q150 52 142 80", "M58 82 Q100 72 142 80",
+        "M70 80 Q100 92 130 79 Q118 90 100 92 Q80 92 70 80", "M82 44 Q92 60 100 76 M118 44 Q110 60 100 76", circ(100f, 38f, 3f),
+    )
+    const val CAP = "M58 82 Q50 52 78 42 Q100 34 124 42 Q150 52 142 80 Q100 72 58 82 Z"
+    const val BRIM = "M70 80 Q100 92 130 79 Q118 90 100 92 Q80 92 70 80 Z"
+    // Hand on the brim (moves with the cap)
+    const val HAND = "M130 90 Q126 78 134 72 Q142 66 150 74 Q156 84 148 92 Q140 98 130 90 Z"
+    val handLines = listOf(HAND)
+    val handThin = listOf("M133 78 Q139 76 143 80 M131 84 Q138 83 142 87")
+    // Everything else
+    val bodyLines = listOf(
+        "M64 80 Q62 130 100 134 Q138 130 136 80",                                                // head
+        "M64 96 Q52 98 56 110 Q60 116 66 112", "M136 96 Q148 98 144 110 Q140 116 134 112",       // ears
+        "M76 96 Q84 92 92 95", "M108 95 Q116 92 124 96",                                         // brows
+        "M100 106 Q104 112 98 114", "M88 121 Q102 126 113 119 Q116 117 117 114",                  // nose, smirk
+        "M92 134 V142 M108 134 V142", "M80 144 L92 142 L100 152 L108 142 L120 144",               // neck, collar
+        "M100 152 L88 146 L88 158 Z M100 152 L112 146 L112 158 Z",                                // bow tie
+        "M80 144 Q58 150 54 198", "M80 152 L78 198 M120 152 L122 198",                           // shoulder, suspenders
+        circ(78f, 186f, 2.5f), circ(122f, 186f, 2.5f),
+        "M146 178 Q166 140 152 96", "M126 156 Q140 128 134 96", "M131 100 Q143 104 155 98",       // raised arm + cuff
+    )
+    val dots = listOf(circ(76f, 114f, 1.4f), circ(81f, 117f, 1.4f), circ(119f, 117f, 1.4f), circ(124f, 114f, 1.4f))
+    const val BODY = "M80 144 Q58 150 54 198 L146 198 L146 178 Q142 150 120 144 L108 142 L100 152 L92 142 Z"
+    const val SLEEVE = "M146 178 Q166 140 152 96 L134 96 Q140 128 126 156 Z"
+    const val NECK = "M92 132 L92 144 L100 152 L108 144 L108 132 Z"
+    const val FACE = "M64 80 Q62 130 100 134 Q138 130 136 80 Q100 72 64 80 Z"
+    const val EARS = "M64 96 Q52 98 56 110 Q60 116 66 112 Z M136 96 Q148 98 144 110 Q140 116 134 112 Z"
+    const val CAP_SHADOW = "M66 84 Q100 96 134 83 Q132 92 100 98 Q70 94 66 84 Z"
+    const val FACE_SHADE = "M120 134 Q134 120 136 96 Q140 128 104 136 Z"
+    const val TIE = "M100 152 L88 146 L88 158 Z M100 152 L112 146 L112 158 Z"
+    val eyeL = circ(84f, 104f, 4.5f)
+    val eyeR = circ(116f, 104f, 4.5f)
+    const val WINK = "M110 105 Q116 99 122 105"
+}
 
-/** The glowing mascot (the kid): winks every couple of seconds and bobs gently. */
+/** Newsie, glowing: every ~2.4 s he tips his cap and winks; he bobs gently the rest of the time. */
 @Composable
 private fun TvGuy(color: Color, modifier: Modifier) {
     fun parse(d: String) = androidx.compose.ui.graphics.vector.PathParser().parsePathString(d).toPath()
-    val lines = androidx.compose.runtime.remember { TV_GUY_LINES.map { parse(it) } }
-    val thin = androidx.compose.runtime.remember { TV_GUY_THIN.map { parse(it) } }
-    val eyeL = androidx.compose.runtime.remember { parse(TV_GUY_EYE_L) }
-    val eyeR = androidx.compose.runtime.remember { parse(TV_GUY_EYE_R) }
-    val wink = androidx.compose.runtime.remember { parse(TV_GUY_WINK) }
-    val dots = androidx.compose.runtime.remember { TV_GUY_DOTS.map { parse(it) } }
-    val fills = androidx.compose.runtime.remember {
-        mapOf("body" to GUY_BODY, "neck" to GUY_NECK, "face" to GUY_FACE, "ears" to GUY_EARS, "capShadow" to GUY_CAP_SHADOW,
-            "faceShade" to GUY_FACE_SHADE, "cap" to GUY_CAP, "brim" to GUY_BRIM, "tie" to GUY_TIE, "hand" to GUY_HAND).mapValues { parse(it.value) }
+    val P = androidx.compose.runtime.remember {
+        object {
+            val capLines = Newsie.capLines.map { parse(it) }
+            val handLines = Newsie.handLines.map { parse(it) }
+            val handThin = Newsie.handThin.map { parse(it) }
+            val bodyLines = Newsie.bodyLines.map { parse(it) }
+            val dots = Newsie.dots.map { parse(it) }
+            val cap = parse(Newsie.CAP); val brim = parse(Newsie.BRIM); val hand = parse(Newsie.HAND)
+            val body = parse(Newsie.BODY); val sleeve = parse(Newsie.SLEEVE); val neck = parse(Newsie.NECK)
+            val face = parse(Newsie.FACE); val ears = parse(Newsie.EARS); val capShadow = parse(Newsie.CAP_SHADOW)
+            val faceShade = parse(Newsie.FACE_SHADE); val tie = parse(Newsie.TIE)
+            val eyeL = parse(Newsie.eyeL); val eyeR = parse(Newsie.eyeR); val wink = parse(Newsie.WINK)
+        }
     }
-    var winking by androidx.compose.runtime.remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { while (true) { delay(2_200); winking = true; delay(320); winking = false } }
+    // The tip: 0 → 1 → 0 over ~0.6 s; the wink rides on the top of it.
+    val tip = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2_400)
+            tip.animateTo(1f, tween(220))
+            delay(260)
+            tip.animateTo(0f, tween(320))
+        }
+    }
     val bob = rememberInfiniteTransition(label = "bob").animateFloat(0f, 1f, infiniteRepeatable(tween(1_400), RepeatMode.Reverse), label = "b")
     androidx.compose.foundation.Canvas(modifier) {
         val k = size.minDimension / 200f
+        val t = tip.value
+        val winking = t > 0.6f
         translate(top = (bob.value - 0.5f) * 3f * k) {
             scale(k, pivot = androidx.compose.ui.geometry.Offset.Zero) {
                 fun stroke(w: Float) = androidx.compose.ui.graphics.drawscope.Stroke(w, cap = androidx.compose.ui.graphics.StrokeCap.Round,
                     join = androidx.compose.ui.graphics.StrokeJoin.Round)
-                // Shaded fills first (the 3D look), then the glowing lines on top.
                 fun rg(cx: Float, cy: Float, r: Float, vararg stops: Pair<Float, Color>) =
                     androidx.compose.ui.graphics.Brush.radialGradient(*stops, center = androidx.compose.ui.geometry.Offset(cx, cy), radius = r)
                 val skin = rg(92f, 91f, 62f, 0f to Color(0xBFC8FF7A), 0.55f to Color(0x736FBF2E), 1f to Color(0xD9173A0C))
-                drawPath(fills.getValue("body"), rg(86f, 153f, 85f, 0f to Color(0x998FD640), 1f to Color(0xD90C1E07)))
-                drawPath(fills.getValue("neck"), skin)
-                drawPath(fills.getValue("face"), skin)
-                drawPath(fills.getValue("ears"), skin)
-                drawPath(fills.getValue("capShadow"), Color(0x9906110A))
-                drawPath(fills.getValue("faceShade"), Color(0x8006110A))
-                drawPath(fills.getValue("cap"), rg(85f, 46f, 70f, 0f to Color(0xCCA8EC4C), 0.65f to Color(0x993D7A1C), 1f to Color(0xE60C1E07)))
-                drawPath(fills.getValue("brim"), rg(90f, 82f, 40f, 0f to Color(0xCCA8EC4C), 1f to Color(0xE60C1E07)))
-                rotate(-18f, pivot = androidx.compose.ui.geometry.Offset(84f, 52f)) {
-                    drawOval(Color(0x73F0FFD6), topLeft = androidx.compose.ui.geometry.Offset(70f, 46f), size = androidx.compose.ui.geometry.Size(28f, 12f))
+                val cloth = rg(86f, 153f, 85f, 0f to Color(0x998FD640), 1f to Color(0xD90C1E07))
+                fun glow(paths: List<androidx.compose.ui.graphics.Path>, thinPaths: List<androidx.compose.ui.graphics.Path> = emptyList()) {
+                    for ((w, a) in listOf(11f to 0.10f, 7f to 0.22f, 3f to 1f)) {
+                        paths.forEach { drawPath(it, color.copy(alpha = a), style = stroke(w)) }
+                        thinPaths.forEach { drawPath(it, color.copy(alpha = a), style = stroke(w * 0.6f)) }
+                    }
                 }
+                // Body, face (shaded), then lines.
+                drawPath(P.body, cloth); drawPath(P.neck, skin); drawPath(P.face, skin); drawPath(P.ears, skin)
+                drawPath(P.faceShade, Color(0x8006110A))
+                drawPath(P.tie, Color(0x73A8EC4C))
                 for (cx in listOf(76f, 124f)) drawCircle(rg(cx, 116f, 9f, 0f to Color(0x59C8FF7A), 1f to Color(0x00C8FF7A)), 9f, androidx.compose.ui.geometry.Offset(cx, 116f))
-                drawPath(fills.getValue("tie"), Color(0x73A8EC4C))
-                drawPath(fills.getValue("hand"), rg(166f, 124f, 26f, 0f to Color(0xBFC8FF7A), 1f to Color(0xD9173A0C)))
-                val all = lines + listOf(if (winking) wink else eyeR)
-                // Glow, then the line itself.
-                for ((w, a) in listOf(11f to 0.10f, 7f to 0.22f, 3f to 1f)) {
-                    all.forEach { drawPath(it, color.copy(alpha = a), style = stroke(w)) }
-                    thin.forEach { drawPath(it, color.copy(alpha = a), style = stroke(w * 0.6f)) }
-                }
-                drawPath(eyeL, color)
-                dots.forEach { drawPath(it, color) }
+                drawPath(P.sleeve, cloth)
+                glow(P.bodyLines + listOf(if (winking) P.wink else P.eyeR))
+                drawPath(P.eyeL, color); P.dots.forEach { drawPath(it, color) }
                 drawCircle(Color(0xFF06110A), 1.5f, androidx.compose.ui.geometry.Offset(85.5f, 102.5f))
-                if (!winking) {
-                    drawPath(eyeR, color)
-                    drawCircle(Color(0xFF06110A), 1.5f, androidx.compose.ui.geometry.Offset(117.5f, 102.5f))
+                if (!winking) { drawPath(P.eyeR, color); drawCircle(Color(0xFF06110A), 1.5f, androidx.compose.ui.geometry.Offset(117.5f, 102.5f)) }
+                // Cap + hand tip together: lift and tilt back around the brim's right end.
+                translate(top = -5f * t) {
+                    rotate(-9f * t, pivot = androidx.compose.ui.geometry.Offset(132f, 82f)) {
+                        if (t < 0.3f) drawPath(P.capShadow, Color(0x9906110A))
+                        drawPath(P.cap, rg(85f, 46f, 70f, 0f to Color(0xCCA8EC4C), 0.65f to Color(0x993D7A1C), 1f to Color(0xE60C1E07)))
+                        drawPath(P.brim, rg(90f, 82f, 40f, 0f to Color(0xCCA8EC4C), 1f to Color(0xE60C1E07)))
+                        rotate(-18f, pivot = androidx.compose.ui.geometry.Offset(84f, 52f)) {
+                            drawOval(Color(0x73F0FFD6), topLeft = androidx.compose.ui.geometry.Offset(70f, 46f), size = androidx.compose.ui.geometry.Size(28f, 12f))
+                        }
+                        glow(P.capLines)
+                        drawPath(P.hand, skin)
+                        glow(P.handLines, P.handThin)
+                    }
                 }
             }
         }
