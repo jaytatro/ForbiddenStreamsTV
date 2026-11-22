@@ -206,8 +206,7 @@ private fun RetroLoading() {
         Image(painterResource(R.drawable.crt_screen), null, Modifier.fillMaxSize(),
             contentScale = androidx.compose.ui.layout.ContentScale.FillBounds)
         Box(Modifier.fillMaxSize().alpha(flicker.value)) {
-            // Nov 21: our own mascot — Spike, a kid who blinks while it loads.
-            TvGuy(lime, Modifier.align(Alignment.TopCenter).padding(top = h * 0.075f).size(h * 0.36f))
+            // (Nov 21: mascot removed at the user's request.)
             // Forbidden Streams TV — above LOADING, same green.
             Text("FORBIDDEN STREAMS TV", color = lime, fontSize = sp(0.064f), fontWeight = FontWeight.Bold, fontFamily = mono,
                 letterSpacing = sp(0.004f), style = glow, maxLines = 1,
