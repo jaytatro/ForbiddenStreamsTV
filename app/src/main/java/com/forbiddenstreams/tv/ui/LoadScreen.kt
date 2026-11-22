@@ -205,7 +205,7 @@ private fun RetroLoading() {
         Image(painterResource(R.drawable.crt_screen), null, Modifier.fillMaxSize(),
             contentScale = androidx.compose.ui.layout.ContentScale.FillBounds)
         Box(Modifier.fillMaxSize().alpha(flicker.value)) {
-            // Nov 21: our own mascot — a little glowing TV giving a thumbs-up and winking while it loads.
+            // Nov 21: our own mascot — a glowing kid with a remote, winking while it loads.
             TvGuy(lime, Modifier.align(Alignment.TopCenter).padding(top = h * 0.075f).size(h * 0.36f))
             // Forbidden Streams TV — above LOADING, same green.
             Text("FORBIDDEN STREAMS TV", color = lime, fontSize = sp(0.064f), fontWeight = FontWeight.Bold, fontFamily = mono,
@@ -260,24 +260,28 @@ private fun rrect(x: Float, y: Float, w: Float, h: Float, r: Float) =
     "M${x + r} $y H${x + w - r} Q${x + w} $y ${x + w} ${y + r} V${y + h - r} Q${x + w} ${y + h} ${x + w - r} ${y + h} " +
         "H${x + r} Q$x ${y + h} $x ${y + h - r} V${y + r} Q$x $y ${x + r} $y Z"
 
-/** The TV guy's lines, in a 200 × 200 box (our own design, Nov 21). */
+/** Nov 21: our own mascot — a kid in a sideways cap with headphones and a remote (200 × 200 box). */
 private val TV_GUY_LINES = listOf(
-    "M90 44 L70 14", circ(68f, 11f, 4f), "M110 44 L134 16", circ(136f, 13f, 4f),            // antennas
-    rrect(38f, 44f, 124f, 96f, 18f), rrect(50f, 55f, 80f, 74f, 14f),                       // body, screen
-    circ(146f, 70f, 6f), "M146 66 L146 70", circ(146f, 92f, 6f), "M143 92 L149 92",          // knobs
-    "M139 110 H153 M139 117 H153 M139 124 H153",                                              // speaker
-    "M66 74 Q73 69 80 73", "M100 73 Q107 69 114 74",                                          // eyebrows
-    "M68 101 Q90 122 112 101",                                                                // smile
-    "M72 140 L68 162 L58 164", "M128 140 L132 162 L142 164",                                  // legs
-    "M38 104 Q24 104 22 92", rrect(12f, 76f, 22f, 18f, 7f), "M18 77 L17 64 Q17 58 22 59 Q26 60 25 66 L24 76", // thumbs-up arm
-    "M162 100 Q182 108 172 124 Q168 130 162 126",                                             // hand on hip
+    "M62 84 Q60 132 100 136 Q140 132 138 84",                                    // head
+    "M60 84 Q58 40 100 38 Q142 40 140 84 Q100 74 60 84 Z", "M100 38 L100 78",      // cap
+    "M62 66 Q44 62 36 72 Q46 80 60 78", circ(100f, 36f, 3f),                       // brim, button
+    "M62 86 Q58 94 64 96 M138 86 Q142 94 136 96",                                   // hair
+    "M62 96 Q50 98 54 110 Q58 116 64 112", "M138 96 Q150 98 146 110 Q142 116 136 112", // ears
+    "M76 88 Q84 83 92 87", "M108 87 Q116 83 124 88",                                // brows
+    "M101 102 Q106 110 99 112", "M84 120 Q100 128 116 117",                          // nose, smile
+    "M90 136 V146 M110 136 V146",                                                   // neck
+    "M70 150 Q100 166 130 150", circ(68f, 150f, 8f), circ(132f, 150f, 8f),           // headphones
+    "M58 198 Q56 164 78 156 M122 156 Q144 164 146 186", "M94 162 L92 180 M106 162 L108 180", // hoodie
+    "M146 186 Q166 178 168 150", circ(168f, 142f, 9f), rrect(162f, 110f, 13f, 28f, 3f), // arm, hand, remote
 )
-private val TV_GUY_THIN = listOf("M14 83 H30 M14 88 H30")
-private val TV_GUY_EYE_L = circ(73f, 84f, 4.5f)
-private val TV_GUY_EYE_R = circ(107f, 84f, 4.5f)
-private val TV_GUY_WINK = "M101 85 Q107 79 113 85"
+private val TV_GUY_THIN = emptyList<String>()
+private val TV_GUY_DOTS = listOf(circ(76f, 108f, 1.4f), circ(81f, 111f, 1.4f), circ(119f, 111f, 1.4f), circ(124f, 108f, 1.4f),
+    circ(168.5f, 117f, 1.8f), circ(168.5f, 124f, 1.4f))
+private val TV_GUY_EYE_L = circ(84f, 98f, 4.5f)
+private val TV_GUY_EYE_R = circ(116f, 98f, 4.5f)
+private val TV_GUY_WINK = "M110 99 Q116 93 122 99"
 
-/** The glowing TV guy: winks every couple of seconds and bobs gently. */
+/** The glowing mascot (the kid): winks every couple of seconds and bobs gently. */
 @Composable
 private fun TvGuy(color: Color, modifier: Modifier) {
     fun parse(d: String) = androidx.compose.ui.graphics.vector.PathParser().parsePathString(d).toPath()
@@ -286,6 +290,7 @@ private fun TvGuy(color: Color, modifier: Modifier) {
     val eyeL = androidx.compose.runtime.remember { parse(TV_GUY_EYE_L) }
     val eyeR = androidx.compose.runtime.remember { parse(TV_GUY_EYE_R) }
     val wink = androidx.compose.runtime.remember { parse(TV_GUY_WINK) }
+    val dots = androidx.compose.runtime.remember { TV_GUY_DOTS.map { parse(it) } }
     var winking by androidx.compose.runtime.remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { while (true) { delay(2_200); winking = true; delay(320); winking = false } }
     val bob = rememberInfiniteTransition(label = "bob").animateFloat(0f, 1f, infiniteRepeatable(tween(1_400), RepeatMode.Reverse), label = "b")
@@ -302,6 +307,7 @@ private fun TvGuy(color: Color, modifier: Modifier) {
                     thin.forEach { drawPath(it, color.copy(alpha = a), style = stroke(w * 0.6f)) }
                 }
                 drawPath(eyeL, color)
+                dots.forEach { drawPath(it, color) }
                 if (!winking) drawPath(eyeR, color)
             }
         }
