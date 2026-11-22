@@ -205,7 +205,7 @@ private fun RetroLoading() {
         Image(painterResource(R.drawable.crt_screen), null, Modifier.fillMaxSize(),
             contentScale = androidx.compose.ui.layout.ContentScale.FillBounds)
         Box(Modifier.fillMaxSize().alpha(flicker.value)) {
-            // Nov 21: our own mascot — a glowing kid with a remote, winking while it loads.
+            // Nov 21: our own mascot — an old-school newsboy kid, waving and winking while it loads.
             TvGuy(lime, Modifier.align(Alignment.TopCenter).padding(top = h * 0.075f).size(h * 0.36f))
             // Forbidden Streams TV — above LOADING, same green.
             Text("FORBIDDEN STREAMS TV", color = lime, fontSize = sp(0.064f), fontWeight = FontWeight.Bold, fontFamily = mono,
@@ -260,26 +260,27 @@ private fun rrect(x: Float, y: Float, w: Float, h: Float, r: Float) =
     "M${x + r} $y H${x + w - r} Q${x + w} $y ${x + w} ${y + r} V${y + h - r} Q${x + w} ${y + h} ${x + w - r} ${y + h} " +
         "H${x + r} Q$x ${y + h} $x ${y + h - r} V${y + r} Q$x $y ${x + r} $y Z"
 
-/** Nov 21: our own mascot — a kid in a sideways cap with headphones and a remote (200 × 200 box). */
+/** Nov 21 ("old school"): our own mascot — a 1930s-style newsboy: flat cap, bow tie, suspenders, waving (200 × 200 box). */
 private val TV_GUY_LINES = listOf(
-    "M62 84 Q60 132 100 136 Q140 132 138 84",                                    // head
-    "M60 84 Q58 40 100 38 Q142 40 140 84 Q100 74 60 84 Z", "M100 38 L100 78",      // cap
-    "M62 66 Q44 62 36 72 Q46 80 60 78", circ(100f, 36f, 3f),                       // brim, button
-    "M62 86 Q58 94 64 96 M138 86 Q142 94 136 96",                                   // hair
-    "M62 96 Q50 98 54 110 Q58 116 64 112", "M138 96 Q150 98 146 110 Q142 116 136 112", // ears
-    "M76 88 Q84 83 92 87", "M108 87 Q116 83 124 88",                                // brows
-    "M101 102 Q106 110 99 112", "M84 120 Q100 128 116 117",                          // nose, smile
-    "M90 136 V146 M110 136 V146",                                                   // neck
-    "M70 150 Q100 166 130 150", circ(68f, 150f, 8f), circ(132f, 150f, 8f),           // headphones
-    "M58 198 Q56 164 78 156 M122 156 Q144 164 146 186", "M94 162 L92 180 M106 162 L108 180", // hoodie
-    "M146 186 Q166 178 168 150", circ(168f, 142f, 9f), rrect(162f, 110f, 13f, 28f, 3f), // arm, hand, remote
+    "M64 80 Q62 130 100 134 Q138 130 136 80",                                                 // head
+    "M58 82 Q50 52 78 42 Q100 34 124 42 Q150 52 142 80", "M58 82 Q100 72 142 80",               // cap crown
+    "M70 80 Q100 92 130 79 Q118 90 100 92 Q80 92 70 80", "M82 44 Q92 60 100 76 M118 44 Q110 60 100 76", // brim, panels
+    circ(100f, 38f, 3f),
+    "M64 96 Q52 98 56 110 Q60 116 66 112", "M136 96 Q148 98 144 110 Q140 116 134 112",           // ears
+    "M76 96 Q84 92 92 95", "M108 95 Q116 92 124 96",                                             // brows
+    "M100 106 Q104 112 98 114", "M88 121 Q102 126 113 119 Q116 117 117 114",                      // nose, smirk
+    "M92 134 V142 M108 134 V142", "M80 144 L92 142 L100 152 L108 142 L120 144",                   // neck, collar
+    "M100 152 L88 146 L88 158 Z M100 152 L112 146 L112 158 Z",                                    // bow tie
+    "M80 144 Q58 150 54 198 M120 144 Q142 150 146 174", "M80 152 L78 198 M120 152 L122 198",      // shoulders, suspenders
+    circ(78f, 186f, 2.5f), circ(122f, 186f, 2.5f),
+    "M146 174 Q164 166 166 140",                                                                  // arm
+    "M158 140 Q156 122 162 118 Q166 116 167 124 L168 118 Q170 112 174 116 L174 122 Q178 118 180 124 Q180 140 170 146 Q162 148 158 140", // hand
 )
-private val TV_GUY_THIN = emptyList<String>()
-private val TV_GUY_DOTS = listOf(circ(76f, 108f, 1.4f), circ(81f, 111f, 1.4f), circ(119f, 111f, 1.4f), circ(124f, 108f, 1.4f),
-    circ(168.5f, 117f, 1.8f), circ(168.5f, 124f, 1.4f))
-private val TV_GUY_EYE_L = circ(84f, 98f, 4.5f)
-private val TV_GUY_EYE_R = circ(116f, 98f, 4.5f)
-private val TV_GUY_WINK = "M110 99 Q116 93 122 99"
+private val TV_GUY_THIN = listOf("M176 108 Q182 112 184 120 M186 102 Q194 110 194 122")          // wave lines
+private val TV_GUY_DOTS = listOf(circ(76f, 114f, 1.4f), circ(81f, 117f, 1.4f), circ(119f, 117f, 1.4f), circ(124f, 114f, 1.4f))
+private val TV_GUY_EYE_L = circ(84f, 104f, 4.5f)
+private val TV_GUY_EYE_R = circ(116f, 104f, 4.5f)
+private val TV_GUY_WINK = "M110 105 Q116 99 122 105"
 
 /** The glowing mascot (the kid): winks every couple of seconds and bobs gently. */
 @Composable
